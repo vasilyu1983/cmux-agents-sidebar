@@ -2,55 +2,92 @@
 <html lang="en"><head><meta charset="utf-8"><title>Agents panel, sample names</title>
 <style>
   html, body { margin: 0; background: #2b2b2b; }
-  body { width: 420px; padding: 16px 14px 20px; box-sizing: border-box; font: 13px -apple-system, "Helvetica Neue", Arial, sans-serif; color: #e4e4e4; }
-  .mono { font-family: ui-monospace, Menlo, monospace; }
-  .dim { color: #8a8a8a; }
-  .head { display: flex; align-items: baseline; justify-content: space-between; }
-  h1 { font-size: 15px; margin: 0; color: #f2f2f2; }
-  .bar { display: flex; align-items: center; gap: 4px; margin-top: 10px; font-weight: 600; font-size: 12px; color: #9a9a9a; }
-  .bar span { padding: 3px 8px; border-radius: 6px; }
-  .bar .on { background: #474747; color: #fff; }
+  body { width: 420px; padding: 18px 14px 22px; box-sizing: border-box; font: 13px -apple-system, "Helvetica Neue", Arial, sans-serif; color: #e8e8ea; }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .head { display: flex; align-items: baseline; justify-content: space-between; padding: 0 10px; }
+  h1 { font-size: 15px; margin: 0; color: #f2f2f2; font-weight: 600; }
+  .tot { font-size: 11px; display: flex; gap: 9px; }
+  .bar { display: flex; align-items: center; gap: 2px; margin: 12px 10px 0; font-weight: 600; font-size: 12px; color: #b4b4ba; }
+  .bar span { padding: 4px 9px; border-radius: 6px; }
+  .bar .on { background: #4a4a4a; color: #fff; }
   .bar .sp { flex: 1; padding: 0; }
-  .bar .link { color: #3b8cff; }
-  .hint { font-size: 10.5px; color: #7a7a7a; margin: 6px 6px 0; }
-  .search { margin: 10px 4px; color: #8f8f8f; }
-  .band { display: flex; align-items: center; gap: 7px; background: #3a3a3a; border-radius: 7px; padding: 6px 8px; margin-top: 6px; font-weight: 700; }
-  .band i { width: 4px; height: 16px; border-radius: 2px; display: inline-block; }
-  .band small { font: 10px ui-monospace, Menlo, monospace; color: #8a8a8a; font-weight: 400; }
+  .chip { display: inline-block; margin: 10px 10px 0; padding: 4px 10px; border-radius: 10px; background: #3a3a3a; font-weight: 600; font-size: 12px; }
+  .chip small { color: #b4b4ba; font-weight: 400; margin-left: 4px; font-size: 11px; }
+  .strip { margin: 10px 10px 0; font-size: 11.5px; line-height: 17px; }
+  .strip div { display: flex; align-items: center; }
+  .strip .k { width: 62px; color: #b4b4ba; }
+  .strip .p { width: 30px; color: #b4b4ba; }
+  .strip .m { width: 42px; height: 3px; border-radius: 2px; background: #4a4a4a; margin-right: 8px; position: relative; overflow: hidden; }
+  .strip .m i { position: absolute; left: 0; top: 0; bottom: 0; background: #34c759; }
+  .strip .r { color: #b4b4ba; }
+  .search { margin: 10px 10px 12px; padding: 6px 10px; border-radius: 8px; background: #353535; color: #9a9aa0; font-size: 12.5px; }
+  .band { display: flex; align-items: center; gap: 8px; border-radius: 7px; padding: 7px 10px; margin-top: 10px; font-weight: 700; font-size: 13px; }
+  .band i { width: 4px; height: 15px; border-radius: 2px; display: inline-block; }
+  .band small { font: 11px ui-monospace, Menlo, monospace; color: #b4b4ba; font-weight: 400; }
   .band .sp { flex: 1; }
-  .row { display: flex; align-items: center; gap: 6px; padding: 4px 6px 0 12px; border-left: 2px solid; margin-left: 9px; }
-  .row b { font-weight: 600; white-space: nowrap; }
-  .row .sp { flex: 1; }
-  .row.on { background: #444; border-radius: 0 7px 7px 0; }
-  .dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; flex: none; }
-  .tag { font: 9.5px ui-monospace, Menlo, monospace; color: #8a8a8a; white-space: nowrap; }
-  .time { font: 10px ui-monospace, Menlo, monospace; color: #8a8a8a; white-space: nowrap; }
-  .line2 { padding: 1px 6px 4px 26px; border-left: 2px solid; margin-left: 9px; font-size: 11px; color: #a8a8a8; }
-  .or { color: #ff9f0a; } .red { color: #ff453a; }
+  .empty { display: flex; align-items: center; gap: 8px; padding: 12px 10px 12px 28px; border-top: 1px solid #3a3a3a; font-weight: 600; font-size: 12.5px; }
+  .empty i { width: 4px; height: 12px; border-radius: 2px; display: inline-block; }
+  .row { margin: 3px 0 0 20px; padding: 4px 8px 5px 10px; border-left: 2px solid; border-radius: 0 8px 8px 0; }
+  .row.on { background: #494949; border-radius: 8px; outline: 1px solid #6e6e6e; }
+  .l1, .l2 { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+  .l2 { margin-top: 4px; padding-left: 15px; font-size: 12px; height: 16px; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; flex: none; margin-right: 2px; }
+  .l1 b { font-weight: 600; font-size: 13px; color: #f2f2f2; }
+  .l1 .t { color: #d1d1d6; overflow: hidden; text-overflow: ellipsis; flex: 1; }
+  .kids { font: 11px ui-monospace, Menlo, monospace; color: #6ac4dc; }
+  .time { font: 11px ui-monospace, Menlo, monospace; color: #b4b4ba; width: 34px; text-align: right; }
+  .pill { font: 500 11px ui-monospace, Menlo, monospace; padding: 1px 5px; border-radius: 4px; background: #ffffff14; color: #b4b4ba; }
+  .pill.you { color: #ff9f0a; background: #ff9f0a26; }
+  .pill.hot { color: #ffd60a; }
+  .pill.acct { color: #64d2ff; background: #64d2ff26; }
+  .nx { font: 500 11px ui-monospace, Menlo, monospace; color: #d1d1d6; }
+  .txt { color: #b4b4ba; overflow: hidden; text-overflow: ellipsis; flex: 1; }
+  .txt.or { color: #ff9f0a; }
+  .c { font-size: 11px; text-align: right; flex: none; }
+  .model { width: 46px; color: #bdb2e8; font-weight: 500; }
+  .ctx { width: 30px; color: #a9c0d4; font-family: ui-monospace, Menlo, monospace; }
+  .ctx.warm { color: #ffd60a; }
+  .cost { width: 54px; color: #d8be8c; font-family: ui-monospace, Menlo, monospace; }
 </style></head>
 <body>
-  <div class="head"><h1>Agents</h1><span class="mono dim" style="font-size:10.5px">1 need you · ● 2 working · 3 idle · $46</span></div>
-  <div class="bar"><span>Here</span><span class="on">All</span><span>Limits</span><span class="sp"></span><span class="link">hive ↗</span><span>Ended</span></div>
-  <div class="bar"><span>! 1</span><span>▶ 2</span><span>80% 1</span><span>PR 1</span><span style="opacity:.45">1h+ 0</span><span class="sp"></span><span>✕</span><span>↑</span></div>
-  <div class="bar"><span>client 1</span><span>personal 2</span><span>work 3</span><span class="sp"></span></div>
-  <div class="search">Search agents</div>
+  <div class="head"><h1>Agents</h1><span class="tot"><span style="color:#5aa9ff">2 working</span><span style="color:#5ecb6b">4 idle</span><span class="mono" style="color:#d1d1d6">$68</span></span></div>
+  <div class="bar"><span>Here</span><span class="on">All</span><span>Limits</span><span class="sp"></span><span>↑</span><span>state</span><span>Ended</span><span>hive ↗</span></div>
+  <span class="chip">you<small>2</small></span>
+  <div class="strip">
+    <div><span class="k">train</span><span>merged #42</span></div>
+    <div><span class="k">claude</span><span class="p">36%</span><span class="m"><i style="width:36%"></i></span><span class="r">personal · week · resets Wed 23:00</span></div>
+    <div><span class="k">codex</span><span class="p">12%</span><span class="m"><i style="width:12%"></i></span><span class="r">work · 5h · resets 21:40</span></div>
+  </div>
+  <div class="search">⌕&nbsp; Search agents</div>
 
-  <div class="band or"><i style="background:#ff9f0a"></i>NEEDS YOU <small>1</small></div>
-  <div class="row" style="border-color:#30d15888"><span class="dot" style="background:#ff9f0a"></span><b>[api-7a !] Rate limit tests</b><span class="tag">claude<span style="color:#d7d75f"> · work</span></span><span class="sp"></span><span class="time">2m 07s</span><span class="dim">›</span></div>
-  <div class="line2" style="border-color:#30d15888"><span class="or">Needs input · permission prompt</span></div>
+  <div class="band" style="background:#34c75926;color:#8fd9a0"><span class="mono" style="font-size:9px;color:#b4b4ba">▾</span><i style="background:#5ecb6b"></i>shop-api<span class="sp"></span><small>4 · $55</small><small>+</small></div>
+  <div class="row" style="border-color:#4f9a5c">
+    <div class="l1"><span class="dot" style="background:#5ecb6b"></span><b>[api-3f]</b><span class="t">Payment client retry design</span><span class="kids">▸12</span><span class="time">2m</span></div>
+    <div class="l2"><span class="pill you">→ you</span><span class="pill hot">⟳11</span><span class="nx">next</span><span class="txt">you approve the retry plan</span><span class="c model">Opus</span><span class="c ctx">42%</span><span class="c cost">$31.20</span></div>
+  </div>
+  <div class="row on" style="border-color:#4f9a5c">
+    <div class="l1"><span class="dot" style="background:#3b8cff"></span><b>[api-7a]</b><span class="t">Webhook signature checks</span><span class="kids" style="color:#5aa9ff">▸2/7</span><span class="time">8s</span></div>
+    <div class="l2"><span class="txt">add a test for the expired signature case</span><span class="c model">Fable</span><span class="c ctx warm">58%</span><span class="c cost">$12.34</span></div>
+  </div>
+  <div class="row" style="border-color:#4f9a5c">
+    <div class="l1"><span class="dot" style="background:#5ecb6b"></span><b>[api-c2]</b><span class="t">Order export lane</span><span class="time">14m</span></div>
+    <div class="l2"><span class="pill">⟳3</span><span class="pill acct">work</span><span class="nx">next</span><span class="txt">nothing from you. The lead merges</span><span class="c model">Sonnet</span><span class="c ctx">19%</span><span class="c cost">$3.10</span></div>
+  </div>
+  <div class="row" style="border-color:#4f9a5c">
+    <div class="l1"><span class="dot" style="background:#3b8cff"></span><b>[api-d9]</b><span class="t">Rate limit middleware</span><span class="time">41s</span></div>
+    <div class="l2"><span class="txt">move the bucket size into the config file</span><span class="c model">codex</span><span class="c ctx"></span><span class="c cost"></span></div>
+  </div>
 
-  <div class="band"><i style="background:#30d158"></i>shop-api <small>3</small><small>$24</small><span class="sp"></span><small style="color:#3b8cff;font-weight:600">1 new</small></div>
-  <div class="row" style="border-color:#30d15888"><span class="dot" style="background:#0a84ff"></span><b>[api-3f] Checkout retries</b><span class="tag">claude<span style="color:#d7d75f"> · work</span></span><span class="sp"></span><span class="time">48s</span><span class="dim">›</span></div>
-  <div class="line2" style="border-color:#30d15888">Working · Fable 5.2 high · ctx 42% · $12.34 · <span style="color:#3b8cff">▸ 2 sub running</span></div>
-  <div class="row on" style="border-color:#30d15888"><span class="dot" style="background:#ff9f0a"></span><b>[api-7a !] Rate limit tests</b><span class="tag">claude<span style="color:#d7d75f"> · work</span></span><span class="sp"></span><span class="time">2m 07s</span><span class="dim">›</span></div>
-  <div class="line2" style="border-color:#30d15888"><span class="or">Needs input · permission prompt</span></div>
-  <div class="row" style="border-color:#30d15888"><span class="dot" style="background:#30d158"></span><b>[api-b2] Schema migration</b><span class="tag">claude<span style="color:#5fd7ff"> · client</span><span class="or"> ≠ work</span></span><span class="sp"></span><span class="tag or">#12 needs grant</span><span class="tag red">ctx 84%</span><span class="time">9m ago</span><span class="dim">›</span></div>
+  <div class="empty" style="margin-top:12px;color:#e08a80"><i style="background:#d9695c"></i>docs-site</div>
+  <div class="empty" style="color:#d6ae7c;border-bottom:1px solid #3a3a3a"><i style="background:#c9965a"></i>mobile-app</div>
 
-  <div class="band"><i style="background:#0a84ff"></i>web-app <small>2</small><small>$21</small><span class="sp"></span></div>
-  <div class="row" style="border-color:#0a84ff88"><span class="dot" style="background:#30d158"></span><b>[web-1c] Login form</b><span class="tag">claude</span><span class="sp"></span><span class="tag" style="color:#64d2ff">cold 198K</span><span class="time">31m ago</span><span class="dim">⌄</span></div>
-  <div class="line2 mono" style="border-color:#0a84ff88;font-size:10px"><span class="dim">account&nbsp;</span> personal (primary)<br><span class="dim">model&nbsp;&nbsp;&nbsp;</span> Opus 5.5 medium<br><span class="dim">context&nbsp;</span> 18%<br><span class="dim">cost&nbsp;&nbsp;&nbsp;&nbsp;</span> $21.40</div>
-  <div class="row" style="border-color:#0a84ff88"><span class="dot" style="background:#0a84ff"></span><b>Codex</b><span class="tag">codex<span style="color:#d7d75f"> · work</span></span><span class="sp"></span><span class="time">1m 12s</span><span class="dim">›</span></div>
-  <div class="line2" style="border-color:#0a84ff88">Working</div>
-
-  <div class="band"><i style="background:#ff9f0a"></i>docs-site<span class="sp"></span></div>
+  <div class="band" style="background:#3b8cff26;color:#8ab8ff"><span class="mono" style="font-size:9px;color:#b4b4ba">▾</span><i style="background:#5a9bff"></i>billing<span class="sp"></span><small>2 · $13</small><small>+</small></div>
+  <div class="row" style="border-color:#4a78c2">
+    <div class="l1"><span class="dot" style="background:#5ecb6b"></span><b>[bill-1e]</b><span class="t">Invoice rounding fix</span><span class="kids">▸4</span><span class="time">6m</span></div>
+    <div class="l2"><span class="pill you">→ you</span><span class="pill">⟳6</span><span class="pill">+1</span><span class="txt">you run step 1.</span><span class="c model">Fable</span><span class="c ctx">20%</span><span class="c cost">$10.79</span></div>
+  </div>
+  <div class="row" style="border-color:#4a78c2">
+    <div class="l1"><span class="dot" style="background:#5ecb6b"></span><b>[bill-88]</b><span class="t">Tax table update</span><span class="time">52m</span></div>
+    <div class="l2"><span class="txt or">quiet 20m+ · check the new VAT rows</span><span class="c model">Sonnet</span><span class="c ctx">18%</span><span class="c cost">$2.43</span></div>
+  </div>
 </body></html>

@@ -57,9 +57,53 @@ Status colours: orange = waits for you, blue = working, green = idle, grey = end
 
 ## Examples
 
-The pictures use sample names. The panel picture is a drawing of the layout (`examples/panel.html`), with the account chips, the account colours and the wrong-account mark. The hive picture is a render of `scripts/hive.html` with sample data. It was opened without the watcher, so its top line says that the picture is fixed; with the watcher the page updates every 15 seconds.
+The pictures use sample names. The panel picture is a drawing of the layout (`examples/panel.html`). The hive picture is a render of `scripts/hive.html` with sample data. It was opened without the watcher, so its top line says that the picture is fixed; with the watcher the page updates every 15 seconds.
 
-![Drawing of the Agents panel: counts and cost, filter chips, account chips, a NEEDS YOU block, and one band per workspace with its session rows](examples/panel.png)
+<img src="examples/panel.png" alt="Drawing of the Agents panel: counts and cost, view switch, limit lines per tool, and one band per workspace with two-line session rows that end in model, context share and cost" width="420">
+
+### How to read the panel
+
+From top to bottom of the picture. "You do" says what the mark asks of you.
+
+| Mark | Meaning | You do |
+|---|---|---|
+| `2 working` `4 idle` `$68` | Sessions that work now, sessions that wait, summed cost of the open sessions | Click a count to filter the list to those sessions |
+| `Here` `All` `Limits` | `Here`: the sessions of the open workspace. `All`: every workspace. `Limits`: the rate limits per tool and account | Click one; the panel remembers it |
+| `↑` | Sort: sessions that need attention first | Click to turn on or off |
+| `state` | Groups the rows by state in place of by workspace | Click to turn on or off |
+| `Ended` | Also shows sessions that ended | Click to turn on or off |
+| `hive ↗` | Opens the graph page: workspace, session, subagent | Click |
+| `you 2` chip | 2 sessions whose next step is yours | Click to see only those |
+| `train` line | One line of project state from a watcher of your own (optional) | Read |
+| `claude 36% ▬ personal · week · resets Wed 23:00` | The fullest limit window of that tool over all your accounts: share used, account, window, reset time. Red from 80% | Slow down or change account before 100% |
+| Tinted band `shop-api  4 · $55  +` | A workspace: name, session count, summed cost. A purple `●1` is 1 tab with unread output | Click to fold. `+` opens a new tab there |
+| Flat line `docs-site` | A workspace with no agent session | Click to go to it |
+| Green dot | The session is idle: it ended its turn | Read the row to see whose step is next |
+| Blue dot | The session works now | Nothing |
+| Orange dot, orange row tint | The session asks you something (a permission, a question) | Answer it first |
+| Purple dot, purple row tint | The session finished and you did not look at it yet | Open the tab |
+| `[api-3f]` | The short name of the session; other sessions send messages to this name | Use it to name the session |
+| Text after the name | The title of the tab, else the title of the session | — |
+| `▸12` | The session started 12 subagents. `▸2/7` in blue: 2 of 7 run now | Click to list them |
+| `2m` | Time since the last activity. Orange when the session waits for you | — |
+| Row with a fill and an outline | The session of the tab that has the focus | — |
+| `→ you` pill | The last reply ended with a `Next:` line that names you | Do that step |
+| `⟳11` pill | The session compacted its context 11 times. Shows from 3; yellow from 10 | Think about a fresh session |
+| `83%` red pill | The context window is 80% full or more | Compact, or start a new session |
+| `work` pill in a colour | The account the session runs on (only for an extra account) | — |
+| `≠ work` orange pill | The folder rules name another account for this folder | Restart the session on that account |
+| `↑2` pill | 2 local commits are not pushed | Push when ready |
+| `dup` pill | Two live sessions work in one folder on one branch | Stop one of them |
+| `❄190K` pill | The prompt cache is cold: the next message re-reads about 190K tokens at full price | Expect a slow, costly first reply |
+| `+1` pill | 1 more mark does not fit on the row | Hover to read it; the details list all |
+| `next` then text | The next step, from the `Next:` line of the last reply | Read; act when it names you |
+| Grey text with no label | Your last request to a session that works | — |
+| Orange text | Why the session waits, or `quiet 20m+`: no output for 20 minutes | Open the tab and check |
+| `Opus` `Fable` `Sonnet` (lavender) | The model. A tool that reports no model shows its name (`codex`) | — |
+| `42%` (slate blue) | Share of the context window in use. Yellow from 50%; from 80% it becomes the red pill | — |
+| `$31.20` (sand) | Cost estimate of the session so far | — |
+
+A row shows at most 2 pills. Their order of priority is: `≠`, a PR that needs you, `83%`, `→ you`, `↑2`, `dup`, `⟳`, `❄`, PR, account, folder.
 
 ![Render of the hive page: workspaces, their sessions, and subagents, with a blue box on the open tab and the account name in its colour](examples/hive.png)
 
