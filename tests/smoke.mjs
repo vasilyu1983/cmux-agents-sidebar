@@ -256,10 +256,13 @@ check("workspace bands take the workspace colour; the selected one is stronger",
   must(!reachable().some((n) => n.props.size === 5), "session dots show on an open band");
   must(reachable().some((n) => n.props.fill === "#7f7f7f40" && n.props.height === 1), "no hairline on the NEEDS YOU section");
 });
-check("an empty workspace is a thin band in its own colour with a hover-only +", () => {
+check("an empty workspace is a flat line in its own colour with a hover-only +", () => {
   const name = withText((t) => t === "docs");
   must(name.length === 1 && name[0].props.font === 12 && name[0].props.color === "#94afca", "docs line is not 12 pt in its colour");
-  must(reachable().some((n) => n.props.background === "#5580aa14"), "the empty workspace has no faint tint");
+  must(!reachable().some((n) => /^#5580aa/.test(String(n.props.background ?? ""))), "the empty workspace has a fill");
+  // A settled row is flat: only a focused, asking or unseen row has a fill, so the list is not a stack of boxes.
+  const fills = reachable().filter((n) => n.props.cornerRadius === 10).map((n) => n.props.background);
+  must(fills.includes("clear") && !fills.includes("#FFFFFF0F"), "a settled row has a card fill: " + JSON.stringify(fills));
   must(withText((t) => t === "+").filter((n) => n.props.showOnHover === true).length === 1, "no hover-only + on the docs line");
 });
 check("the rows of a workspace sit inside its band; the top block and the view by state do not", () => {

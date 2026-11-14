@@ -811,7 +811,7 @@ function sectionRow(entry) {
   ]).frame({ maxWidth: "infinity" });
 }
 
-// A workspace with no session: one thin band in its own colour, at the left edge of the bands. A click selects the workspace.
+// A workspace with no session: one flat line in its own colour, at the left edge of the bands. No fill. A click selects the workspace.
 function emptyRow(entry) {
   return VStack({ spacing: 0 }, [
     Rectangle().fill("clear").frame({ height: 6 }),
@@ -824,7 +824,6 @@ function emptyRow(entry) {
       plusMark(entry).showOnHover(),
     ])
       .paddingLeading(30).paddingTrailing(4).paddingVertical(2)
-      .background(() => tint(entry().wsColor, "14"))
       .hoverBackground(() => tint(entry().wsColor, "2E"))
       .cornerRadius(8)
       .frame({ maxWidth: "infinity" })
@@ -987,8 +986,10 @@ function detailRow(entry) {
 }
 
 // A card: tinted orange with an orange border when the session asks, purple when it finished and was not seen.
+// Only a row that says something has a fill: the focused one, one that asks, one that finished unseen.
+// Every other row is flat, so the list is not a stack of boxes; the band and the rail carry the group.
 const rowBackground = (entry) => () =>
-  (entry().focused ? "#FFFFFF1F" : entry().look === "needs_input" ? "#FF9F0A26" : entry().done ? "#BF5AF226" : "#FFFFFF0F");
+  (entry().focused ? "#FFFFFF1F" : entry().look === "needs_input" ? "#FF9F0A26" : entry().done ? "#BF5AF226" : "clear");
 // The status dot, with a halo for a row that works, asks or finished unseen. The 13 pt frame is always there,
 // so the titles line up.
 const haloDot = (entry) => {
@@ -1044,7 +1045,7 @@ const card = (entry, row) => row
 
 // A settled session (idle, ended), and the workspace copy of a waiting one: one line with at most 2 marks.
 function compactRow(entry) {
-  return card(entry, HStack({ spacing: 8 }, [guide(entry, 16), titleLine(entry, true)]).paddingVertical(6));
+  return card(entry, HStack({ spacing: 8 }, [guide(entry, 24), titleLine(entry, true)]).paddingVertical(2));
 }
 
 // A session that works, asks or finished unseen: the name line, the state with the pills, then the request.
