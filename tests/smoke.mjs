@@ -328,7 +328,7 @@ check("the panel head, control row, chips and search field have their new form",
   must(!rendered.includes("showing:"), "the showing line is still there");
   // Here | All | Limits is one segmented group; All is selected.
   const all = withText((t) => t === "All")[0];
-  must(all.props.background === "#FFFFFF26" && all.props.color === "primary", "the selected segment is not primary on #FFFFFF26");
+  must(all.props.background === "#FFFFFF2E" && all.props.color === "primary", "the selected segment is not primary on #FFFFFF2E");
   const here = withText((t) => t === "Here")[0];
   // An unselected segment is dim text with no fill at all, also on hover: one fill means one selection.
   must(here.props.color === META && !here.props.hoverBackground, "an unselected segment has a fill or is not dim");
@@ -485,7 +485,7 @@ check("the Reset chip restores the default view and turns the view by state off"
   must(reset, "no Reset chip");
   tap(reset);
   must(!textOf().includes("FINISHED · NOT SEEN"), "the view by state stayed on");
-  must(withText((t) => t === "All")[0].props.background === "#FFFFFF26", "the scope did not go back to All");
+  must(withText((t) => t === "All")[0].props.background === "#FFFFFF2E", "the scope did not go back to All");
   must(withText((t) => t === "Ended")[0].props.color === META, "ended rows stayed on");
   must(withText((t) => t === "✕ Reset").length === 0, "the Reset chip stayed in the default view");
 });
