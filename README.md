@@ -37,6 +37,7 @@ A drawing of a cmux window with the panel, with sample names.
 | Last prompt | The start of your last request to a Claude Code session, in the row details and in the search |
 | State from the screen | Codex, OpenCode, Grok and Antigravity tabs publish no state. The row says `working · from screen` or `asked · from screen`, read from the last 30 lines of the tab |
 | Compact layout | The name of a session keeps the room: marks are short (`❄190K` cold cache, `83%` context, `▸2/11` subagents running of total) and never cut. Chips with no matching row are left out. The panel head counts states in words: orange needs you, blue working, green idle |
+| Groups | A workspace band is tinted in the workspace colour and carries its name in that colour. Its sessions sit 12 pt inside it, and subagent rows one step further. A workspace with no session is a thin band of its own. A dark workspace colour is lightened so it shows on a dark panel |
 | Cards and pills | Each session is a rounded card: orange tint when it asks, purple when it finished and you did not look. Its marks are small coloured pills under the name: tool and account, folder, PR, `→ you`, `dup`, `↑2`, `⟳3`, `❄190K`, `83%` |
 | Request on the row | A session that works, asks or finished unseen shows the request it works on, up to two lines |
 | `state` | Next to `↑`: groups the rows by state in place of by workspace: `NEEDS YOU`, `FINISHED · NOT SEEN`, `RUNNING`, `RECENT` (idle under 1 hour), `IDLE`. Each row then carries its workspace as a pill. Not saved across reloads |

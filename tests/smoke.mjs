@@ -243,19 +243,31 @@ check("times are short: no \"ago\", minutes without seconds", () => {
   must(!rendered.split("\n").some((l) => / ago$/.test(l)), "a time still ends in \"ago\"");
 });
 check("workspace bands take the workspace colour; the selected one is stronger", () => {
-  must(reachable().some((n) => n.props.background === "#12345624"), "no selected band tint for api");
-  must(reachable().some((n) => n.props.background === "#65432114"), "no band tint for web");
-  must(reachable().some((n) => n.props.hoverBackground === "#1234562E"), "no hover tint for api");
+  // The data colours are dark, so the panel lightens them to show on a dark background: #123456 -> #667c92.
+  must(reachable().some((n) => n.props.background === "#667c923D"), "no selected band tint for api");
+  must(reachable().some((n) => n.props.background === "#8d735a29"), "no band tint for web");
+  must(reachable().some((n) => n.props.hoverBackground === "#667c9247"), "no hover tint for api");
+  // The band name takes the workspace colour, and a bright colour stays as it is.
+  must(withText((t) => t === "api").some((n) => n.props.color === "#667c92" && n.props.weight === "bold"), "the api band name is not in its colour");
   must(withText((t) => t === "3 · $1").length === 1, "no \"3 · $1\" count and cost on the api band");
   must(reachable().some((n) => n.props.size === 6 && n.props.fill === "#BF5AF2"), "no unread dot on the api band");
   must(!reachable().some((n) => n.props.size === 5), "session dots show on an open band");
   must(reachable().some((n) => n.props.fill === "#7f7f7f40" && n.props.height === 1), "no hairline on the NEEDS YOU section");
 });
-check("an empty workspace is a thin line with a hover-only +", () => {
+check("an empty workspace is a thin band in its own colour with a hover-only +", () => {
   const name = withText((t) => t === "docs");
-  must(name.length === 1 && name[0].props.font === 12 && name[0].props.color === META, "docs line is not 12 pt META");
-  must(!reachable().some((n) => /^#336699/.test(String(n.props.background ?? ""))), "the empty workspace has a band tint");
+  must(name.length === 1 && name[0].props.font === 12 && name[0].props.color === "#5580aa", "docs line is not 12 pt in its colour");
+  must(reachable().some((n) => n.props.background === "#5580aa14"), "the empty workspace has no faint tint");
   must(withText((t) => t === "+").filter((n) => n.props.showOnHover === true).length === 1, "no hover-only + on the docs line");
+});
+check("the rows of a workspace sit inside its band; the top block and the view by state do not", () => {
+  const margins = reachable().map((n) => n.props.marginLeading).filter((m) => m !== undefined && m !== null);
+  must(margins.includes(12), "no row is indented under its band");
+  must(margins.includes(0), "the top copy of the waiting row is indented");
+});
+check("the two parts of a title sit directly in the row and rank above the gap", () => {
+  const name = withText((t) => t === "[lead-1]")[0];
+  must(name && name.props.layoutPriority === 3, "the name has no priority over the gap");
 });
 check("render shows the waiting reason, context share and your-turn mark", () => {
   mustContain(rendered, "permission");

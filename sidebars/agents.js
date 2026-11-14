@@ -766,7 +766,18 @@ const usedBar = (pctFn, width, height) =>
   ]).frame({ width, height });
 
 // The workspace colour at a given alpha ("14" is about 8%). A colour that is not "#RRGGBB" gets a faint white.
-const tint = (color, alpha) => (/^#[0-9A-Fa-f]{6}$/.test(color ?? "") ? color + alpha : "#FFFFFF0A");
+// A workspace colour that shows on a dark panel: a dark colour is mixed with white up to a fixed brightness.
+const seen = (color) => {
+  if (!/^#[0-9A-Fa-f]{6}$/.test(color ?? "")) return "#8E8E93";
+  const c = [1, 3, 5].map((i) => parseInt(color.slice(i, i + 2), 16));
+  const lum = 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2];
+  if (lum >= 120) return color;
+  const t = (120 - lum) / (255 - lum);
+  return "#" + c.map((v) => Math.round(v + (255 - v) * t).toString(16).padStart(2, "0")).join("");
+};
+const tint = (color, alpha) => (/^#[0-9A-Fa-f]{6}$/.test(color ?? "") ? seen(color) + alpha : "#FFFFFF0A");
+// The rows of a workspace sit 12 pt inside its band. The top block and the view by state have no band above them.
+const inset = (entry) => () => (byState() || /^(?:[dc]:)?n:/.test(String(entry().key ?? "")) ? 0 : 12);
 // Right-click on a workspace band or line: "New tab here".
 const bandMenu = (entry) => [Button("New tab here", () => newTab(entry().wsId))];
 const selectWs = (entry) => () => cmux("workspace.select", { workspace_id: entry().wsId });
@@ -793,19 +804,22 @@ function sectionRow(entry) {
   ]).frame({ maxWidth: "infinity" });
 }
 
-// A workspace with no session: one thin line, no band. A click selects the workspace.
+// A workspace with no session: one thin band in its own colour, at the left edge of the bands. A click selects the workspace.
 function emptyRow(entry) {
   return VStack({ spacing: 0 }, [
-    Rectangle().fill("clear").frame({ height: 2 }),
+    Rectangle().fill("clear").frame({ height: 6 }),
     HStack({ spacing: 4 }, [
       HStack({ spacing: 7 }, [
-        Capsule().fill(() => entry().wsColor).frame({ width: 3, height: 12 }),
-        Text(() => entry().wsTitle || "untitled").font(12).color(META).lineLimit(1).truncation("tail"),
+        Capsule().fill(() => seen(entry().wsColor)).frame({ width: 4, height: 12 }),
+        Text(() => entry().wsTitle || "untitled").font(12).weight("medium").color(() => seen(entry().wsColor)).lineLimit(1).truncation("tail"),
         Spacer(),
       ]).frame({ maxWidth: "infinity" }).onTap(selectWs(entry)),
       plusMark(entry).showOnHover(),
     ])
-      .paddingLeading(30).paddingTrailing(4)
+      .paddingLeading(30).paddingTrailing(4).paddingVertical(2)
+      .background(() => tint(entry().wsColor, "14"))
+      .hoverBackground(() => tint(entry().wsColor, "2E"))
+      .cornerRadius(8)
       .frame({ maxWidth: "infinity" })
       .contextMenu(bandMenu(entry)),
   ]).frame({ maxWidth: "infinity" });
@@ -815,15 +829,15 @@ function emptyRow(entry) {
 // The dots, one per session, show while the band is folded (the roster's shape at a glance).
 function bandRow(entry) {
   return VStack({ spacing: 0 }, [
-    Rectangle().fill("clear").frame({ height: 8 }),
+    Rectangle().fill("clear").frame({ height: 12 }),
     HStack({ spacing: 4 }, [
       Text(() => (entry().folded ? "▸" : "▾"))
         .font(12).color(TEXT2).frame({ width: 22, height: 22 })
         .onTap(() => toggleFold(entry().wsId)),
       HStack({ spacing: 7 }, [
-        Capsule().fill(() => entry().wsColor).frame({ width: 3, height: 14 }),
+        Capsule().fill(() => seen(entry().wsColor)).frame({ width: 4, height: 16 }),
         Text(() => entry().wsTitle || "untitled")
-          .font(13).weight("semibold").lineLimit(1).truncation("tail").color("primary"),
+          .font(13).weight("bold").lineLimit(1).truncation("tail").color(() => seen(entry().wsColor)),
         Spacer(),
         ForEach(
           { items: () => (entry().folded ? entry().dots.map((c, i) => ({ id: String(i) + c, color: c })) : []), key: (d) => d.id },
@@ -842,8 +856,8 @@ function bandRow(entry) {
       plusMark(entry),
     ])
       .paddingHorizontal(4).paddingVertical(5)
-      .background(() => tint(entry().wsColor, entry().wsSelected ? "24" : "14"))
-      .hoverBackground(() => tint(entry().wsColor, "2E"))
+      .background(() => tint(entry().wsColor, entry().wsSelected ? "3D" : "29"))
+      .hoverBackground(() => tint(entry().wsColor, "47"))
       .cornerRadius(8)
       .frame({ maxWidth: "infinity" })
       .contextMenu(bandMenu(entry)),
@@ -852,7 +866,7 @@ function bandRow(entry) {
 
 // A thin line in the workspace colour on the left of each row: the rows read as the inside of their group.
 const guide = (entry, height) =>
-  Rectangle().fill(() => entry().wsColor).opacity(0.45).frame({ width: 2, height });
+  Rectangle().fill(() => seen(entry().wsColor)).opacity(0.7).frame({ width: 2, height });
 
 // "[name] title" where the title only repeats the name (a session with a custom name): show it once.
 const rowTitle = (t) => {
@@ -961,6 +975,7 @@ function detailRow(entry) {
   ])
     .paddingLeading(9).paddingTrailing(10)
     .frame({ maxWidth: "infinity" })
+    .marginLeading(inset(entry))
     .onTap(() => jump(entry()));
 }
 
@@ -992,13 +1007,12 @@ const titleLine = (entry, compact) => {
   const a = () => entry().agent;
   return HStack({ spacing: 6 }, [
     haloDot(entry),
-    HStack({ spacing: 4 }, [
-      Text(() => titleParts(entry).name)
-        .font(13).weight("semibold").lineLimit(1).truncation("tail").layoutPriority(1)
-        .color(() => (a().status === "ended" || entry().old ? META : "primary")),
-      ForEach({ items: () => (titleParts(entry).rest ? [{ id: "rest" }] : []), key: (x) => x.id },
-        () => Text(() => titleParts(entry).rest).font(13).lineLimit(1).truncation("tail").color(META)),
-    ]),
+    // Both parts sit directly in the row and rank above the gap, so a title is cut only when the row is full.
+    Text(() => titleParts(entry).name)
+      .font(13).weight("semibold").lineLimit(1).truncation("tail").layoutPriority(3)
+      .color(() => (a().status === "ended" || entry().old ? META : "primary")),
+    ForEach({ items: () => (titleParts(entry).rest ? [{ id: "rest" }] : []), key: (x) => x.id },
+      () => Text(() => titleParts(entry).rest).font(13).lineLimit(1).truncation("tail").layoutPriority(2).color(META)),
     ...(compact ? [markRow(entry)] : []),
     unreadBadge(entry),
     Spacer(),
@@ -1018,6 +1032,7 @@ const card = (entry, row) => row
   .borderColor(() => (entry().look === "needs_input" ? "#FF9F0A73" : "clear"))
   .hoverBackground("#FFFFFF17")
   .frame({ maxWidth: "infinity" })
+  .marginLeading(inset(entry))
   .onTap(() => jump(entry()))
   .contextMenu(rowMenu(entry));
 
@@ -1076,6 +1091,7 @@ function childRow(entry) {
     .cornerRadius(7)
     .hoverBackground("#7f7f7f1c")
     .frame({ maxWidth: "infinity" })
+    .marginLeading(() => inset(entry)() + 12)
     .onTap(() => jump(entry()));
 }
 
