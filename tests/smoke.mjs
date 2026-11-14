@@ -313,12 +313,16 @@ check("strip lines: one 12 pt line with the full text on hover; the train line d
   // A label sits in a 56 pt cell at the leading side: the text takes its own width, a gap fills the rest.
   must(label.props.fixedSize === true && reachable().some((n) => n.props.width === 56), "the strip label has no 56 pt cell");
 });
-check("the week line shows its percent, a 44 x 4 bar, then the rest of the text", () => {
-  must(withText((t) => t === "47%").length === 1, "no \"47%\" on the week line");
-  must(reachable().some((n) => n.type === "capsule" && n.props.fill === "#34C759" && Math.abs(n.props.width - 20.68) < 0.01 && n.props.height === 4), "no green 47% fill on the week bar");
-  must(reachable().some((n) => n.type === "capsule" && n.props.fill === "#7f7f7f40" && n.props.width === 44 && n.props.height === 4), "no 44 pt track on the week bar");
-  const rest = withText((t) => t === "of the 7-day limit used")[0];
-  must(rest && rest.props.font === 11 && rest.props.color === META, "the rest of the week line is not 11 pt META");
+check("the strip has one limit line per tool with a live window: percent, a 44 x 4 bar, account, window and reset", () => {
+  // The data: claude 5h 42%, codex week 4%, grok with no window. The strip names the tool, not "week".
+  must(withText((t) => t === "42%").length === 1 && withText((t) => t === "4%").length === 1, "no 42% and 4% lines on the strip");
+  must(withText((t) => t === "claude").length >= 1 && withText((t) => t === "codex").some((n) => n.props.fixedSize === true), "the limit lines do not name their tool");
+  must(withText((t) => t === "grok").length === 0 && withText((t) => t === "week").length === 0, "a tool with no window, or a line named week, shows on the strip");
+  must(reachable().some((n) => n.type === "capsule" && n.props.fill === "#34C759" && Math.abs(n.props.width - 18.48) < 0.01 && n.props.height === 4), "no green 42% fill on the strip bar");
+  must(reachable().some((n) => n.type === "capsule" && n.props.fill === "#7f7f7f40" && n.props.width === 44 && n.props.height === 4), "no 44 pt track on the strip bar");
+  const rest = withText((t) => /5h · resets 14:10$/.test(t))[0];
+  must(rest && rest.props.text === "personal · 5h · resets 14:10", "the claude line does not name its account: " + rest?.props.text);
+  must(rest && rest.props.font === 11 && rest.props.color === META, "the rest of the claude line is not \"5h · resets 14:10\" in 11 pt META");
 });
 check("the panel head, control row, chips and search field have their new form", () => {
   must(!rendered.includes("showing:"), "the showing line is still there");
@@ -461,7 +465,7 @@ check("Limits bars are 60 x 5 with a 3 pt minimum fill; a line with no data has 
   must(!parentOf(none.id).children.map(node).some((n) => n.type === "zstack" || n.type === "capsule"), "the grok line has a bar");
   must(withText((t) => /^\$0\.30 · 1 session$/.test(t)).length === 1, "no cost line for the personal account");
   tap(withText((t) => t === "Limits")[0]);
-  must(withText((t) => t === "42%").length === 0, "a second click on Limits did not close the view");
+  must(!reachable().some((n) => n.props.width === 60 && n.props.height === 5), "a second click on Limits did not close the view");
 });
 check("a head count filters the list, a second tap clears it; the idle count has no tap", () => {
   must(!tapTarget(withText((t) => t === "2 idle")[0]), "the idle count is tappable");

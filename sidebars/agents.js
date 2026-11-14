@@ -518,7 +518,7 @@ const entries = computed(() => (limitsShown() ? [] : view().rows));
 
 // The project strip: the "@train", "@queue" and "@unpushed" parts that label-tabs.py puts in a workspace description.
 // Read from every workspace, also when the list shows one workspace only.
-const STRIP = { train: ["train", "secondary"], week: ["claude", "secondary"], queue: ["run", "#FF9F0A"], unpushed: ["unpushed", "#FF9F0A"] };
+const STRIP = { train: ["train", "secondary"], queue: ["run", "#FF9F0A"], unpushed: ["unpushed", "#FF9F0A"] };
 // The Limits view: "@limits: claude,5h,42,14:10,1794650000;codex,week,4,Sat 09:39,1794600000;grok,,,,0".
 // label-tabs.py reads the limit windows that each tool leaves in local files. An item with no window is a tool
 // that is installed and leaves no limit data.
@@ -614,23 +614,31 @@ const strip = computed(() => {
     for (const part of String(w.description ?? "").split(" | ").slice(1)) {
       const at = part.indexOf(": ");
       const kind = STRIP[part.slice(1, at)];
-      // The Limits view lists every tool and account, so the one-tool line of the strip leaves it.
-      if (part.startsWith("@") && kind && !(part.startsWith("@week") && limitsShown())) {
+      if (part.startsWith("@") && kind) {
         const raw = part.slice(at + 2);
         const name = part.slice(1, at);
-        const value = name === "week" ? raw + " of the 7-day limit used" : name === "train" ? dropNone(raw) : raw;
-        // "47% of the 7-day limit used" shows as "47%", a bar, then the rest of the text.
-        const p = name === "week" ? /^(\d{1,3})% (.*)$/.exec(value) : null;
+        const value = name === "train" ? dropNone(raw) : raw;
         out.push({
-          // The key carries the form (with or without a bar), because a row's template is fixed per key.
-          key: w.id + part.slice(0, at) + (p ? ":p" : ""), label: kind[0], value, wsId: w.id,
-          color: name === "week" && parseInt(raw, 10) >= 80 ? "#FF453A" : kind[1],
-          bar: p ? Math.min(100, Number(p[1])) : -1, pct: p ? p[1] + "%" : "", rest: p ? p[2] : "",
+          key: w.id + part.slice(0, at), label: kind[0], value, wsId: w.id, color: kind[1], bar: -1,
           // The menu copies the text as it is. Nothing here builds or runs a command.
           copy: raw,
         });
       }
     }
+  }
+  // One limit line per tool that reports a live window: its highest window over all accounts, with the account,
+  // the window and the reset time. The Limits view lists them all, so these lines leave it.
+  const top = {};
+  for (const x of limitsShown() ? [] : limits()) {
+    if (x.bar >= 0 && (!top[x.tool] || x.bar > top[x.tool].bar)) top[x.tool] = x;
+  }
+  for (const x of Object.values(top)) {
+    const tool = Object.keys(TOOLS)[x.tool];
+    out.push({
+      key: "lim:" + tool + ":p", label: tool, value: x.label + " " + x.value, wsId: x.wsId,
+      color: x.bar >= 80 ? "#FF453A" : "secondary", bar: x.bar, pct: x.pct,
+      rest: [x.label.split(" ").slice(1).join(" "), x.rest].filter(Boolean).join(" · "), copy: x.copy,
+    });
   }
   return out;
 });
