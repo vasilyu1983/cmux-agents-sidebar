@@ -317,18 +317,21 @@ const view = computed(() => {
           : sess.done ? "finished · not seen"
           : statusOf(a).label,
         sessName: sessionName(tabTitle) ?? "",
+        // The name on the workspace band: the second line leaves the folder out when it only repeats this name.
+        wsName: dirTail(String(w.description ?? "").split(" | ")[0]) || dirTail(w.directory) || w.title,
         // The PR of the lane branch where the session works, with the state from your merge tool: "#644 needs grant".
         prText: sess.pr ?? "",
         acct: sess.acct ?? "",
         wrong: sess.wrong ?? "",
         // Work marks, in orange: a duplicate session, commits that no remote holds, 3 or more compactions.
-        work: [sess.dup ? "dup" : "", sess.ahead > 0 ? "↑" + sess.ahead : "", sess.comp >= 3 ? sess.comp + "× comp" : ""].filter(Boolean).join(" "),
+        // Short forms, so the marks fit beside the name: "⟳14" is 14 compactions.
+        work: [sess.dup ? "dup" : "", sess.ahead > 0 ? "↑" + sess.ahead : "", sess.comp >= 3 ? "⟳" + sess.comp : ""].filter(Boolean).join(" "),
         yours: sess.look !== "working" && yours(sess.next) ? "→ you" : "",
-        cold: sess.look === "idle" ? sess.cold ?? "" : "",
+        cold: sess.look === "idle" ? String(sess.cold ?? "").replace(/^cold /, "❄") : "",
         folder: String(a.directory ?? ""),
         // Why the session waits, and its context share when that is 80% or more (the row shows it in red).
         wait: a.status === "needs_input" ? sess.wait ?? "" : "",
-        ctxHigh: sess.ctx >= 80 ? "ctx " + sess.ctx + "%" : "",
+        ctxHigh: sess.ctx >= 80 ? sess.ctx + "%" : "",
         key: "a:" + w.id + ":" + a.id + (compact ? ":c" : ""),
         kind: "agent",
         compact,
@@ -478,17 +481,19 @@ const limits = computed(() => {
     const age = seen && epoch >= seen ? " · seen " + fmtAgo(epoch - seen) + " ago" : "";
     let value = "no limit data on this Mac";
     let color = "tertiary";
+    let bar = -1;  // no bar for a line without a live window
     if (m[3] !== "") {
       const used = Number(m[3]);
       if (m[4] === "ended") value = (m[2] || "limit") + " window ended · last value " + used + "%" + age;
       else {
         value = (m[2] || "limit") + " " + used + "%" + (m[4] ? " · resets " + m[4] : "") + age;
         color = used >= 80 ? "#FF453A" : "secondary";
+        bar = Math.min(100, used);
       }
     }
     const primary = (m[1] === "claude" || m[1] === "codex") ? accountMarks().primary : "";
     const label = TOOLS[m[1]] + (m[6] ? " " + m[6] : primary ? " " + primary : "");
-    out.push({ key: "limit" + out.length + m[1] + m[2], label, value, color, copy: label + " " + value, wsId: newest.wsId, tool: Object.keys(TOOLS).indexOf(m[1]), acct: m[6] ?? "" });
+    out.push({ key: "limit" + out.length + m[1] + m[2], label, value, color, copy: label + " " + value, bar, wsId: newest.wsId, tool: Object.keys(TOOLS).indexOf(m[1]), acct: m[6] ?? "" });
   }
   // Lines of one tool stay together, and inside a tool the lines of one account.
   out.sort((a, b) => a.tool - b.tool || (a.acct < b.acct ? -1 : a.acct > b.acct ? 1 : 0));
@@ -701,11 +706,11 @@ const toolTag = (entry) => HStack({ spacing: 0 }, [
   Text(() => (entry().wrong ? " ≠ " + entry().wrong : "")).font(9).weight("semibold").monospaced().color("#FF9F0A").lineLimit(1),
 ]);
 const workBadge = (entry) => HStack({ spacing: 4 }, [
-  Text(() => entry().yours).font(9).weight("semibold").monospaced().color("#0A84FF").lineLimit(1),
-  Text(() => entry().work).font(9).weight("semibold").monospaced().color("#FF9F0A").lineLimit(1),
+  Text(() => entry().yours).font(9).weight("semibold").monospaced().color("#0A84FF").lineLimit(1).fixedSize(),
+  Text(() => entry().work).font(9).weight("semibold").monospaced().color("#FF9F0A").lineLimit(1).fixedSize(),
 ]);
 const ctxBadge = (entry) =>
-  Text(() => entry().ctxHigh).font(9).weight("semibold").monospaced().color("#FF453A").lineLimit(1);
+  Text(() => entry().ctxHigh).font(9).weight("semibold").monospaced().color("#FF453A").lineLimit(1).fixedSize();
 // One line of the project strip: a dim label and its text. A click opens the workspace that carries it.
 function stripRow(entry, width = 58) {
   return HStack({ spacing: 8 }, [
@@ -721,11 +726,31 @@ function stripRow(entry, width = 58) {
 
 // "#644 needs grant" in orange when the PR waits for the owner; "cold 198K" on an idle session whose prompt cache
 // went cold (the next message rewrites that many tokens at the higher price).
+// A line of the Limits view: the strip line, with a bar for the used share of a live window.
+// Green below 50%, orange from 50%, red from 80%.
+const BAR = 44;
+function limitRow(entry, width) {
+  const used = () => entry().bar ?? -1;
+  return HStack({ spacing: 8 }, [
+    Text(() => entry().label).font(10).monospaced().color("tertiary").lineLimit(1).truncation("tail").frame({ width, alignment: "leading" }),
+    HStack({ spacing: 0 }, [
+      Capsule().fill(() => (used() >= 80 ? "#FF453A" : used() >= 50 ? "#FF9F0A" : "#34C759")).frame(() => ({ width: used() < 0 ? 0 : Math.max(2, BAR * used() / 100), height: 4 })),
+      Capsule().fill("#7f7f7f40").frame(() => ({ width: used() < 0 ? 0 : BAR - Math.max(2, BAR * used() / 100), height: 4 })),
+    ]),
+    Text(() => entry().value).font(10).color(() => entry().color).lineLimit(2).truncation("tail"),
+    Spacer(),
+  ])
+    .paddingHorizontal(10)
+    .frame({ maxWidth: "infinity" })
+    .onTap(() => cmux("workspace.select", { workspace_id: entry().wsId }))
+    .contextMenu([Button("Copy the text", () => clipboard.write(entry().copy))]);
+}
+
 const prBadge = (entry) =>
   Text(() => entry().prText).font(9).monospaced().lineLimit(1)
     .color(() => (/needs grant|refused|blocked/.test(entry().prText) ? "#FF9F0A" : "tertiary"));
 const coldBadge = (entry) =>
-  Text(() => entry().cold).font(9).monospaced().color("#64D2FF").lineLimit(1);
+  Text(() => entry().cold).font(9).monospaced().color("#64D2FF").lineLimit(1).fixedSize();
 
 // Right-click menu of a session row. The command items type into the session's tab, and only while it is idle.
 function rowMenu(entry) {
@@ -756,8 +781,8 @@ const kidsBadge = (entry) =>
   Text(() => {
     const e = entry();
     if (!e.kids) return "";
-    return (openKids()[e.rowId] ? "▾ " : "▸ ") + (e.kidsRunning ? e.kidsRunning + " sub running" : e.kids + " sub");
-  }).font(10).monospaced().lineLimit(1)
+    return (openKids()[e.rowId] ? "▾" : "▸") + (e.kidsRunning ? e.kidsRunning + "/" + e.kids : e.kids);
+  }).font(10).monospaced().lineLimit(1).fixedSize()
     .color(() => (entry().kidsRunning ? "#0A84FF" : "tertiary"))
     .onTap(() => flip(openKids, setOpenKids, entry().rowId));
 // "›" at the end of a row opens its detail lines; "⌄" closes them.
@@ -801,7 +826,7 @@ function compactRow(entry) {
       ctxBadge(entry),
       kidsBadge(entry),
       Text(() => timeText(a(), data.clock()?.epoch ?? 0))
-        .font(10).monospaced().color("tertiary").lineLimit(1),
+        .font(10).monospaced().color("tertiary").lineLimit(1).fixedSize(),
       infoMark(entry),
     ]),
   ])
@@ -825,7 +850,6 @@ function agentRow(entry) {
       Text(() => rowTitle(entry().tabTitle) || a().title || a().name)
         .font(12).weight("medium").lineLimit(1).truncation("tail")
         .color(() => (a().status === "ended" ? "tertiary" : "primary")),
-      toolTag(entry),
       unreadBadge(entry),
       Spacer(),
       // Only an idle row has a cold mark: here, a finished one that the owner has not seen.
@@ -834,7 +858,7 @@ function agentRow(entry) {
       ctxBadge(entry),
       kidsBadge(entry),
       Text(() => timeText(a(), data.clock()?.epoch ?? 0))
-        .font(10).monospaced().color("tertiary").lineLimit(1),
+        .font(10).monospaced().color("tertiary").lineLimit(1).fixedSize(),
       infoMark(entry),
     ]),
     HStack({ spacing: 6 }, [
@@ -845,13 +869,14 @@ function agentRow(entry) {
         // The tool is the tag on the first line. A lane folder loses its common prefix.
         const meta = [];
         const tail = dirTail(a().directory).replace(/^lane-/, "");
-        if (tail) meta.push(tail);
+        if (tail && tail !== entry().wsName) meta.push(tail);
         const pr = entry().pr;
         if (entry().prText) meta.push(entry().prText);
         else if (pr) meta.push("#" + pr.number + " " + pr.status);
         return meta.join(" · ");
       })
         .font(10).monospaced().color("tertiary").lineLimit(1).truncation("middle"),
+      toolTag(entry),
       Spacer(),
     ]).paddingLeading(12),
   ])])
@@ -895,8 +920,16 @@ function childRow(entry) {
     .onTap(() => jump(entry()));
 }
 
-// The filter chips FILTERS[from..to). Each shows the number of rows that it would show; a chip with none is dim.
-const chipItems = (from, to) => () => FILTERS.slice(from, to).map((f) => ({ id: f[0], label: f[1] }));
+// What the list is limited to, in words; empty in the default view.
+const showing = () => {
+  const on = FILTERS.find((f) => f[0] === filter());
+  return [on ? "showing: " + on[2] : "", acctFilter() ? "account: " + acctFilter() : "", attention() ? "sorted: needs attention first" : "",
+    scopeAll() ? "" : "this workspace only", showEnded() ? "with ended" : "",
+    on || acctFilter() || attention() || !scopeAll() || showEnded() ? "✕ resets" : ""].filter(Boolean).join(" · ");
+};
+
+// The filter chips. Each shows the number of rows that it would show; a chip with none is left out.
+const chipItems = () => FILTERS.filter((f) => (view().chips[f[0]] ?? 0) > 0 || filter() === f[0]).map((f) => ({ id: f[0], label: f[1] }));
 const filterChip = (f) =>
   toggleButton(() => f().label + " " + (view().chips[f().id] ?? 0), () => filter() === f().id, () => setView({ c: filter() === f().id ? "" : f().id }))
     .opacity(() => ((view().chips[f().id] ?? 0) === 0 && filter() !== f().id ? 0.45 : 1));
@@ -906,16 +939,12 @@ sidebar(() =>
     HStack({ spacing: 6 }, [
       Text("Agents").font(14).weight("semibold"),
       Spacer(),
-      Text(() => {
-        const c = counts();
-        const bits = [];
-        if (c.needs_input > 0) bits.push(c.needs_input + " need you");
-        if (c.working > 0) bits.push("● " + c.working + " working");
-        if (c.idle > 0) bits.push(c.idle + " idle");
-        if (c.ended > 0 && showEnded()) bits.push(c.ended + " ended");
-        if (totalCost() >= 1) bits.push("$" + Math.round(totalCost()));
-        return bits.join(" · ");
-      }).font(10).monospaced().color("tertiary").lineLimit(1),
+      // One coloured count per state: orange needs you, blue working, green idle. Then the cost estimate.
+      Text(() => (counts().needs_input > 0 ? "● " + counts().needs_input : "")).font(10).monospaced().color("#FF9F0A").help("need you"),
+      Text(() => (counts().working > 0 ? "● " + counts().working : "")).font(10).monospaced().color("#0A84FF").help("working"),
+      Text(() => (counts().idle > 0 ? "● " + counts().idle : "")).font(10).monospaced().color("#34C759").help("idle"),
+      Text(() => (counts().ended > 0 && showEnded() ? "● " + counts().ended : "")).font(10).monospaced().color("tertiary").help("ended"),
+      Text(() => (totalCost() >= 1 ? "$" + Math.round(totalCost()) : "")).font(10).monospaced().color("tertiary"),
     ]).paddingHorizontal(10),
 
     HStack({ spacing: 4 }, [
@@ -939,36 +968,25 @@ sidebar(() =>
     ]).paddingHorizontal(10),
 
     // Filter chips (a second click on the active chip shows all rows again) and the attention sort.
-    // Two rows of chips: one row of eight chips is wider than a narrow panel.
-    VStack({ spacing: 3 }, [
-      HStack({ spacing: 3 }, [
-        ForEach({ items: chipItems(0, 5), key: (f) => f.id }, filterChip),
-        Spacer(),
-      ]).paddingHorizontal(10),
-      HStack({ spacing: 3 }, [
-        ForEach({ items: chipItems(5), key: (f) => f.id }, filterChip),
-        Spacer(),
-        // Back to the default view: no chip, tab order, all workspaces, no ended rows. The search text stays.
-        toggleButton("✕", () => false, () => { setAcctFilter(""); setView({ c: "", a: false, s: true, e: false, l: false }); }),
-        toggleButton("↑", () => attention(), () => setView({ a: !attention() })),
-      ]).paddingHorizontal(10),
-    ]),
+    HStack({ spacing: 3 }, [
+      ForEach({ items: chipItems, key: (f) => f.id }, filterChip),
+      Spacer(),
+      // Back to the default view: no chip, tab order, all workspaces, no ended rows. The search text stays.
+      toggleButton("✕", () => false, () => { setAcctFilter(""); setView({ c: "", a: false, s: true, e: false, l: false }); }),
+      toggleButton("↑", () => attention(), () => setView({ a: !attention() })),
+    ]).paddingHorizontal(10),
     // One chip per account, shown when the sessions run on two accounts or more. A second click shows all again.
     HStack({ spacing: 3 }, [
       ForEach({ items: () => { const all = Object.entries(view().accts); return all.length > 1 || acctFilter() ? all.sort().map(([id, n]) => ({ id, n })) : []; }, key: (a) => a.id },
         (a) => toggleButton(() => a().id + " " + a().n, () => acctFilter() === a().id, () => setAcctFilter(acctFilter() === a().id ? "" : a().id))),
       Spacer(),
     ]).paddingHorizontal(10),
-    Text(() => {
-      const on = FILTERS.find((f) => f[0] === filter());
-      return [on ? "showing: " + on[2] : "", acctFilter() ? "account: " + acctFilter() : "", attention() ? "sorted: needs attention first" : "",
-        scopeAll() ? "" : "this workspace only", showEnded() ? "with ended" : "",
-        on || acctFilter() || attention() || !scopeAll() || showEnded() ? "✕ resets" : ""].filter(Boolean).join(" · ");
-    }).font(10).color("tertiary").lineLimit(1).paddingHorizontal(12),
+    ForEach({ items: () => (showing() ? [{ id: "showing" }] : []), key: (x) => x.id },
+      () => Text(() => showing()).font(10).color("tertiary").lineLimit(1).paddingHorizontal(12)),
 
     VStack({ spacing: 3 }, [ForEach({ items: strip, key: (s) => s.key }, (s) => stripRow(s))]),
     // The Limits view takes the place of the session list.
-    VStack({ spacing: 5 }, [ForEach({ items: () => (limitsShown() ? limits() : []), key: (s) => s.key }, (s) => stripRow(s, limits().some((x) => x.acct) ? 150 : 58))]),
+    VStack({ spacing: 5 }, [ForEach({ items: () => (limitsShown() ? limits() : []), key: (s) => s.key }, (s) => limitRow(s, limits().some((x) => x.acct) ? 120 : 58))]),
 
     TextField("", {
       placeholder: "Search agents",

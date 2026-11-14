@@ -35,7 +35,9 @@ A drawing of a cmux window with the panel, with sample names.
 | Asked or finished | The second line of a row says `asked` when the agent waits for an answer, and `finished · not seen` in blue when it ended its turn and you have not opened the tab. The `✓` chip filters the finished ones |
 | Last prompt | The start of your last request to a Claude Code session, in the row details and in the search |
 | State from the screen | Codex, OpenCode, Grok and Antigravity tabs publish no state. The row says `working · from screen` or `asked · from screen`, read from the last 30 lines of the tab |
-| Work marks | In orange on a row: `dup` when two live sessions work in one folder on one work branch, `↑2` for 2 commits that no remote holds, `3× comp` from the third context compaction |
+| Compact layout | The name of a session keeps the room: marks are short (`❄190K` cold cache, `83%` context, `▸2/11` subagents running of total) and never cut. Chips with no matching row are left out. The panel head counts states as coloured dots: orange needs you, blue working, green idle |
+| Limit bars | Each live limit window has a bar: green, orange from 50%, red from 80% |
+| Work marks | In orange on a row: `dup` when two live sessions work in one folder on one work branch, `↑2` for 2 commits that no remote holds, `⟳3` from the third context compaction |
 | Cost per account | In `Limits`, under the limit lines: the summed cost estimate of the open Claude Code sessions per account |
 
 With the optional Claude Code status line, each Claude Code row also shows the model and effort, the context share (red from 80%), the session cost estimate, a `cold` mark when the prompt cache went cold, and the count line shows the summed cost.
@@ -357,6 +359,7 @@ Tab labels stay until you rename the tabs or close them.
 - The wrong-account mark, the limit warning and the Codex account tag were tested with sample data and stub commands, not on live sessions.
 - OpenCode, Grok Build and Antigravity leave no limit figure in their local files, as far as their table and key names show. OpenCode keeps a cost per session; the panel does not show it yet.
 - The next step, the compaction count and the marks `dup` and `↑` were tested with sample data; on one Mac the next step and the count showed in the data. The new chips `you` and `push` were not seen on screen, and the chip row can be too wide for a narrow sidebar.
+- The compact layout and the limit bars were tested in the runtime with invented data; their look on screen (widths, cut text) was not checked by the author of the change.
 - `New tab here` opens a plain tab; it does not start an agent in it. The call was not tested against a running cmux.
 - The state from the screen was tested with sample screens only, not with a live Codex or OpenCode tab. A tool that changes its interface lines breaks it. No documented cmux call for that was found.
 

@@ -190,10 +190,9 @@ check("render shows all four states", () => {
   // Settled rows are one line with a dot only, so idle and ended show in the summary line of the panel head.
   mustContain(rendered, "asked");  // a session that needs input reads "asked" on its second line
   mustContain(rendered, "Working");
-  mustContain(rendered, "1 need you");
-  mustContain(rendered, "1 working");
-  mustContain(rendered, "2 idle");
-  mustContain(rendered, "1 ended");
+  // The panel head counts each state as a coloured dot with a number: one needs you, two idle, one ended.
+  mustContain(rendered, "● 1");
+  mustContain(rendered, "● 2");
 });
 check("render shows the unread mark of the idle session", () => mustContain(rendered, "new"));
 check("render shows the work marks: ahead count and duplicate", () => {
@@ -202,10 +201,10 @@ check("render shows the work marks: ahead count and duplicate", () => {
 });
 check("render shows the waiting reason, context share and your-turn mark", () => {
   mustContain(rendered, "permission");
-  mustContain(rendered, "ctx 83%");
+  mustContain(rendered, "83%");
   mustContain(rendered, "→ you");
 });
-check("render shows the cold-cache mark of the idle session", () => mustContain(rendered, "cold 5m"));
+check("render shows the cold-cache mark of the idle session", () => mustContain(rendered, "❄5m"));
 check("render shows the account of a session and of a tab named in @accts", () => {
   mustContain(rendered, "· work");
   mustContain(rendered, "· personal");
@@ -240,7 +239,7 @@ check("the info mark opens detail lines", () => {
   must(after.split("\n").length > before, "no detail lines appeared");
 });
 check("the sub badge opens the subagent rows, from cmux data and from the description", () => {
-  for (const m of withText((t) => /^▸ .*sub/.test(t))) tap(m);
+  for (const m of withText((t) => /^▸\d/.test(t))) tap(m);
   const after = textOf();
   mustContain(after, "Explore repo");
   mustContain(after, "Review diff");
