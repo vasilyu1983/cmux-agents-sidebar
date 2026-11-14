@@ -8,18 +8,92 @@
 //   cmux right-sidebar set custom panel-subagents
 
 const [query, setQuery] = signal("");
-const [scopeAll, setScopeAll] = signal(true);
-const [showEnded, setShowEnded] = signal(false);
-// Groups the owner folded (workspace id -> true) and sessions whose subagent rows are open (row id -> true).
-const [collapsed, setCollapsed] = signal({});
+// The view (chip, sort, scope, ended rows, folded groups) survives a panel reload. A panel has no storage of its
+// own, so each change goes into a workspace description as one part: "@view: t=<epoch>,c=<chip|all>,a=0,s=1,e=0,f=0".
+// label-tabs.py rebuilds the description and keeps that part. A signal here holds null until a click; before
+// the first click the value comes from the newest "@view" part (t). "f" is the fold of the workspace that carries it.
+const [scopeAllS, setScopeAllS] = signal(null);
+const [showEndedS, setShowEndedS] = signal(null);
+const [filterS, setFilterS] = signal(null);
+const [attentionS, setAttentionS] = signal(null);
+// Groups folded or opened since the reload (workspace id -> Bool) and sessions whose subagent rows are open (row id -> true).
+const [collapsedS, setCollapsedS] = signal({});
+const VIEW_RE = /^@view: ([a-z]=[a-z0-9]{1,12}(?:,[a-z]=[a-z0-9]{1,12}){0,7})$/;
+const saved = computed(() => {
+  let best = {};
+  let bestT = -1;
+  const folds = {};
+  for (const w of data.workspaces() ?? []) {
+    for (const part of String(w.description ?? "").split(" | ")) {
+      const m = VIEW_RE.exec(part);
+      if (!m) continue;
+      const v = Object.fromEntries(m[1].split(",").map((kv) => kv.split("=")));
+      if (v.f === "1") folds[w.id] = true;
+      if ((Number(v.t) || 0) > bestT) { bestT = Number(v.t) || 0; best = v; }
+    }
+  }
+  return { c: best.c ?? "", a: best.a === "1", s: best.s !== "0", e: best.e === "1", folds };
+});
+const scopeAll = () => scopeAllS() ?? saved().s;
+const showEnded = () => showEndedS() ?? saved().e;
+const collapsed = () => ({ ...saved().folds, ...collapsedS() });
 const [openKids, setOpenKids] = signal({});
 const [openInfo, setOpenInfo] = signal({});
 const flip = (get, set, id) => set({ ...get(), [id]: !get()[id] });
 // One filter chip at a time ("" = all rows), and the row order: tab order, or the sessions that need attention first.
-const [filter, setFilter] = signal("");
-const [attention, setAttention] = signal(false);
+const filter = () => { const c = filterS() ?? saved().c; return FILTERS.some((f) => f[0] === c) ? c : ""; };
+const attention = () => attentionS() ?? saved().a;
 // Each chip is a short mark, so the row fits a narrow panel; the full name shows under the chips while a filter is on.
 const FILTERS = [["needs", "!", "needs you"], ["working", "▶", "working"], ["ctx", "80%", "context 80% or more"], ["pr", "PR", "has a PR"], ["idle", "1h+", "idle for 1 hour or more"]];
+const chipHit = (id, a, sess, epoch) =>
+  id === "needs" ? a.status === "needs_input"
+    : id === "working" ? a.status === "working"
+    : id === "ctx" ? sess.ctx >= 80
+    : id === "pr" ? Boolean(sess.pr)
+    : id === "idle" ? a.status === "idle" && epoch - (a.lastActivityAt ?? epoch) > 3600
+    : false;
+
+// Writes the view into the description of one workspace. Nothing is written while no description carries
+// "@home" (label-tabs.py does not run then, and the part would stay as loose text in the workspace list).
+function persist(next, wsId, fold) {
+  const all = data.workspaces() ?? [];
+  const w = all.find((x) => x.id === wsId);
+  if (!w || !all.some((x) => /(?:^| \| )@home: /.test(String(x.description ?? "")))) return;
+  const on = (b) => (b ? 1 : 0);
+  const part = "@view: t=" + (data.clock()?.epoch ?? 0) + ",c=" + (next.c || "all") + ",a=" + on(next.a)
+    + ",s=" + on(next.s) + ",e=" + on(next.e) + ",f=" + on(fold ?? collapsed()[wsId]);
+  const parts = String(w.description ?? "").split(" | ").filter((p) => !p.startsWith("@view: "));
+  cmux("workspace.action", { workspace_id: wsId, action: "set_description", description: [...parts, part].join(" | ") });
+}
+// One change of the view: c = chip, a = attention sort, s = all workspaces, e = ended rows.
+function setView(patch) {
+  const next = { c: filter(), a: attention(), s: scopeAll(), e: showEnded(), ...patch };
+  setFilterS(next.c); setAttentionS(next.a); setScopeAllS(next.s); setShowEndedS(next.e);
+  persist(next, data.selectedId());
+}
+function toggleFold(wsId) {
+  const fold = !collapsed()[wsId];
+  setCollapsedS({ ...collapsedS(), [wsId]: fold });
+  persist({ c: filter(), a: attention(), s: scopeAll(), e: showEnded() }, wsId, fold);
+}
+
+// One agent record per tab: cmux can keep an older live record for the same tab. The record that waits or works
+// wins, then the newest, then the first in the list. An ended record is never picked. The rows and the hive use this.
+const tabOf = (w, a) => (w.tabs ?? []).find((t) => t.id === a.panelId || (a.surfaceId && t.surfaceId === a.surfaceId));
+function onePerTab(w) {
+  const best = new Map();
+  for (const a of w.agents ?? []) {
+    if (a.status === "ended") continue;
+    const tab = tabOf(w, a);
+    const key = tab?.id ?? a.panelId ?? a;
+    const old = best.get(key)?.a;
+    const better = !old || statusOf(a).rank < statusOf(old).rank
+      || (statusOf(a).rank === statusOf(old).rank && (a.lastActivityAt ?? 0) > (old.lastActivityAt ?? 0));
+    if (better) best.set(key, { a, tab });
+  }
+  return [...best.values()];
+}
+const costOf = (w) => Object.values(sessionsOf(w)).reduce((sum, x) => sum + (parseFloat(String(x.cost ?? "").slice(1)) || 0), 0);
 
 // Fast commands, per tool. Each name was read in that tool's own documentation on 2026-11-14; a tool that is not
 // listed here gets no command item. Antigravity (agy) compacts by itself and has no compact command.
@@ -132,35 +206,25 @@ const dirTail = (d) => {
 // One flat entry list: workspace headers + agent rows, so a single keyed
 // ForEach owns the whole roster (kind is encoded in the key, so templates
 // stay stable across live updates).
-const entries = computed(() => {
+const view = computed(() => {
   const epoch = data.clock()?.epoch ?? 0;
   const all = data.workspaces() ?? [];
   const scoped = scopeAll() ? all : all.filter((w) => w.selected);
   const out = [];
   const waiting = [];
+  // Rows per chip, counted before the chip filter: the number on each chip.
+  const chips = Object.fromEntries(FILTERS.map((f) => [f[0], 0]));
   for (const w of scoped) {
     const rows = [];
     const models = sessionsOf(w);
+    const winners = new Set(onePerTab(w).map((x) => x.a));
     for (const a of w.agents ?? []) {
       // The title of the tab that hosts the agent. label-tabs.py puts the session name there ("[api-3f] title"),
       // so the row shows which session it is, not only "Claude".
-      const tab = (w.tabs ?? []).find((t) => t.id === a.panelId || (a.surfaceId && t.surfaceId === a.surfaceId));
+      const tab = tabOf(w, a);
       const tabTitle = tab?.title ?? "";
-      // One row per tab: cmux can keep an older live record for the same tab. The record that waits or works wins, then the newest. Ended shows them all.
-      const tabKey = tab?.id ?? a.panelId;
-      if (a.status !== "ended" && tabKey && !showEnded()) {
-        const score = (b) => [statusOf(b).rank, -(b.lastActivityAt ?? 0)];
-        const mine = score(a);
-        const beaten = (w.agents ?? []).some((b) => {
-          if (b === a || b.status === "ended") return false;
-          const other = (w.tabs ?? []).find((t) => t.id === b.panelId || (b.surfaceId && t.surfaceId === b.surfaceId));
-          if ((other?.id ?? b.panelId) !== tabKey) return false;
-          const theirs = score(b);
-          return theirs[0] < mine[0] || (theirs[0] === mine[0] && (theirs[1] < mine[1]
-            || (theirs[1] === mine[1] && (w.agents ?? []).indexOf(b) < (w.agents ?? []).indexOf(a))));
-        });
-        if (beaten) continue;
-      }
+      // One row per tab (onePerTab). Ended shows them all.
+      if (a.status !== "ended" && !showEnded() && !winners.has(a)) continue;
       // An ended session in a tab that still hosts a live one is a helper run or an earlier session of that tab
       //. It shows only with the Ended toggle.
       const liveInTab = (w.agents ?? []).some((b) => b !== a && b.status !== "ended" && b.panelId === a.panelId);
@@ -173,12 +237,10 @@ const entries = computed(() => {
       const compact = a.status === "idle" || a.status === "ended";
       const sess = models[sessionName(tabTitle)] ?? {};
       const stalled = /^\[[^\]]* \?\]/.test(tabTitle);
-      const f = filter();
-      if (f === "needs" && a.status !== "needs_input") continue;
-      if (f === "working" && a.status !== "working") continue;
-      if (f === "ctx" && !(sess.ctx >= 80)) continue;
-      if (f === "pr" && !sess.pr) continue;
-      if (f === "idle" && !(a.status === "idle" && epoch - (a.lastActivityAt ?? epoch) > 3600)) continue;
+      for (const id of Object.keys(chips)) if (chipHit(id, a, sess, epoch)) chips[id] += 1;
+      if (filter() && !chipHit(filter(), a, sess, epoch)) continue;
+      // Subagents: what cmux reports; when it reports none, what label-tabs.py found in the Claude Code records.
+      const subs = (a.children ?? []).length > 0 ? null : sess.subs;
       rows.push({
         // Order for the attention sort: waiting, stalled, context nearly full, working, idle, ended.
         rank: a.status === "needs_input" ? 0 : stalled ? 1 : sess.ctx >= 80 ? 2 : a.status === "working" ? 3 : a.status === "idle" ? 4 : 5,
@@ -213,8 +275,9 @@ const entries = computed(() => {
           ["first ask", a.title ?? ""],
           ["last ask", tab?.latestPrompt ?? ""],
         ].filter((l) => l[1]),
-        kids: (a.children ?? []).length,
-        kidsRunning: (a.children ?? []).filter((c) => c.running).length,
+        kids: subs ? subs.total : (a.children ?? []).length,
+        kidsRunning: subs ? subs.run : (a.children ?? []).filter((c) => c.running).length,
+        subs,
         // Dim a session with no activity for over an hour.
         old: compact && epoch - (a.lastActivityAt ?? epoch) > 3600,
         wsId: w.id,
@@ -244,6 +307,7 @@ const entries = computed(() => {
       wsTitle: dirTail(String(w.description ?? "").split(" | ")[0]) || dirTail(w.directory) || w.title,
       wsColor: w.color || "#8E8E93",
       count: rows.length,
+      cost: costOf(w),
       unread: w.unread ?? 0,
       folded: Boolean(collapsed()[w.id]),
       wsSelected: w.selected,
@@ -263,7 +327,10 @@ const entries = computed(() => {
         }));
       }
       if (!openKids()[r.rowId]) continue;
-      const children = [...(r.agent.children ?? [])];
+      // Records from disk carry a name and a state, no times and no id: the position is the key.
+      const children = r.subs
+        ? hiveSubs(r.subs).map((c, k) => ({ id: "s" + k, label: c.n, running: c.r, noTime: true }))
+        : [...(r.agent.children ?? [])];
       children.sort((x, y) => (x.running === y.running ? (x.startedEpoch ?? 0) - (y.startedEpoch ?? 0) : x.running ? -1 : 1));
       for (const c of children) {
         out.push({
@@ -280,9 +347,10 @@ const entries = computed(() => {
   }
   // "Needs you": every waiting session of every workspace, longest wait first, above the groups.
   waiting.sort((x, y) => (x.agent.sinceEpoch ?? 0) - (y.agent.sinceEpoch ?? 0));
-  if (waiting.length === 0) return out;
-  return [{ key: "h:needs-you", kind: "header", needsYou: true, wsTitle: "NEEDS YOU", wsColor: "#FF9F0A", count: waiting.length, wsSelected: true, dots: [] }, ...waiting, ...out];
+  if (waiting.length === 0) return { rows: out, chips };
+  return { chips, rows: [{ key: "h:needs-you", kind: "header", needsYou: true, wsTitle: "NEEDS YOU", wsColor: "#FF9F0A", count: waiting.length, wsSelected: true, dots: [] }, ...waiting, ...out] };
 });
+const entries = computed(() => view().rows);
 
 // The project strip: the "@train", "@queue" and "@unpushed" parts that label-tabs.py puts in a workspace description.
 // Read from every workspace, also when the list shows one workspace only.
@@ -322,9 +390,7 @@ const counts = computed(() => {
 // The summed cost of the sessions that report one (Claude Code only; the estimate at list price).
 const totalCost = computed(() => {
   let sum = 0;
-  for (const w of data.workspaces() ?? []) {
-    for (const s of Object.values(sessionsOf(w))) sum += parseFloat(String(s.cost ?? "").slice(1)) || 0;
-  }
+  for (const w of data.workspaces() ?? []) sum += costOf(w);
   return sum;
 });
 
@@ -338,7 +404,8 @@ function hiveSubs(subs) {
   return out;
 }
 
-function hiveUrl() {
+// mark: the tab of a jump ({ ws, tab }), shown as the open tab; without it, the tab that has the focus now.
+function hiveUrl(mark) {
   const all = data.workspaces() ?? [];
   // The home folder comes from label-tabs.py ("@home: ..." in a description), not from a folder that an agent reports.
   let home = "";
@@ -350,30 +417,18 @@ function hiveUrl() {
   for (const w of all) {
     const models = sessionsOf(w);
     const agents = [];
-    // One box per tab, as in the panel: cmux can keep an older live record for the same tab.
-    // The record that waits or works wins, then the newest.
-    const best = new Map();
-    for (const a of w.agents ?? []) {
-      if (a.status === "ended") continue;
-      const tab = (w.tabs ?? []).find((t) => t.id === a.panelId || (a.surfaceId && t.surfaceId === a.surfaceId));
-      const key = tab?.id ?? a.panelId ?? a;
-      const old = best.get(key);
-      const better = !old || statusOf(a).rank < statusOf(old.a).rank
-        || (statusOf(a).rank === statusOf(old.a).rank && (a.lastActivityAt ?? 0) > (old.a.lastActivityAt ?? 0));
-      if (better) best.set(key, { a, tab });
-    }
-    for (const { a, tab } of best.values()) {
+    for (const { a, tab } of onePerTab(w)) {
       const sess = models[sessionName(tab?.title)] ?? {};
       agents.push({
         n: rowTitle(tab?.title ?? "") || a.title || a.name || "session", k: a.kind ?? "", s: a.status,
-        i: tab?.id ?? "", w: w.id, f: Boolean(w.selected && tab?.focused), m: sess.model ?? "", x: sess.ctx ?? null, c: sess.cost ?? "", p: sess.pr ?? "", l: sess.lane ?? "",
+        i: tab?.id ?? "", w: w.id, f: mark ? mark.ws === w.id && mark.tab === tab?.id : Boolean(w.selected && tab?.focused), m: sess.model ?? "", x: sess.ctx ?? null, c: sess.cost ?? "", p: sess.pr ?? "", l: sess.lane ?? "",
         // Subagents: what cmux reports for the agent; when it reports none, what label-tabs.py found on disk.
         ch: (a.children ?? []).length > 0
           ? a.children.map((c) => ({ n: c.label || "subagent", r: Boolean(c.running) }))
           : hiveSubs(sess.subs),
       });
     }
-    ws.push({ n: dirTail(String(w.description ?? "").split(" | ")[0]) || w.title, c: w.color || "#8E8E93", f: Boolean(w.selected), a: agents });
+    ws.push({ n: dirTail(String(w.description ?? "").split(" | ")[0]) || w.title, c: w.color || "#8E8E93", f: mark ? mark.ws === w.id : Boolean(w.selected), a: agents });
   }
   if (!home) return "";
   return "file://" + home + "/.config/cmux/scripts/hive.html#" + encodeURIComponent(JSON.stringify({ t: data.clock()?.epoch ?? 0, ws }));
@@ -382,7 +437,7 @@ function hiveUrl() {
 // A click on a session in the hive page asks for a jump. A web page cannot call cmux, so the page puts the
 // request in its tab title: "go:<workspace id>:<tab id>:<epoch seconds>". The panel gets tab titles from cmux,
 // and it focuses the tab when the two ids name a tab that it knows and the request is fresh. A page can ask
-// for nothing but a focus change. Each request runs once.
+// for nothing but a focus change (and, across workspaces, for its own page to move along). Each request runs once.
 let lastGo = "";
 function hiveGo() {
   const now = data.clock()?.epoch ?? 0;
@@ -394,7 +449,14 @@ function hiveGo() {
       if (Math.abs(now - Number(m[3])) > 20) continue;
       const target = (data.workspaces() ?? []).find((x) => x.id === m[1]);
       if (target && (target.tabs ?? []).some((x) => x.id === m[2])) {
+        // The hive page is a split of one workspace. A jump to another workspace opens a new page there
+        // and closes this one, so the graph stays in view.
+        // A workspace that already shows a hive page keeps it, and this page stays where it is.
+        const there = (target.tabs ?? []).some((x) => x.title === "Agent hive");
+        const url = w.id === m[1] || there ? "" : hiveUrl({ ws: m[1], tab: m[2] });
+        if (url) cmux("browser.open_split", { url, workspace_id: m[1], focus: false });
         cmux("surface.focus", { surface_id: m[2], workspace_id: m[1] });
+        if (url) cmux("surface.close", { surface_id: t.id, workspace_id: w.id });
       }
     }
   }
@@ -428,13 +490,15 @@ function headerRow(entry) {
     HStack({ spacing: 4 }, [
       Text(() => (entry().needsYou || !entry().count ? "" : entry().folded ? "▸" : "▾"))
         .font(11).color("secondary").paddingHorizontal(3).paddingVertical(2)
-        .onTap(() => { if (entry().wsId) flip(collapsed, setCollapsed, entry().wsId); }),
+        .onTap(() => { if (entry().wsId) toggleFold(entry().wsId); }),
       HStack({ spacing: 7 }, [
       RoundedRectangle({ cornerRadius: 2 }).fill(() => entry().wsColor).frame({ width: 4, height: 16 }),
       Text(() => entry().wsTitle || "untitled")
         .font(13).weight("bold").lineLimit(1).truncation("tail")
         .color(() => (entry().needsYou ? "#FF9F0A" : "primary")),
       Text(() => (entry().count ? String(entry().count) : "")).font(10).monospaced().color("tertiary"),
+      // The summed cost estimate of the workspace's sessions (Claude Code only).
+      Text(() => (entry().cost >= 1 ? "$" + Math.round(entry().cost) : "")).font(10).monospaced().color("tertiary"),
       Spacer(),
       // Unread notifications of the workspace, as the left list shows them.
       Text(() => (entry().unread ? entry().unread + " new" : "")).font(9).weight("semibold").color("#0A84FF"),
@@ -635,6 +699,7 @@ function childRow(entry) {
       .color(() => (c().running ? "secondary" : "tertiary")),
     Spacer(),
     Text(() => {
+      if (c().noTime) return c().running ? "running" : "";
       const epoch = data.clock()?.epoch ?? 0;
       const end = c().running ? epoch : (c().endedEpoch ?? epoch);
       const s = Math.max(0, Math.floor(end - (c().startedEpoch ?? end)));
@@ -669,8 +734,8 @@ sidebar(() =>
     ]).paddingHorizontal(10),
 
     HStack({ spacing: 4 }, [
-      toggleButton("Here", () => !scopeAll(), () => setScopeAll(false)),
-      toggleButton("All", () => scopeAll(), () => setScopeAll(true)),
+      toggleButton("Here", () => !scopeAll(), () => setView({ s: false })),
+      toggleButton("All", () => scopeAll(), () => setView({ s: true })),
       Spacer(),
       // No text: this view reads the tab titles, so it runs again when one changes, and serves the hive page's jumps.
       Text(() => hiveGo()).font(1),
@@ -684,17 +749,19 @@ sidebar(() =>
           if (url) cmux("browser.open_split", { url, workspace_id: data.selectedId(), focus: true });
           else log("hive: the description carries no home folder yet; the watcher writes it within 15 seconds");
         }),
-      toggleButton("Ended", () => showEnded(), () => setShowEnded(!showEnded())),
+      toggleButton("Ended", () => showEnded(), () => setView({ e: !showEnded() })),
     ]).paddingHorizontal(10),
 
     // Filter chips (a second click on the active chip shows all rows again) and the attention sort.
     HStack({ spacing: 3 }, [
       ForEach({ items: () => FILTERS.map((f) => ({ id: f[0], label: f[1] })), key: (f) => f.id },
-        (f) => toggleButton(() => f().label, () => filter() === f().id, () => setFilter(filter() === f().id ? "" : f().id))),
+        // The number of rows that the chip would show. A chip with none is dim.
+        (f) => toggleButton(() => f().label + " " + (view().chips[f().id] ?? 0), () => filter() === f().id, () => setView({ c: filter() === f().id ? "" : f().id }))
+          .opacity(() => ((view().chips[f().id] ?? 0) === 0 && filter() !== f().id ? 0.45 : 1))),
       Spacer(),
       // Back to the default view: no chip, tab order, all workspaces, no ended rows. The search text stays.
-      toggleButton("✕", () => false, () => { setFilter(""); setAttention(false); setScopeAll(true); setShowEnded(false); }),
-      toggleButton("↑", () => attention(), () => setAttention(!attention())),
+      toggleButton("✕", () => false, () => setView({ c: "", a: false, s: true, e: false })),
+      toggleButton("↑", () => attention(), () => setView({ a: !attention() })),
     ]).paddingHorizontal(10),
     Text(() => {
       const on = FILTERS.find((f) => f[0] === filter());

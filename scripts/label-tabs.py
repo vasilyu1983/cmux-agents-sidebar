@@ -8,8 +8,14 @@ The name is the one other sessions message; it comes from ~/.claude/sessions/<pi
 A label whose session has gone is removed. Other tabs are left alone (cmux already shows an icon per tool).
 It also keeps a sidebar row "needs-you" on each workspace: the sessions there that wait for the owner, and why.
 
+It writes hive-data.js next to itself: the hive page reads that file to stay current.
+It deletes hand-over files of ended sessions in ~/.cache/cmux-agents that are older than 14 days.
+
 A process is matched to its tab by the CMUX_SURFACE_ID in its environment (the tty in the cmux tree can be stale).
 Run it inside cmux (it needs the cmux socket).
+
+With --next-waiting it changes nothing: it prints "<workspace id> <tab id>" of the session that has waited
+for the owner the longest, or nothing when no session waits.
 """
 import glob
 import json
@@ -17,10 +23,14 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import time
 
 DERIVED_NAME = r"[a-z0-9]+-[0-9a-f]{2}"
 QUIET_SECONDS = 20 * 60
+KEEP_SECONDS = 14 * 86400
+SESSION_ID = r"[0-9a-f-]{8,64}"
+HIVE_STATUS = {"waiting": "needs_input", "busy": "working", "idle": "idle"}
 SURFACE_ENV = re.compile(r" CMUX_SURFACE_ID=([0-9A-Fa-f-]{36})(?: |$)")
 
 
@@ -54,9 +64,107 @@ def claude_names():
             continue
         if session.get("name") and isinstance(session.get("pid"), int):
             waits = session.get("waitingFor") or "input" if session.get("status") == "waiting" else None
+            since = session.get("statusUpdatedAt")
             names[session["pid"]] = (session["name"], waits, session.get("status") == "busy" and quiet(session),
-                                     model_of(session, prs))
+                                     model_of(session, prs), HIVE_STATUS.get(session.get("status"), ""),
+                                     since if isinstance(since, (int, float)) else 0, str(session.get("sessionId") or ""))
     return names
+
+
+def clean_cache(live_ids):
+    """Deletes hand-over files older than KEEP_SECONDS. Only regular files whose name is a session id;
+    a symlink is never followed; the file of a session that still runs stays."""
+    folder = os.path.expanduser("~/.cache/cmux-agents")
+    try:
+        entries = list(os.scandir(folder))
+    except FileNotFoundError:
+        return
+    except OSError as err:
+        print(f"label-tabs: cannot list {folder}: {err}", file=sys.stderr)
+        return
+    for entry in entries:
+        try:
+            if (not re.fullmatch(SESSION_ID, entry.name) or entry.name in live_ids
+                    or not entry.is_file(follow_symlinks=False)
+                    or time.time() - entry.stat(follow_symlinks=False).st_mtime < KEEP_SECONDS):
+                continue
+            os.unlink(entry.path)
+        except OSError as err:
+            print(f"label-tabs: cannot delete {entry.path}: {err}", file=sys.stderr)
+
+
+def hive_places(tree):
+    """tab id -> (workspace id, tab focused in the selected workspace), and workspace id -> (name, selected)."""
+    tabs, spaces = {}, {}
+
+    def walk(node, space=None, selected=False):
+        if isinstance(node, dict):
+            ref = str(node.get("ref", ""))
+            if ref.startswith("workspace:") and node.get("id"):
+                space, selected = str(node["id"]).upper(), bool(node.get("selected"))
+                folder = str(node.get("description") or "").split(" | ")[0].rstrip("/")
+                spaces[space] = (folder.rsplit("/", 1)[-1] or str(node.get("title") or "workspace"), selected)
+            if ref.startswith("surface:") and node.get("id") and space:
+                tabs[str(node["id"]).upper()] = (space, bool(selected and node.get("focused")))
+            for value in node.values():
+                walk(value, space, selected)
+        elif isinstance(node, list):
+            for value in node:
+                walk(value, space, selected)
+
+    walk(tree)
+    return tabs, spaces
+
+
+def hive_agent(fields):
+    """The description fields of one session, as the hive page's keys: m model, x context %, c cost, p PR,
+    l lane, ch subagents (the running ones by name, the finished ones as a count)."""
+    agent = {"k": "claude"}
+    for field in fields:
+        sub = re.fullmatch(r"sub (\d{1,4})/(\d{1,4})(?:: (.*))?", field)
+        if sub:
+            running, total = int(sub.group(1)), int(sub.group(2))
+            named = [name for name in (sub.group(3) or "").split("; ") if name]
+            agent["ch"] = [{"n": name, "r": True} for name in named]
+            if running > len(named):
+                agent["ch"].append({"n": f"+{running - len(named)} more running", "r": True})
+            if total > running:
+                agent["ch"].append({"n": f"{total - running} finished", "r": False})
+        elif re.fullmatch(r"ctx \d{1,3}%", field):
+            agent["x"] = int(field[4:-1])
+        elif field.startswith("$"):
+            agent["c"] = field
+        elif field.startswith("pr "):
+            agent["p"] = field[3:]
+        elif field.startswith("lane "):
+            agent["l"] = field[5:]
+        elif not field.startswith(("cold ", "waits ")) and "m" not in agent:
+            agent["m"] = field
+    return agent
+
+
+def write_hive(tree, live, titles):
+    """Writes hive-data.js next to this script: the Claude Code sessions, their tabs and the open tab.
+    The hive page loads it every 15 seconds. It holds session titles, so it is readable by the owner only."""
+    tabs, spaces = hive_places(tree)
+    agents = []
+    for key, name, _waits, _stalled, model, status, _since in live:
+        if key not in tabs:
+            continue
+        agent = hive_agent(model)
+        agent.update(i=key, w=tabs[key][0], s=status, n=titles.get(key) or f"[{name}]", f=tabs[key][1])
+        agents.append(agent)
+    data = {"t": int(time.time()), "cur": next((tab for tab, (_space, focused) in tabs.items() if focused), ""),
+            "ws": [{"w": space, "n": name, "f": selected} for space, (name, selected) in spaces.items()], "a": agents,
+            "tabs": sorted(tabs)}
+    folder = os.path.dirname(os.path.abspath(__file__))
+    try:
+        handle, path = tempfile.mkstemp(dir=folder, prefix=".hive-data.")  # mkstemp makes the file with mode 600
+        with os.fdopen(handle, "w") as fh:
+            fh.write("window.hiveLive && window.hiveLive(" + json.dumps(data).replace("<", "\\u003c") + ");\n")
+        os.replace(path, os.path.join(folder, "hive-data.js"))
+    except OSError as err:
+        print(f"label-tabs: hive data not written: {err}", file=sys.stderr)
 
 
 WEEK = {}  # the newest hand-over file that carries the week limit: {"at": mtime, "used": "36"}
@@ -120,7 +228,7 @@ def model_of(session, prs):
     ["Fable 5.2 high", "ctx 42%", "$12.34", "lane lane/x", "pr #644 needs grant", "cold 198K"].
     The file holds "model<TAB>context %<TAB>cost<TAB>lane branch<TAB>cold tokens<TAB>week %"; older files hold fewer parts."""
     sid = str(session.get("sessionId") or "")
-    if not re.fullmatch(r"[0-9a-f-]{8,64}", sid):
+    if not re.fullmatch(SESSION_ID, sid):
         return []
     path = os.path.expanduser(f"~/.cache/cmux-agents/{sid}")
     try:
@@ -215,7 +323,9 @@ def set_models(tree, models, strip):
         strip = {target: kept + general_marks()}
     for workspace, old in found.items():
         parts = old.split(" | ")
-        marks = strip.get(workspace, [part for part in parts[1:] if part.startswith("@")])
+        kept = [part for part in parts[1:] if part.startswith("@")]
+        # "@view" belongs to the panel (the saved chips, sort and folds): it stays when the strip parts are replaced.
+        marks = strip[workspace] + [part for part in kept if part.startswith("@view: ")] if workspace in strip else kept
         wanted = " | ".join(parts[:1] + marks + sorted(models.get(workspace, [])))
         if wanted == old:
             continue
@@ -264,6 +374,7 @@ def main():
     surfaces(tree, by_id)
 
     names = claude_names()
+    live = []  # (surface id, name, waits, stalled, fields, hive status, status time) per Claude Code session in a tab
     labels = {}  # surface id -> label
     waiting = {}  # workspace ref -> ["api-3f permission prompt", ...]
     models = {}  # workspace ref -> ["api-3f: Fable 5.2 high", ...]
@@ -276,23 +387,32 @@ def main():
             continue
         key, pid, command = surface.group(1).upper(), int(parts[0]), parts[2]
         if pid in names and "claude" in command.split(" ", 1)[0]:
-            name, waits, stalled, model = names[pid]
+            name, waits, stalled, model, status, since, _sid = names[pid]
+            live.append((key, name, waits, stalled, model, status, since))
             fields = model + ([f"waits {clean(waits, 40)}"] if waits else [])
             if fields and key in by_id:
                 models.setdefault(by_id[key][2], []).append(f"{name}: " + " · ".join(fields))
             labels[key] = f"[{name} !]" if waits else f"[{name} ?]" if stalled else f"[{name}]"
             if waits and key in by_id:
                 waiting.setdefault(by_id[key][2], []).append(f"{name} {waits}")
+    if "--next-waiting" in sys.argv[1:]:
+        tabs, _spaces = hive_places(tree)
+        asked = sorted((since, key) for key, _n, waits, _s, _m, _st, since in live if waits and key in tabs)
+        if asked:
+            print(tabs[asked[0][1]][0], asked[0][1])
+        return
     set_models(tree, models, strip_segments(board_runs))
     set_needs_you({workspace: ", ".join(sorted(items))[:120] for workspace, items in waiting.items()})
 
     # A label to strip: a derived name ("api-3f") or the name of a live session (the owner can rename a session
     # to any text). One or more in a row, so a title that got the same label twice is repaired.
-    known = "|".join([DERIVED_NAME] + [re.escape(name) for name, _waits, _stalled, _model in names.values()])
+    known = "|".join([DERIVED_NAME] + [re.escape(name) for name, *_rest in names.values()])
     old_label = re.compile(rf"^(\[(?:{known})(?: [!?])?\] )+")
+    titles = {}  # surface id -> the title that the tab has after this pass
     for key, (ref, title, _workspace) in by_id.items():
         bare = old_label.sub("", title)
         wanted = f"{labels[key]} {bare}" if key in labels else bare
+        titles[key] = wanted
         if wanted == title:
             continue
         done = run(["cmux", "rename-tab", "--surface", ref, "--", wanted])
@@ -300,6 +420,8 @@ def main():
             print(f"{ref}: {wanted}")
         else:
             print(f"label-tabs: rename failed for {ref}: {done.stderr.strip()}", file=sys.stderr)
+    write_hive(tree, live, titles)
+    clean_cache({sid for *_rest, sid in names.values()})
 
 
 if __name__ == "__main__":

@@ -9,21 +9,47 @@ It is made for people who run many agent sessions at the same time: Claude Code,
 
 | Part | What it shows |
 |------|---------------|
-| One band per workspace | Project folder, colour bar, agent count, unread count. A click opens the workspace |
+| One band per workspace | Project folder, colour bar, agent count, summed session cost, unread count. A click opens the workspace |
 | One row per session | Status dot, tab title, tool tag, time since the last activity. A click goes to the tab |
 | `NEEDS YOU` block | All sessions that wait for your input, at the top, with the reason when it is known |
-| Filter chips | `!` needs you, `▶` working, `80%` context nearly full, `PR` has a pull request, `1h+` idle for an hour |
+| Filter chips | `!` needs you, `▶` working, `80%` context nearly full, `PR` has a pull request, `1h+` idle for an hour. Each chip shows its count |
 | `↑` sort | Sessions that need attention first; the default order is the tab order |
 | `✕` | Back to the default view: no chip, tab order, all workspaces, no ended rows. The search text stays |
-| Subagents | `▸ 2 sub` on a row opens the subagent rows, for tools that report them |
+| Subagents | `▸ 2 sub` on a row opens the subagent rows. The count comes from cmux, or from the Claude Code records when cmux reports none |
 | Details | `›` on a row opens state, tool, folder, branch, ports, first and last request |
 | Right-click menu | Go to session, copy name, copy folder, copy PR number, fast commands |
-| `hive ↗` | A graph page: workspace → session → subagent, in a cmux browser tab. The tab that was open has a blue box. A click on a session goes to its tab |
+| `hive ↗` | A graph page: workspace → session → subagent, in a cmux browser tab. It updates every 15 seconds. The open tab has a blue box. A click on a session goes to its tab, and the page follows you to another workspace |
+| Next waiting | `next-waiting.sh` goes to the Claude Code session that has waited for you the longest |
 | Search | Filters rows by title, tool, workspace or folder |
 
 With the optional Claude Code status line, each Claude Code row also shows the model and effort, the context share (red from 80%), the session cost estimate, a `cold` mark when the prompt cache went cold, and the count line shows the summed cost.
 
 Status colours: orange = waits for you, blue = working, green = idle, grey = ended.
+
+## Examples
+
+The pictures use sample names. The panel picture is a drawing of the layout; it does not show the chip counts and the cost per workspace. The hive picture is a render of `scripts/hive.html` with sample data. It was made before the page learned to update, so its top line still says that the picture does not update.
+
+![Drawing of the Agents panel: counts and cost, filter chips, a NEEDS YOU block, and one band per workspace with its session rows](examples/panel.svg)
+
+![Render of the hive page: workspaces, their sessions, and subagents, with a blue box on the open tab](examples/hive.png)
+
+A tab title, as `label-tabs.py` writes it:
+
+| Tab title | Meaning |
+|-----------|---------|
+| `[api-3f] Checkout retries` | Session `api-3f` |
+| `[api-7a !] Rate limit tests` | The session waits for you |
+| `[api-b2 ?] Schema migration` | The session is busy, and its transcript was quiet for 20 minutes |
+
+A workspace description, as `label-tabs.py` writes it:
+
+```text
+shop-api | @week: 36% | api-3f: Fable 5.2 high · ctx 42% · $12.34 · sub 2/7: Explore payment client; Review retry diff | api-7a: Sonnet 5.5 medium · ctx 31% · $3.10 · waits permission prompt
+```
+
+The field `sub 2/7: Explore payment client; Review retry diff` means: the session started 7 subagents, 2 run now, and these are the names of the running ones.
+The hive page shows the 2 by name and the other 5 as one box, `5 finished`.
 
 ## Before you install
 
@@ -70,6 +96,7 @@ The panel shows in the right sidebar. Claude Code sessions that start after the 
 | `~/.config/cmux/scripts/label-tabs.py` | Puts session names on tabs and passes session data to the panel |
 | `~/.config/cmux/scripts/agents-watch.sh` | Opens the panel and runs `label-tabs.py` every 15 seconds |
 | `~/.config/cmux/scripts/hive.html` | The graph page |
+| `~/.config/cmux/scripts/next-waiting.sh` | Goes to the session that has waited the longest |
 | `~/.claude/statusline-command.sh` | The status line script (skipped with `--no-statusline`) |
 | `~/.claude/settings.json` | Gets one key, `statusLine`, only when the file has none (skipped with `--no-statusline`) |
 
@@ -113,6 +140,14 @@ Add this to the `actions` object in `~/.config/cmux/cmux.json`, then run `cmux c
   "target": "newTabInCurrentPane",
   "shortcut": "cmd+ctrl+a",
   "palette": true
+},
+"agents-next-waiting": {
+  "type": "command",
+  "title": "Next waiting agent",
+  "command": "~/.config/cmux/scripts/next-waiting.sh",
+  "target": "newTabInCurrentPane",
+  "shortcut": "cmd+ctrl+n",
+  "palette": true
 }
 ```
 
@@ -151,7 +186,9 @@ Facts that follow from this design:
 - Only Claude Code sessions get a name, model, context and cost. Other tools show their status, title and tool tag.
 - The cost is the Claude Code estimate at list price for one session. It is not your bill.
 - The `?` mark is a hint. A long silent command also leaves the transcript quiet.
-- The hive page gets its data in the link, after `#`. It loads nothing from the network and stores nothing.
+- The hive page gets its first data in the link, after `#`. After that it reads `hive-data.js`, a file that `label-tabs.py` writes next to the page every 15 seconds (mode 600; it holds your session titles). The page loads nothing from the network. Only Claude Code sessions update; other tools keep the state of the first picture. Without a fresh file the page says "Fixed picture".
+- The panel saves your view (chip, sort, scope, ended rows, folds) in a description part, `@view: ...`, on a click. `label-tabs.py` keeps that part, so the view returns after a panel reload.
+- `label-tabs.py` deletes files in `~/.cache/cmux-agents` that are older than 14 days.
 - A click on a session in the hive page goes to its tab. A web page cannot call cmux, so the page puts the request in its tab title for 5 seconds (`go:<workspace id>:<tab id>:<time>`), and the panel, which gets tab titles from cmux, focuses that tab. The panel must be open. It accepts only ids of tabs that it knows and a request younger than 20 seconds, and a request can do nothing but change the focus.
 - The hive page shows subagents under their session. It uses what cmux reports; when cmux reports none, it uses the Claude Code records: the running ones by name, the finished ones as a count. A subagent counts as running while its record is not finished and its transcript got a line in the last 15 minutes.
 
@@ -177,6 +214,7 @@ Without a watcher the strip shows only the `week` line.
 ```sh
 rm ~/.config/cmux/sidebars/agents.js
 rm ~/.config/cmux/scripts/label-tabs.py ~/.config/cmux/scripts/agents-watch.sh ~/.config/cmux/scripts/hive.html
+rm -f ~/.config/cmux/scripts/next-waiting.sh ~/.config/cmux/scripts/hive-data.js
 rm -r ~/.cache/cmux-agents
 ```
 
@@ -189,7 +227,9 @@ Tab labels stay until you rename the tabs or close them.
 - The tool names that cmux reports for Codex, OpenCode, Grok Build and Antigravity were not observed; only `claude` was. The fast-command match is on a part of the name.
 - Fold states reset when the panel reloads.
 - The jump from the hive page is new. In tests with a scripted title change it worked in 2 of 3 runs within 3 seconds; cmux can pass a title change late.
-- Old files in `~/.cache/cmux-agents` are not cleaned.
+- The "Next waiting agent" entry was tested with sample data only. Its palette entry opens a tab to run the script.
+- The saved view was tested for the restore; the save on a click was not observed.
+- The session cost is a running total. The panel shows no cost per day.
 
 ## License
 

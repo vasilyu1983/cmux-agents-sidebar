@@ -24,10 +24,10 @@ put() {  # put <source> <target>
 }
 
 put "$here/sidebars/agents.js" "$HOME/.config/cmux/sidebars/agents.js"
-for f in label-tabs.py hive.html agents-watch.sh; do
+for f in label-tabs.py hive.html agents-watch.sh next-waiting.sh; do
   put "$here/scripts/$f" "$HOME/.config/cmux/scripts/$f"
 done
-chmod +x "$HOME/.config/cmux/scripts/label-tabs.py" "$HOME/.config/cmux/scripts/agents-watch.sh"
+chmod +x "$HOME/.config/cmux/scripts/label-tabs.py" "$HOME/.config/cmux/scripts/agents-watch.sh" "$HOME/.config/cmux/scripts/next-waiting.sh"
 
 if [ "$statusline" = yes ]; then
   put "$here/statusline/statusline-command.sh" "$HOME/.claude/statusline-command.sh"
