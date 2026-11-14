@@ -24,7 +24,7 @@ put() {  # put <source> <target>
 }
 
 put "$here/sidebars/agents.js" "$HOME/.config/cmux/sidebars/agents.js"
-for f in label-tabs.py hive.html agents-watch.sh next-waiting.sh agent-run.sh agents-account-add.sh; do
+for f in label-tabs.py hive.html agents-watch.sh next-waiting.sh agent-run.sh agents-account-add.sh agents-shell.sh; do
   put "$here/scripts/$f" "$HOME/.config/cmux/scripts/$f"
 done
 chmod +x "$HOME/.config/cmux/scripts/label-tabs.py" "$HOME/.config/cmux/scripts/agents-watch.sh" "$HOME/.config/cmux/scripts/next-waiting.sh" \

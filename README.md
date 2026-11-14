@@ -206,12 +206,20 @@ Two scripts:
 - `scripts/agents-account-add.sh <tool> <name>` makes the folder `~/.<tool>-<name>` and adds the `account` line. With `--dry-run` it only prints. At the end it prints the one login command; you run it and log in yourself.
 - `scripts/agent-run.sh <tool> [arguments]` chooses the account and starts the tool with your arguments unchanged. `agent-run.sh --which <tool>` prints the name. `AGENT_ACCOUNT=<name>` overrides the rules for one start. An unknown name or a missing folder is an error, and the tool does not start.
 
-To use the launcher for every start, add these functions to `~/.zshrc` yourself:
+To use the launcher for every start, add one line to `~/.zshrc` (or `~/.bashrc`) yourself:
 
 ```zsh
-claude() { ~/.config/cmux/scripts/agent-run.sh claude "$@"; }
-codex() { ~/.config/cmux/scripts/agent-run.sh codex "$@"; }
+source ~/.config/cmux/scripts/agents-shell.sh
 ```
+
+It gives short commands:
+
+| Command | What it does |
+|---|---|
+| `claude`, `codex`, `opencode` | Start with the account that the folder rules choose |
+| `cla work` | Claude Code with the account `work`, for this start only |
+| `cdx work` | Codex with the account `work`, for this start only |
+| `accounts` | Prints the account list and the account that the current folder gets |
 
 What a Claude Code account folder shares: `agents-account-add.sh` links `settings.json`, `CLAUDE.md`, `hooks`, `rules`, `skills`, `agents`, `commands`, `output-styles`, `plugins` and `statusline-command.sh` from `~/.claude`, when they exist there. It never replaces a real file in the account folder. Separate for each account: the login, the sessions, project memory and history. For Codex and OpenCode the script links nothing; a new Codex folder starts without your `config.toml`, `AGENTS.md` and `hooks.json`.
 
