@@ -16,9 +16,10 @@ A drawing of a cmux window with the panel, with sample names.
 | One band per workspace | Project folder, colour bar, agent count, summed session cost, unread count. A click opens the workspace |
 | One row per session | Status dot, tab title, tool tag, time since the last activity. A click goes to the tab. With an accounts file the tag names the account (`claude · work`), and search matches it |
 | `NEEDS YOU` block | All sessions that wait for your input, at the top, with the reason when it is known |
-| Filter chips | `!` needs you, `▶` working, `80%` context nearly full, `PR` has a pull request, `1h+` idle for an hour, `you` the next step is yours, `push` commits that no remote holds. Each chip shows its count |
+| Filter chips | `80%` context nearly full, `PR` has a pull request, `1h+` idle for an hour, `you` the next step is yours, `push` commits that no remote holds. Each chip shows its count and names its filter on hover |
+| Head counts | `1 need you` and `2 working` at the top filter the list to those sessions; a second tap shows all. The `idle` count has no tap, because the `1h+` chip counts only sessions idle for an hour |
 | `↑` sort | Sessions that need attention first; the default order is the tab order |
-| `✕` | Back to the default view: no chip, tab order, all workspaces, no ended rows. The search text stays |
+| `✕ Reset` | Shows when the view is not the default. Back to the default view: no chip, no account, tab order, all workspaces, no ended rows, no `state` grouping. The search text stays |
 | Subagents | `▸ 2 sub` on a row opens the subagent rows. The count comes from cmux, or from the Claude Code records when cmux reports none |
 | Details | `›` on a row opens state, tool, folder, branch, ports, first and last request |
 | Right-click menu | Go to session, copy name, copy folder, copy PR number, fast commands |
@@ -26,7 +27,7 @@ A drawing of a cmux window with the panel, with sample names.
 | Next waiting | `next-waiting.sh` goes to the Claude Code session that has waited for you the longest |
 | `Limits` | Next to `Here` and `All`: the rate limits of each agent tool on this Mac, per window (5 hours, week), with the reset time and the age of the figure. With an accounts file: one line per tool and account. The panel remembers the choice |
 | Search | Type in `Search agents`: rows stay when the text is in the tab title (with the session name), the tool, the account, the workspace name or the folder. Capital letters do not matter. A search text looks in every workspace, also with `Here` on. A chip narrows the result further. While `Limits` is on, a search text shows the sessions again |
-| Account chips | With sessions on two accounts or more, one chip per account under the filter chips, with its row count. A click shows only that account; a second click, or `✕`, shows all |
+| Account chips | With sessions on two accounts or more, one chip per account under the filter chips, with its row count. A click shows only that account; a second click, or `✕ Reset`, shows all |
 | Account colour | Each account name has one fixed colour, the same on the row tag, on the hive page and at the start of the session's status line. There are six colours, so two names can share one |
 | Wrong-account mark | `≠ work` in orange on a row: the folder rules name `work` for that folder, and the session runs on another account. Needs `rule` lines |
 | Limit warning | One cmux notification when a limit window of any account passes 80% |
@@ -35,11 +36,12 @@ A drawing of a cmux window with the panel, with sample names.
 | Asked or finished | The second line of a row says `asked` when the agent waits for an answer, and `finished · not seen` in blue when it ended its turn and you have not opened the tab. The `✓` chip filters the finished ones |
 | Last prompt | The start of your last request to a Claude Code session, in the row details and in the search |
 | State from the screen | Codex, OpenCode, Grok and Antigravity tabs publish no state. The row says `working · from screen` or `asked · from screen`, read from the last 30 lines of the tab |
-| Compact layout | The name of a session keeps the room: marks are short (`❄190K` cold cache, `83%` context, `▸2/11` subagents running of total) and never cut. Chips with no matching row are left out. The panel head counts states as coloured dots: orange needs you, blue working, green idle |
+| Compact layout | The name of a session keeps the room: marks are short (`❄190K` cold cache, `83%` context, `▸2/11` subagents running of total) and never cut. Chips with no matching row are left out. The panel head counts states in words: orange needs you, blue working, green idle |
 | Cards and pills | Each session is a rounded card: orange tint when it asks, purple when it finished and you did not look. Its marks are small coloured pills under the name: tool and account, folder, PR, `→ you`, `dup`, `↑2`, `⟳3`, `❄190K`, `83%` |
 | Request on the row | A session that works, asks or finished unseen shows the request it works on, up to two lines |
 | `state` | Next to `↑`: groups the rows by state in place of by workspace: `NEEDS YOU`, `FINISHED · NOT SEEN`, `RUNNING`, `RECENT` (idle under 1 hour), `IDLE`. Each row then carries its workspace as a pill. Not saved across reloads |
-| Limit bars | Each live limit window has a bar: green, orange from 50%, red from 80% |
+| Limit bars | Each live limit window has a bar and its percent in fixed columns: green, orange from 50%, red from 80%. The `week` line of the strip has a small bar too. The `train` line leaves out clauses such as `refused none` |
+| Empty list | `No sessions yet` when no session runs. `Nothing matches` when a chip, an account, `Here` or the search hides every session; `Clear filters` resets the view and the search |
 | Work marks | In orange on a row: `dup` when two live sessions work in one folder on one work branch, `↑2` for 2 commits that no remote holds, `⟳3` from the third context compaction |
 | Cost per account | In `Limits`, under the limit lines: the summed cost estimate of the open Claude Code sessions per account |
 
@@ -362,7 +364,8 @@ Tab labels stay until you rename the tabs or close them.
 - The wrong-account mark, the limit warning and the Codex account tag were tested with sample data and stub commands, not on live sessions.
 - OpenCode, Grok Build and Antigravity leave no limit figure in their local files, as far as their table and key names show. OpenCode keeps a cost per session; the panel does not show it yet.
 - The next step, the compaction count and the marks `dup` and `↑` were tested with sample data; on one Mac the next step and the count showed in the data. The new chips `you` and `push` were not seen on screen, and the chip row can be too wide for a narrow sidebar.
-- The compact layout and the limit bars were tested in the runtime with invented data; their look on screen (widths, cut text) was not checked by the author of the change.
+- The compact layout, the top rows (counts, `Here | All | Limits`, chips, search field) and the limit bars were tested in the runtime with invented data; their look on screen (widths, cut text) was not checked by the author of the change.
+- `Clear filters` clears the search text that filters the list. The search field may still show the typed text; this was not checked on screen.
 - `New tab here` opens a plain tab; it does not start an agent in it. The call was not tested against a running cmux.
 - The state from the screen was tested with sample screens only, not with a live Codex or OpenCode tab. A tool that changes its interface lines breaks it. No documented cmux call for that was found.
 

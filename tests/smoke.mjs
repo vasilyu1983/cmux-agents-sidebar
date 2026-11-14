@@ -53,8 +53,10 @@ const apiDescription = [
   "@limits: claude,5h,42,14:10,1794650000;codex,week,4,Sat 09:39,1794600000;grok,,,,0",
   "@queue: 2 ready",
   "@unpushed: api 2",
+  "@train: merged #12; refused none; skipped none; deferred none",
 ].join(" | ");
-const webDescription = ["web", "scout-4: sonnet · acct personal · ctx 45% · $0.30", "@accts: " + T(4) + "=work"].join(" | ");
+const webDescription = ["web", "scout-4: sonnet · acct personal · ctx 45% · $0.30", "@accts: " + T(4) + "=work",
+  "@train: refused none; skipped none", "@week: 47%"].join(" | ");
 
 const agent = (id, panelId, status, kind, extra = {}) => ({
   id, panelId, surfaceId: "S-" + id, status, kind, name: kind, title: "first prompt of " + id,
@@ -199,9 +201,12 @@ check("render shows all four states", () => {
   // A plain working row shows no state word: its blue dot says it.
   must(!rendered.includes("Working"), "a plain working row shows a state word");
   must(reachable().some((n) => n.props.fill === "#0A84FF"), "no blue dot for the working session");
-  // The panel head counts each state as a coloured dot with a number: one needs you, two idle, one ended.
-  mustContain(rendered, "● 1");
-  mustContain(rendered, "● 2");
+  // The panel head counts each state in words: one needs you, one working, two idle; one ended while Ended is on.
+  for (const t of ["1 need you", "1 working", "2 idle", "1 ended"]) {
+    must(withText((x) => x === t).length === 1, "no head count " + JSON.stringify(t));
+  }
+  must(withText((x) => x === "1 need you")[0].props.color === ORANGE, "the need-you count is not orange");
+  must(!rendered.includes("● "), "a head count still uses a dot glyph");
 });
 check("render shows the unread mark of the working session, and not on the finished-not-seen row", () => {
   const marks = withText((t) => t === "new");
@@ -262,11 +267,54 @@ check("render shows the account of a session and of a tab named in @accts", () =
   mustContain(helpText(), "claude · work");  // lead-1, behind its "+N" pill
   mustContain(rendered, "· personal");
   // helper-6 is a one-line row with no tool pill: its @accts account shows in the account chip count.
-  mustContain(rendered, "work 2");
+  // A chip holds its label and its count as two texts.
+  const work = withText((t) => t === "work").find((n) => parentOf(n.id)?.children.map(node).some((c) => c?.props.text === "2"));
+  must(work, "no account chip \"work\" with the count 2");
 });
 check("render shows the project strip lines", () => {
   mustContain(rendered, "2 ready");
   mustContain(rendered, "api 2");
+});
+check("strip lines: one 12 pt line with the full text on hover; the train line drops its \"none\" clauses", () => {
+  const train = withText((t) => t === "merged #12");
+  must(train.length === 1, "the train line is not \"merged #12\"");
+  must(train[0].props.font === 12 && train[0].props.lineLimit === 1 && train[0].props.truncation === "tail", "the strip value is not 12 pt on one line");
+  must(train[0].props.help === "merged #12", "the strip value has no hover text");
+  must(withText((t) => t === "refused none; skipped none").length === 1, "a train line with only \"none\" clauses did not keep its text");
+  const label = withText((t) => t === "train")[0];
+  must(label.props.font === 11 && !label.props.monospaced && label.props.width === 56 && label.props.color === META, "the strip label is not 11 pt META, 56 wide");
+});
+check("the week line shows its percent, a 44 x 4 bar, then the rest of the text", () => {
+  must(withText((t) => t === "47%").length === 1, "no \"47%\" on the week line");
+  must(reachable().some((n) => n.type === "capsule" && n.props.fill === "#34C759" && Math.abs(n.props.width - 20.68) < 0.01 && n.props.height === 4), "no green 47% fill on the week bar");
+  must(reachable().some((n) => n.type === "capsule" && n.props.fill === "#7f7f7f40" && n.props.width === 44 && n.props.height === 4), "no 44 pt track on the week bar");
+  const rest = withText((t) => t === "of the 7-day limit used")[0];
+  must(rest && rest.props.font === 11 && rest.props.color === META, "the rest of the week line is not 11 pt META");
+});
+check("the panel head, control row, chips and search field have their new form", () => {
+  must(!rendered.includes("showing:"), "the showing line is still there");
+  // Here | All | Limits is one segmented group; All is selected.
+  const all = withText((t) => t === "All")[0];
+  must(all.props.background === "#FFFFFF26" && all.props.color === "primary", "the selected segment is not primary on #FFFFFF26");
+  const here = withText((t) => t === "Here")[0];
+  must(here.props.color === "#D1D1D6" && here.props.hoverBackground === "#FFFFFF14", "an unselected segment is not TEXT2 with a hover fill");
+  const group = parentOf(all.id);
+  must(group.props.background === "#FFFFFF0F" && group.props.cornerRadius === 8 && group.props.padding === 2, "the segments have no group container");
+  const hive = withText((t) => t === "hive ↗")[0];
+  must(hive.props.color === META && hive.props.minHeight === 24 && hive.props.hoverBackground === "#FFFFFF14", "hive ↗ is not a META toggle at least 24 tall");
+  // The needs and working chips left the row: the head counts filter them.
+  must(withText((t) => t === "!" || t === "▶").length === 0, "the needs or working chip is still in the chip row");
+  const done = withText((t) => t === "✓")[0];
+  const c = parentOf(done.id);
+  must(c.props.paddingHorizontal === 10 && c.props.cornerRadius === 12 && c.props.background === "#FFFFFF0F" && c.props.hoverBackground === "#FFFFFF1A", "the ✓ chip is not a capsule chip");
+  must(c.props.help === "finished, not seen", "the ✓ chip does not name its filter on hover");
+  must(c.children.map(node).some((n) => n.props.text === "1" && n.props.monospaced === true && n.props.color === META), "the ✓ chip has no META count");
+  // The saved view has ended rows on, so the Reset chip shows.
+  must(withText((t) => t === "✕ Reset").some((n) => n.props.color === ORANGE), "no orange Reset chip while ended rows are on");
+  const glass = reachable().find((n) => n.type === "image" && n.props.systemName === "magnifyingglass");
+  must(glass, "no magnifying glass in front of the search field");
+  const field = parentOf(glass.id);
+  must(field.children.map(node).some((n) => n.type === "textfield") && field.props.background === "#FFFFFF0F" && field.props.cornerRadius === 8, "the search field has no rounded background");
 });
 check("fields the panel may not know yet (prompt, screen) do not throw", () => {
   // The description above carries "prompt ..." and "screen ..." fields. Loading already ran them; this is a
@@ -366,7 +414,68 @@ check("the Limits view lists the limit windows", () => {
   const btn = withText((t) => t === "Limits")[0];
   must(btn, "Limits toggle not found");
   tap(btn);
-  mustContain(textOf(), "5h 42%");
+  // The percent is its own column; the window, reset time and age follow it.
+  const pct = withText((t) => t === "42%")[0];
+  must(pct && pct.props.width === 34 && pct.props.alignment === "trailing" && pct.props.monospaced === true && pct.props.color === META,
+    "42% is not a 34 pt META percent column: " + JSON.stringify(pct?.props));
+  const rest = withText((t) => t.startsWith("5h · resets 14:10"));
+  must(rest.length === 1 && rest[0].props.lineLimit === 1 && String(rest[0].props.help).startsWith("5h 42% · resets 14:10"), "no one-line \"5h · resets 14:10\" text with the full text on hover");
+});
+check("Limits bars are 60 x 5 with a 3 pt minimum fill; a line with no data has no bar; cost lines stay", () => {
+  must(reachable().some((n) => n.type === "capsule" && n.props.fill === "#34C759" && Math.abs(n.props.width - 25.2) < 0.01 && n.props.height === 5), "no 25.2 pt fill for 42%");
+  must(reachable().some((n) => n.type === "capsule" && n.props.fill === "#34C759" && n.props.width === 3 && n.props.height === 5), "the 4% fill is not 3 pt");
+  const none = withText((t) => t === "no limit data on this Mac")[0];
+  must(none, "the grok line lost its text");
+  must(!parentOf(none.id).children.map(node).some((n) => n.type === "zstack" || n.type === "capsule"), "the grok line has a bar");
+  must(withText((t) => /^\$0\.30 · 1 session$/.test(t)).length === 1, "no cost line for the personal account");
+  tap(withText((t) => t === "Limits")[0]);
+  must(withText((t) => t === "42%").length === 0, "a second click on Limits did not close the view");
+});
+check("a head count filters the list, a second tap clears it; the idle count has no tap", () => {
+  must(!tapTarget(withText((t) => t === "2 idle")[0]), "the idle count is tappable");
+  tap(withText((t) => t === "1 need you")[0]);
+  must(withText((t) => t === "!").some((n) => n.props.color === "primary"), "the needs chip does not show as the active filter");
+  must(withText((t) => t === "[worker-2]").length === 0, "an idle row shows under the needs filter");
+  tap(withText((t) => t === "1 need you")[0]);
+  must(withText((t) => t === "!").length === 0 && withText((t) => t === "[worker-2]").length === 1, "the second tap did not clear the filter");
+});
+check("the Reset chip restores the default view and turns the view by state off", () => {
+  tap(withText((t) => t === "state")[0]);
+  tap(withText((t) => t === "Here")[0]);
+  // Here shows the api workspace only: its finished-not-seen session gets its own section in the view by state.
+  mustContain(textOf(), "FINISHED · NOT SEEN");
+  const reset = withText((t) => t === "✕ Reset")[0];
+  must(reset, "no Reset chip");
+  tap(reset);
+  must(!textOf().includes("FINISHED · NOT SEEN"), "the view by state stayed on");
+  must(withText((t) => t === "All")[0].props.background === "#FFFFFF26", "the scope did not go back to All");
+  must(withText((t) => t === "Ended")[0].props.color === META, "ended rows stayed on");
+  must(withText((t) => t === "✕ Reset").length === 0, "the Reset chip stayed in the default view");
+});
+check("a folded band that holds the matching session is not \"Nothing matches\"", () => {
+  tap(tapTarget(withText((t) => t === "✓")[0]));
+  tap(withText((t) => t === "▾")[0]);
+  must(withText((t) => t === "[worker-2]").length === 0, "the band did not fold");
+  must(withText((t) => t === "Nothing matches").length === 0, "\"Nothing matches\" under a folded band with a match");
+  tap(withText((t) => t === "▸")[0]);
+  tap(tapTarget(withText((t) => t === "✓")[0]));
+  must(withText((t) => t === "✕ Reset").length === 0, "the view did not go back to the default");
+});
+check("a search with no match says \"Nothing matches\"; Clear filters brings the rows back", () => {
+  const field = reachable().find((n) => n.type === "textfield");
+  ctx.__dispatch(field.id, "edit", JSON.stringify({ text: "zzz-no-such-session" }));
+  must(withText((t) => t === "Nothing matches").length === 1, "no \"Nothing matches\" line");
+  must(withText((t) => t === "No sessions yet").length === 0, "the no-session line shows while sessions exist");
+  const clear = withText((t) => t === "Clear filters")[0];
+  must(clear && clear.props.color === "#5AA9FF", "no blue Clear filters");
+  tap(clear);
+  must(withText((t) => t === "[lead-1]").length > 0 && withText((t) => t === "Nothing matches").length === 0, "Clear filters did not clear the search");
+});
+check("with no session at all the list says \"No sessions yet\"", () => {
+  ctx.__setData("workspaces", JSON.stringify([]));
+  must(withText((t) => t === "No sessions yet").length === 1, "no \"No sessions yet\" line");
+  mustContain(textOf(), "Start an agent in a cmux tab and it shows up here.");
+  must(withText((t) => t === "Nothing matches").length === 0, "\"Nothing matches\" shows with no session");
 });
 
 console.log(failed === 0 ? "\nOK: all checks passed (runtime: " + path.basename(path.dirname(runtimePath)) + ")" : "\nFAILED: " + failed + " check(s)");

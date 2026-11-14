@@ -71,7 +71,7 @@ const flip = (get, set, id) => set({ ...get(), [id]: !get()[id] });
 // One filter chip at a time ("" = all rows), and the row order: tab order, or the sessions that need attention first.
 const filter = () => { const c = filterS() ?? saved().c; return FILTERS.some((f) => f[0] === c) ? c : ""; };
 const attention = () => attentionS() ?? saved().a;
-// Each chip is a short mark, so the row fits a narrow panel; the full name shows under the chips while a filter is on.
+// Each chip is a short mark, so the row fits a narrow panel; the full name shows on hover.
 const FILTERS = [["needs", "!", "needs you"], ["done", "✓", "finished, not seen"], ["working", "▶", "working"], ["ctx", "80%", "context 80% or more"], ["pr", "PR", "has a PR"], ["idle", "1h+", "idle for 1 hour or more"], ["you", "you", "the next step is yours"], ["push", "push", "commits that no remote holds"]];
 // "Next: you push both repos": the next step is the reader's when the line starts with "you" or "owner".
 const yours = (next) => /^(you|owner)\b/i.test(next ?? "");
@@ -554,18 +554,23 @@ const limits = computed(() => {
     let value = "no limit data on this Mac";
     let color = META;
     let bar = -1;  // no bar for a line without a live window
+    // A live window shows in columns: bar, percent, then the rest of the text (window, reset time, age).
+    let pct = "";
+    let rest = "";
     if (m[3] !== "") {
       const used = Number(m[3]);
       if (m[4] === "ended") value = (m[2] || "limit") + " window ended · last value " + used + "%" + age;
       else {
         value = (m[2] || "limit") + " " + used + "%" + (m[4] ? " · resets " + m[4] : "") + age;
-        color = used >= 80 ? "#FF453A" : "secondary";
         bar = Math.min(100, used);
+        pct = used + "%";
+        rest = (m[2] || "limit") + (m[4] ? " · resets " + m[4] : "") + age;
       }
     }
     const primary = (m[1] === "claude" || m[1] === "codex") ? accountMarks().primary : "";
     const label = TOOLS[m[1]] + (m[6] ? " " + m[6] : primary ? " " + primary : "");
-    out.push({ key: "limit" + out.length + m[1] + m[2], label, value, color, copy: label + " " + value, bar, wsId: newest.wsId, tool: Object.keys(TOOLS).indexOf(m[1]), acct: m[6] ?? "" });
+    // The key carries the form (with or without a bar), because a row's template is fixed per key.
+    out.push({ key: "limit" + out.length + m[1] + m[2] + (bar >= 0 ? ":b" : ""), label, value, color, copy: label + " " + value, bar, pct, rest, wsId: newest.wsId, tool: Object.keys(TOOLS).indexOf(m[1]), acct: m[6] ?? "" });
   }
   // Lines of one tool stay together, and inside a tool the lines of one account.
   out.sort((a, b) => a.tool - b.tool || (a.acct < b.acct ? -1 : a.acct > b.acct ? 1 : 0));
@@ -587,6 +592,12 @@ const limits = computed(() => {
   return out;
 });
 
+// "merged #12; refused none; skipped none" reads "merged #12": a clause that only says "none" is left out.
+// A text with nothing but such clauses stays as it is.
+const dropNone = (text) => {
+  const kept = text.split("; ").filter((c) => !/^\w+ none$/.test(c.trim()));
+  return kept.length ? kept.join("; ") : text;
+};
 const strip = computed(() => {
   const out = [];
   for (const w of data.workspaces() ?? []) {
@@ -594,13 +605,18 @@ const strip = computed(() => {
       const at = part.indexOf(": ");
       const kind = STRIP[part.slice(1, at)];
       if (part.startsWith("@") && kind) {
-        const value = part.slice(at + 2);
+        const raw = part.slice(at + 2);
         const name = part.slice(1, at);
+        const value = name === "week" ? raw + " of the 7-day limit used" : name === "train" ? dropNone(raw) : raw;
+        // "47% of the 7-day limit used" shows as "47%", a bar, then the rest of the text.
+        const p = name === "week" ? /^(\d{1,3})% (.*)$/.exec(value) : null;
         out.push({
-          key: w.id + part.slice(0, at), label: kind[0], value: name === "week" ? value + " of the 7-day limit used" : value, wsId: w.id,
-          color: name === "week" && parseInt(value, 10) >= 80 ? "#FF453A" : kind[1],
+          // The key carries the form (with or without a bar), because a row's template is fixed per key.
+          key: w.id + part.slice(0, at) + (p ? ":p" : ""), label: kind[0], value, wsId: w.id,
+          color: name === "week" && parseInt(raw, 10) >= 80 ? "#FF453A" : kind[1],
+          bar: p ? Math.min(100, Number(p[1])) : -1, pct: p ? p[1] + "%" : "", rest: p ? p[2] : "",
           // The menu copies the text as it is. Nothing here builds or runs a command.
-          copy: value,
+          copy: raw,
         });
       }
     }
@@ -709,16 +725,45 @@ function newTab(wsId) {
   if (wsId) cmux("surface.create", { workspace_id: wsId, focus: true });
 }
 
+// A plain toggle of the control row: dim when off, primary on a light fill when on. At least 24 pt tall.
 function toggleButton(labelFn, activeFn, onTapFn) {
   return Text(labelFn)
-    .font(12).weight("semibold").lineLimit(1).fixedSize()
-    .paddingHorizontal(8).paddingVertical(3)
+    .font(12).weight("medium").lineLimit(1).fixedSize()
+    .paddingHorizontal(6).frame({ minHeight: 24 })
     .cornerRadius(6)
     .color(() => (activeFn() ? "primary" : META))
-    .background(() => (activeFn() ? "#7f7f7f3d" : null))
-    .hoverBackground("#7f7f7f3d")
+    .background(() => (activeFn() ? "#FFFFFF26" : null))
+    .hoverBackground("#FFFFFF14")
     .onTap(onTapFn);
 }
+// One segment of the Here | All | Limits group. The selected one has the light fill and no hover.
+const segment = (label, activeFn, onTapFn) =>
+  Text(label).font(12).weight("medium").lineLimit(1).fixedSize()
+    .paddingHorizontal(10).paddingVertical(4).cornerRadius(6)
+    .color(() => (activeFn() ? "primary" : TEXT2))
+    .background(() => (activeFn() ? "#FFFFFF26" : null))
+    .hoverBackground(() => (activeFn() ? null : "#FFFFFF14"))
+    .onTap(onTapFn);
+// A capsule chip: a label and its count.
+const chip = (labelFn, countFn, activeFn, onTapFn) =>
+  HStack({ spacing: 4 }, [
+    Text(labelFn).font(12).weight("medium").lineLimit(1).fixedSize().color(() => (activeFn() ? "primary" : TEXT2)),
+    Text(countFn).font(11).monospaced().lineLimit(1).fixedSize().color(META),
+  ])
+    .paddingHorizontal(10).paddingVertical(4).cornerRadius(12)
+    .background(() => (activeFn() ? "#FFFFFF26" : "#FFFFFF0F"))
+    .hoverBackground("#FFFFFF1A")
+    .onTap(onTapFn);
+// A used share as a bar on a grey track: green below 50%, orange from 50%, red from 80%. The fill is at least 3 pt.
+const usedBar = (pctFn, width, height) =>
+  ZStack({}, [
+    Capsule().fill("#7f7f7f40").frame({ width, height }),
+    HStack({ spacing: 0 }, [
+      Capsule().fill(() => (pctFn() >= 80 ? "#FF453A" : pctFn() >= 50 ? ORANGE : "#34C759"))
+        .frame(() => ({ width: Math.max(3, width * pctFn() / 100), height })),
+      Rectangle().fill("clear").frame({ maxWidth: "infinity", height }),
+    ]).frame({ width, height }),
+  ]).frame({ width, height });
 
 // The workspace colour at a given alpha ("14" is about 8%). A colour that is not "#RRGGBB" gets a faint white.
 const tint = (color, alpha) => (/^#[0-9A-Fa-f]{6}$/.test(color ?? "") ? color + alpha : "#FFFFFF0A");
@@ -815,11 +860,19 @@ const rowTitle = (t) => {
   return m && m[1].replace(/ [!?]$/, "") === m[2] ? "[" + m[1] + "]" : t;
 };
 
-// One line of the project strip: a dim label and its text. A click opens the workspace that carries it.
-function stripRow(entry, width = 58) {
+// One line of the project strip: a dim label and its text on one line; the hover shows the whole text. A week
+// line that starts with a percent shows the percent, a bar, then the rest. A click opens the workspace that carries it.
+function stripRow(entry) {
+  const value = entry().bar >= 0
+    ? HStack({ spacing: 6 }, [
+      Text(() => entry().pct).font(12).lineLimit(1).fixedSize().color(() => entry().color),
+      usedBar(() => entry().bar, 44, 4),
+      Text(() => entry().rest).font(11).color(META).lineLimit(1).truncation("tail").help(() => entry().value),
+    ])
+    : Text(() => entry().value).font(12).color(() => entry().color).lineLimit(1).truncation("tail").help(() => entry().value);
   return HStack({ spacing: 8 }, [
-    Text(() => entry().label).font(11).monospaced().color(META).lineLimit(1).truncation("tail").frame({ width, alignment: "leading" }),
-    Text(() => entry().value).font(11).color(() => entry().color).lineLimit(2).truncation("tail"),
+    Text(() => entry().label).font(11).color(META).lineLimit(1).truncation("tail").frame({ width: 56, alignment: "leading" }),
+    value,
     Spacer(),
   ])
     .paddingHorizontal(10)
@@ -828,18 +881,20 @@ function stripRow(entry, width = 58) {
     .contextMenu([Button("Copy the text", () => clipboard.write(entry().copy))]);
 }
 
-// A line of the Limits view: the strip line, with a bar for the used share of a live window.
-// Green below 50%, orange from 50%, red from 80%.
-const BAR = 44;
+// A line of the Limits view, in fixed columns so the bars line up: label, bar, percent (primary from 80%), then
+// the window, reset time and age. A line without a live window, and a cost line, shows its text after the label.
 function limitRow(entry, width) {
-  const used = () => entry().bar ?? -1;
+  const cells = entry().bar >= 0
+    ? [
+      usedBar(() => entry().bar, 60, 5),
+      Text(() => entry().pct).font(11).monospaced().lineLimit(1)
+        .color(() => (entry().bar >= 80 ? "primary" : META)).frame({ width: 34, alignment: "trailing" }),
+      Text(() => entry().rest).font(11).color(META).lineLimit(1).truncation("tail").help(() => entry().value),
+    ]
+    : [Text(() => entry().value).font(11).color(() => entry().color).lineLimit(1).truncation("tail").help(() => entry().value)];
   return HStack({ spacing: 8 }, [
-    Text(() => entry().label).font(11).monospaced().color(META).lineLimit(1).truncation("tail").frame({ width, alignment: "leading" }),
-    HStack({ spacing: 0 }, [
-      Capsule().fill(() => (used() >= 80 ? "#FF453A" : used() >= 50 ? "#FF9F0A" : "#34C759")).frame(() => ({ width: used() < 0 ? 0 : Math.max(2, BAR * used() / 100), height: 4 })),
-      Capsule().fill("#7f7f7f40").frame(() => ({ width: used() < 0 ? 0 : BAR - Math.max(2, BAR * used() / 100), height: 4 })),
-    ]),
-    Text(() => entry().value).font(11).color(() => entry().color).lineLimit(2).truncation("tail"),
+    Text(() => entry().label).font(11).color(META).lineLimit(1).truncation("tail").frame({ width, alignment: "leading" }),
+    ...cells,
     Spacer(),
   ])
     .paddingHorizontal(10)
@@ -1024,82 +1079,124 @@ function childRow(entry) {
     .onTap(() => jump(entry()));
 }
 
-// What the list is limited to, in words; empty in the default view.
-const showing = () => {
-  const on = FILTERS.find((f) => f[0] === filter());
-  return [on ? "showing: " + on[2] : "", acctFilter() ? "account: " + acctFilter() : "", attention() ? "sorted: needs attention first" : "",
-    scopeAll() ? "" : "this workspace only", showEnded() ? "with ended" : "",
-    on || acctFilter() || attention() || !scopeAll() || showEnded() ? "✕ resets" : ""].filter(Boolean).join(" · ");
-};
+// The view differs from the default: a chip, an account, the attention sort, one workspace, ended rows, or the
+// view by state. The Reset chip shows then.
+const viewChanged = () => Boolean(filter() || acctFilter() || attention() || !scopeAll() || showEnded() || byState());
+// Back to the default view: no chip, no account, tab order, all workspaces, no ended rows, no view by state.
+// The search text stays.
+function resetView() {
+  setAcctFilter("");
+  setByState(false);
+  setView({ c: "", a: false, s: true, e: false, l: false });
+}
 
 // The filter chips. Each shows the number of rows that it would show; a chip with none is left out.
-const chipItems = () => FILTERS.filter((f) => (view().chips[f[0]] ?? 0) > 0 || filter() === f[0]).map((f) => ({ id: f[0], label: f[1] }));
+// "needs" and "working" are the counts in the panel head; their chip shows only while it is the active filter.
+const HEAD_CHIPS = ["needs", "working"];
+const chipItems = () => FILTERS
+  .filter((f) => filter() === f[0] || (!HEAD_CHIPS.includes(f[0]) && (view().chips[f[0]] ?? 0) > 0))
+  .map((f) => ({ id: f[0], label: f[1], help: f[2] }));
 const filterChip = (f) =>
-  toggleButton(() => f().label + " " + (view().chips[f().id] ?? 0), () => filter() === f().id, () => setView({ c: filter() === f().id ? "" : f().id }))
+  chip(() => f().label, () => String(view().chips[f().id] ?? 0), () => filter() === f().id, () => setView({ c: filter() === f().id ? "" : f().id }))
+    .help(() => f().help)
     .opacity(() => ((view().chips[f().id] ?? 0) === 0 && filter() !== f().id ? 0.45 : 1));
+const resetChip = () =>
+  Text("✕ Reset").font(12).weight("medium").lineLimit(1).fixedSize().color(ORANGE)
+    .paddingHorizontal(10).paddingVertical(4).cornerRadius(12)
+    .background("#FFFFFF0F").hoverBackground("#FFFFFF1A")
+    .onTap(resetView);
+// One chip per account, shown when the sessions run on two accounts or more (or while one is the filter).
+const acctItems = () => {
+  const all = Object.entries(view().accts);
+  return all.length > 1 || acctFilter() ? all.sort().map(([id, n]) => ({ id, n })) : [];
+};
+// A count in the panel head, hidden at zero. With a chip id, a tap shows only those rows and a second tap all rows.
+const headCount = (n, word, color, chipId) =>
+  ForEach({ items: () => (n() > 0 ? [{ id: word }] : []), key: (x) => x.id }, () => {
+    const t = Text(() => n() + " " + word).font(11).lineLimit(1).fixedSize().color(color);
+    return chipId ? t.onTap(() => setView({ c: filter() === chipId ? "" : chipId })) : t;
+  });
+// A zero-or-one list: the row takes no height while it has nothing to show.
+const optional = (id, showFn, template) => ForEach({ items: () => (showFn() ? [{ id }] : []), key: (x) => x.id }, template);
+// What the list says when it shows no session row: no live session at all, or nothing that matches the filters.
+const emptyState = () => {
+  // A folded band that holds sessions counts as a match.
+  if (limitsShown() || entries().some((e) => e.kind === "agent" || (e.kind === "header" && e.count > 0))) return "";
+  if (counts().working + counts().needs_input + counts().idle === 0) return "none";
+  return filter() || acctFilter() || !scopeAll() || query().trim() ? "nomatch" : "";
+};
 
 sidebar(() =>
-  VStack({ spacing: 8 }, [
-    HStack({ spacing: 6 }, [
+  // The top block: 8 pt between its rows, each inset 10 pt so the left edges line up. The 4 pt gap below it and the
+  // 8 pt clear line on top of the first band make 12 pt between the search field and the band.
+  VStack({ spacing: 4 }, [VStack({ spacing: 8 }, [
+    HStack({ spacing: 8 }, [
       Text("Agents").font(15).weight("semibold"),
       Spacer(),
-      // One coloured count per state: orange needs you, blue working, green idle. Then the cost estimate.
-      Text(() => (counts().needs_input > 0 ? "● " + counts().needs_input : "")).font(11).monospaced().color("#FF9F0A").help("need you"),
-      Text(() => (counts().working > 0 ? "● " + counts().working : "")).font(11).monospaced().color("#0A84FF").help("working"),
-      Text(() => (counts().idle > 0 ? "● " + counts().idle : "")).font(11).monospaced().color("#34C759").help("idle"),
-      Text(() => (counts().ended > 0 && showEnded() ? "● " + counts().ended : "")).font(11).monospaced().color(META).help("ended"),
-      Text(() => (totalCost() >= 1 ? "$" + Math.round(totalCost()) : "")).font(11).monospaced().color(META),
+      // One count per state in words: orange needs you, blue working, green idle. Then the cost estimate.
+      headCount(() => counts().needs_input, "need you", ORANGE, "needs"),
+      headCount(() => counts().working, "working", BLUE_TEXT, "working"),
+      // The idle chip means idle for 1 hour or more, and this count holds every idle session: no tap.
+      headCount(() => counts().idle, "idle", "#34C759"),
+      headCount(() => (showEnded() ? counts().ended : 0), "ended", META),
+      optional("cost", () => totalCost() >= 1, () => Text(() => "$" + Math.round(totalCost())).font(11).monospaced().color(META)),
     ]).paddingHorizontal(10),
 
-    HStack({ spacing: 4 }, [
-      toggleButton("Here", () => !scopeAll() && !showLimits(), () => setView({ s: false, l: false })),
-      toggleButton("All", () => scopeAll() && !showLimits(), () => setView({ s: true, l: false })),
-      toggleButton("Limits", () => showLimits(), () => setView({ l: !showLimits() })),
-      Spacer(),
+    ZStack({}, [
       // No text: this view reads the tab titles, so it runs again when one changes, and serves the hive page's jumps.
+      // It sits under the control row, so it adds no gap to a row.
       Text(() => hiveGo()).font(1),
-      // Opens the hive graph in the browser: workspaces, sessions and subagents as a tree.
-      Text("hive ↗").font(12).weight("semibold").color("#0A84FF").paddingHorizontal(6).paddingVertical(3)
-        .hoverBackground("#7f7f7f3d").cornerRadius(6)
-        .onTap(() => {
+      HStack({ spacing: 4 }, [
+        HStack({ spacing: 0 }, [
+          segment("Here", () => !scopeAll() && !showLimits(), () => setView({ s: false, l: false })),
+          segment("All", () => scopeAll() && !showLimits(), () => setView({ s: true, l: false })),
+          segment("Limits", () => showLimits(), () => setView({ l: !showLimits() })),
+        ]).padding(2).background("#FFFFFF0F").cornerRadius(8),
+        Spacer(),
+        // The attention sort, then the view by state in place of by workspace.
+        toggleButton("↑", () => attention(), () => setView({ a: !attention() })),
+        toggleButton("state", () => byState(), () => setByState(!byState())),
+        toggleButton("Ended", () => showEnded(), () => setView({ e: !showEnded() })),
+        // Opens the hive graph in the browser: workspaces, sessions and subagents as a tree.
+        toggleButton("hive ↗", () => false, () => {
           // A browser tab inside cmux: it opens a local page and keeps the data after "#".
           // openURL did not open this link.
           const url = hiveUrl();
           if (url) cmux("browser.open_split", { url, workspace_id: data.selectedId(), focus: true });
           else log("hive: the description carries no home folder yet; the watcher writes it within 15 seconds");
         }),
-      toggleButton("Ended", () => showEnded(), () => setView({ e: !showEnded() })),
-    ]).paddingHorizontal(10),
+      ]).paddingHorizontal(10),
+    ]),
 
-    // Filter chips (a second click on the active chip shows all rows again) and the attention sort.
-    HStack({ spacing: 3 }, [
+    // Filter chips (a second click on the active chip shows all rows again), then the Reset chip.
+    optional("chips", () => chipItems().length || viewChanged(), () => HStack({ spacing: 4 }, [
       ForEach({ items: chipItems, key: (f) => f.id }, filterChip),
       Spacer(),
-      // Back to the default view: no chip, tab order, all workspaces, no ended rows. The search text stays.
-      toggleButton("✕", () => false, () => { setAcctFilter(""); setView({ c: "", a: false, s: true, e: false, l: false }); }),
-      toggleButton("↑", () => attention(), () => setView({ a: !attention() })),
-      // Groups the rows by state in place of by workspace.
-      toggleButton("state", () => byState(), () => setByState(!byState())),
-    ]).paddingHorizontal(10),
-    // One chip per account, shown when the sessions run on two accounts or more. A second click shows all again.
-    HStack({ spacing: 3 }, [
-      ForEach({ items: () => { const all = Object.entries(view().accts); return all.length > 1 || acctFilter() ? all.sort().map(([id, n]) => ({ id, n })) : []; }, key: (a) => a.id },
-        (a) => toggleButton(() => a().id + " " + a().n, () => acctFilter() === a().id, () => setAcctFilter(acctFilter() === a().id ? "" : a().id))),
+      optional("reset", viewChanged, resetChip),
+    ]).paddingHorizontal(10)),
+    // One chip per account. A second click shows all again.
+    optional("accts", () => acctItems().length, () => HStack({ spacing: 4 }, [
+      ForEach({ items: acctItems, key: (a) => a.id },
+        (a) => chip(() => a().id, () => String(a().n), () => acctFilter() === a().id, () => setAcctFilter(acctFilter() === a().id ? "" : a().id))),
       Spacer(),
-    ]).paddingHorizontal(10),
-    ForEach({ items: () => (showing() ? [{ id: "showing" }] : []), key: (x) => x.id },
-      () => Text(() => showing()).font(11).color(META).lineLimit(1).paddingHorizontal(12)),
+    ]).paddingHorizontal(10)),
 
-    VStack({ spacing: 3 }, [ForEach({ items: strip, key: (s) => s.key }, (s) => stripRow(s))]),
+    optional("strip", () => strip().length, () => VStack({ spacing: 2 }, [ForEach({ items: strip, key: (s) => s.key }, (s) => stripRow(s))])),
     // The Limits view takes the place of the session list.
-    VStack({ spacing: 5 }, [ForEach({ items: () => (limitsShown() ? limits() : []), key: (s) => s.key }, (s) => limitRow(s, limits().some((x) => x.acct) ? 120 : 58))]),
+    optional("limits", limitsShown, () => VStack({ spacing: 5 }, [ForEach({ items: limits, key: (s) => s.key }, (s) => limitRow(s, limits().some((x) => x.acct) ? 120 : 58))])),
 
-    TextField("", {
-      placeholder: "Search agents",
-      autofocus: false,
-      onEdit: (t) => setQuery(t ?? ""),
-      onSubmit: (t) => setQuery(t ?? ""),
-    }).paddingHorizontal(10),
+    HStack({ spacing: 0 }, [
+      HStack({ spacing: 6 }, [
+        Image("magnifyingglass").font(11).color(META),
+        TextField("", {
+          placeholder: "Search agents",
+          autofocus: false,
+          onEdit: (t) => setQuery(t ?? ""),
+          onSubmit: (t) => setQuery(t ?? ""),
+        }),
+      ]).paddingHorizontal(8).paddingVertical(5).background("#FFFFFF0F").cornerRadius(8),
+    ]).paddingHorizontal(10),
+  ]),
 
     VStack({ spacing: 3 }, [ForEach(
       { items: entries, key: (e) => e.key },
@@ -1112,12 +1209,16 @@ sidebar(() =>
       }
     )]),
 
-    Text(() => (entries().length === 0 && !limitsShown()
-      ? (query().trim()
-        ? "No matches."
-        : "No agents yet. Sessions started in cmux terminals show up here with live status.")
-      : ""))
-      .font(11).color(META).paddingHorizontal(10),
+    // The empty list: no session yet, or nothing that matches; "Clear filters" resets the view and the search text.
+    // The form is fixed per key.
+    optional("none", () => emptyState() === "none", () => VStack({ spacing: 4 }, [
+      Text("No sessions yet").font(13).weight("semibold"),
+      Text("Start an agent in a cmux tab and it shows up here.").font(12).color(META),
+    ]).paddingVertical(16).paddingHorizontal(10)),
+    optional("nomatch", () => emptyState() === "nomatch", () => VStack({ spacing: 4 }, [
+      Text("Nothing matches").font(13).weight("semibold"),
+      Text("Clear filters").font(12).color(BLUE_TEXT).onTap(() => { resetView(); setQuery(""); }),
+    ]).paddingVertical(16).paddingHorizontal(10)),
     Spacer(),
   ]).paddingHorizontal(6),
   { surface: "glass" }
