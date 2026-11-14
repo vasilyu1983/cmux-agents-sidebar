@@ -57,13 +57,17 @@ const flip = (get, set, id) => set({ ...get(), [id]: !get()[id] });
 const filter = () => { const c = filterS() ?? saved().c; return FILTERS.some((f) => f[0] === c) ? c : ""; };
 const attention = () => attentionS() ?? saved().a;
 // Each chip is a short mark, so the row fits a narrow panel; the full name shows under the chips while a filter is on.
-const FILTERS = [["needs", "!", "needs you"], ["working", "▶", "working"], ["ctx", "80%", "context 80% or more"], ["pr", "PR", "has a PR"], ["idle", "1h+", "idle for 1 hour or more"]];
+const FILTERS = [["needs", "!", "needs you"], ["working", "▶", "working"], ["ctx", "80%", "context 80% or more"], ["pr", "PR", "has a PR"], ["idle", "1h+", "idle for 1 hour or more"], ["you", "you", "the next step is yours"], ["push", "push", "commits that no remote holds"]];
+// "Next: you push both repos": the next step is the reader's when the line starts with "you" or "owner".
+const yours = (next) => /^(you|owner)\b/i.test(next ?? "");
 const chipHit = (id, a, sess, epoch) =>
   id === "needs" ? a.status === "needs_input"
     : id === "working" ? a.status === "working"
     : id === "ctx" ? sess.ctx >= 80
     : id === "pr" ? Boolean(sess.pr)
     : id === "idle" ? a.status === "idle" && epoch - (a.lastActivityAt ?? epoch) > 3600
+    : id === "you" ? a.status !== "working" && yours(sess.next)
+    : id === "push" ? sess.ahead > 0
     : false;
 
 // Writes the view into the description of one workspace. Nothing is written while no description carries
@@ -148,6 +152,12 @@ function sessionsOf(w) {
       else if (f.startsWith("lane ")) s.lane = f.slice(5);
       else if (f.startsWith("pr ")) s.pr = f.slice(3);
       else if (f.startsWith("cold ")) s.cold = f;
+      // "next you push": the last "Next:" line of the last reply. "comp 3": compactions. "ahead 2": commits that
+      // no remote holds. "dup": another live session works in the same folder on the same branch.
+      else if (f.startsWith("next ")) s.next = f.slice(5);
+      else if (/^comp \d{1,4}$/.test(f)) s.comp = Number(f.slice(5));
+      else if (/^ahead \d{1,3}$/.test(f)) s.ahead = Number(f.slice(6));
+      else if (f === "dup") s.dup = true;
       else if (f.startsWith("acct ")) {
         // "acct work": the account of the session, a short name from your account list. Another form is left out.
         const m = /^acct ([a-z0-9-]{1,16})$/.exec(f);
@@ -280,6 +290,9 @@ const view = computed(() => {
         prText: sess.pr ?? "",
         acct: sess.acct ?? "",
         wrong: sess.wrong ?? "",
+        // Work marks, in orange: a duplicate session, commits that no remote holds, 3 or more compactions.
+        work: [sess.dup ? "dup" : "", sess.ahead > 0 ? "↑" + sess.ahead : "", sess.comp >= 3 ? sess.comp + "× comp" : ""].filter(Boolean).join(" "),
+        yours: a.status !== "working" && yours(sess.next) ? "→ you" : "",
         cold: a.status === "idle" ? sess.cold ?? "" : "",
         folder: String(a.directory ?? ""),
         // Why the session waits, and its context share when that is 80% or more (the row shows it in red).
@@ -298,6 +311,10 @@ const view = computed(() => {
           ["pr", sess.pr ?? ""],
           ["cache", sess.cold ? sess.cold + " tokens to rewrite on the next message" : ""],
           ["waits", a.status === "needs_input" ? sess.wait ?? "" : ""],
+          ["next", a.status === "working" ? "" : sess.next ?? ""],
+          ["duplicate", sess.dup ? "another live session works in this folder on this branch" : ""],
+          ["not pushed", sess.ahead > 0 ? sess.ahead + " commit(s) that no remote holds" : ""],
+          ["compacted", sess.comp > 0 ? sess.comp + " time(s)" + (sess.comp >= 3 ? "; a fresh session with a hand-over costs less context" : "") : ""],
           ["tool", a.name],
           ["account", sess.acct || (accountMarks().primary && /claude|codex/.test(String(a.kind ?? "")) ? accountMarks().primary + " (primary)" : "")],
           ["rule", sess.wrong ? "the folder rule names " + sess.wrong + "; start the session again on that account" : ""],
@@ -640,6 +657,10 @@ const toolTag = (entry) => HStack({ spacing: 0 }, [
   Text(() => (entry().acct ? " · " + entry().acct : "")).font(9).monospaced().color(() => acctColor(entry().acct)).lineLimit(1),
   Text(() => (entry().wrong ? " ≠ " + entry().wrong : "")).font(9).weight("semibold").monospaced().color("#FF9F0A").lineLimit(1),
 ]);
+const workBadge = (entry) => HStack({ spacing: 4 }, [
+  Text(() => entry().yours).font(9).weight("semibold").monospaced().color("#0A84FF").lineLimit(1),
+  Text(() => entry().work).font(9).weight("semibold").monospaced().color("#FF9F0A").lineLimit(1),
+]);
 const ctxBadge = (entry) =>
   Text(() => entry().ctxHigh).font(9).weight("semibold").monospaced().color("#FF453A").lineLimit(1);
 // One line of the project strip: a dim label and its text. A click opens the workspace that carries it.
@@ -733,6 +754,7 @@ function compactRow(entry) {
       Spacer(),
       prBadge(entry),
       coldBadge(entry),
+      workBadge(entry),
       ctxBadge(entry),
       kidsBadge(entry),
       Text(() => timeText(a(), data.clock()?.epoch ?? 0))
@@ -763,6 +785,7 @@ function agentRow(entry) {
       toolTag(entry),
       unreadBadge(entry),
       Spacer(),
+      workBadge(entry),
       ctxBadge(entry),
       kidsBadge(entry),
       Text(() => timeText(a(), data.clock()?.epoch ?? 0))

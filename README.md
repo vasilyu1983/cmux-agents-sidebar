@@ -16,7 +16,7 @@ A drawing of a cmux window with the panel, with sample names.
 | One band per workspace | Project folder, colour bar, agent count, summed session cost, unread count. A click opens the workspace |
 | One row per session | Status dot, tab title, tool tag, time since the last activity. A click goes to the tab. With an accounts file the tag names the account (`claude · work`), and search matches it |
 | `NEEDS YOU` block | All sessions that wait for your input, at the top, with the reason when it is known |
-| Filter chips | `!` needs you, `▶` working, `80%` context nearly full, `PR` has a pull request, `1h+` idle for an hour. Each chip shows its count |
+| Filter chips | `!` needs you, `▶` working, `80%` context nearly full, `PR` has a pull request, `1h+` idle for an hour, `you` the next step is yours, `push` commits that no remote holds. Each chip shows its count |
 | `↑` sort | Sessions that need attention first; the default order is the tab order |
 | `✕` | Back to the default view: no chip, tab order, all workspaces, no ended rows. The search text stays |
 | Subagents | `▸ 2 sub` on a row opens the subagent rows. The count comes from cmux, or from the Claude Code records when cmux reports none |
@@ -30,6 +30,8 @@ A drawing of a cmux window with the panel, with sample names.
 | Account colour | Each account name has one fixed colour, the same on the row tag, on the hive page and at the start of the session's status line. There are six colours, so two names can share one |
 | Wrong-account mark | `≠ work` in orange on a row: the folder rules name `work` for that folder, and the session runs on another account. Needs `rule` lines |
 | Limit warning | One cmux notification when a limit window of any account passes 80% |
+| Next step | If the last reply of a Claude Code session ends with a line `Next: ...`, the row details show it. `→ you` in blue on the row when that line starts with `you` or `owner` |
+| Work marks | In orange on a row: `dup` when two live sessions work in one folder on one work branch, `↑2` for 2 commits that no remote holds, `3× comp` from the third context compaction |
 | Cost per account | In `Limits`, under the limit lines: the summed cost estimate of the open Claude Code sessions per account |
 
 With the optional Claude Code status line, each Claude Code row also shows the model and effort, the context share (red from 80%), the session cost estimate, a `cold` mark when the prompt cache went cold, and the count line shows the summed cost.
@@ -125,6 +127,7 @@ Files that appear later, while the kit runs:
 | File | Written by | Content |
 |------|------------|---------|
 | `~/.cache/cmux-agents/<session id>` | The status line | Model, context, cost and limit figures of one session |
+| `~/.cache/cmux-agents/<session id>.seen` | `label-tabs.py` | How far the transcript was read, the compaction count and the last `Next:` line |
 | `~/.cache/cmux-agents/limit-warned` | `label-tabs.py` | The limit windows that already got a warning, so each one warns once |
 | `~/.config/cmux/scripts/hive-data.js` | `label-tabs.py` | The data of the hive page; it holds your session titles (mode 600) |
 | `~/.config/cmux/agents-accounts` | You, or `agents-account-add.sh` | The account list and the folder rules |
@@ -293,6 +296,8 @@ Facts that follow from this design:
 - The `?` mark is a hint. A long silent command also leaves the transcript quiet.
 - The hive page gets its first data in the link, after `#`. After that it reads `hive-data.js`, a file that `label-tabs.py` writes next to the page every 15 seconds (mode 600; it holds your session titles). The page loads nothing from the network. Only Claude Code sessions update; other tools keep the state of the first picture. Without a fresh file the page says "Fixed picture".
 - The panel saves your view (chip, sort, scope, ended rows, folds) in a description part, `@view: ...`, on a click. `label-tabs.py` keeps that part, so the view returns after a panel reload.
+- For the next step and the compaction count, `label-tabs.py` reads the transcript of each live Claude Code session, only the part that is new since the last pass. It keeps the position, the count and the one `Next:` line in `~/.cache/cmux-agents/<session id>.seen` (mode 600). A new request of yours clears the line.
+- For the work marks it asks `git` in the start folder of each session: the branch, and the commits of `HEAD` that no remote branch holds. It never fetches, so the count is as fresh as your last fetch or push. `main`, `master`, `dev`, `develop` and `trunk` never count as a duplicate.
 - `label-tabs.py` deletes files in `~/.cache/cmux-agents` that are older than 14 days.
 - The account of a session comes from its data folder: the status line passes the folder name for Claude Code, and `label-tabs.py` reads the variable `CODEX_HOME` of a Codex tab. The accounts file maps the folder to a name. A Claude Code row gets its account after the first reply of the session.
 - The limit warning is a `cmux notify` call from `label-tabs.py`: one per limit window at 80% or more. A window that drops below 80% can warn again.
@@ -315,6 +320,7 @@ Without a watcher the strip shows only the `week` line.
 - Everything stays on your Mac. No script calls the network.
 - `label-tabs.py` reads the environment of your own agent processes to find two values, `CMUX_SURFACE_ID` and `CODEX_HOME`. It keeps nothing else from it.
 - The only message that the kit sends is a local cmux notification for a limit warning.
+- `label-tabs.py` reads the transcripts of your live Claude Code sessions on disk. One line of the last reply, the `Next:` line, goes into the workspace description and the hive data file; nothing else leaves the transcript.
 - `~/.cache/cmux-agents` is created with mode 700.
 - The panel writes to the clipboard only from a menu item that you click.
 - The panel builds no shell command. A strip menu copies the text of its line and nothing else.
@@ -344,6 +350,7 @@ Tab labels stay until you rename the tabs or close them.
 - The session cost is a running total. The panel shows no cost per day.
 - The wrong-account mark, the limit warning and the Codex account tag were tested with sample data and stub commands, not on live sessions.
 - OpenCode, Grok Build and Antigravity leave no limit figure in their local files, as far as their table and key names show. OpenCode keeps a cost per session; the panel does not show it yet.
+- The next step, the compaction count and the marks `dup` and `↑` were tested with sample data; on one Mac the next step and the count showed in the data. The new chips `you` and `push` were not seen on screen, and the chip row can be too wide for a narrow sidebar.
 - The panel cannot start a new session. No documented cmux call for that was found.
 
 ## License

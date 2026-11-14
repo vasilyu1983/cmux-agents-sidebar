@@ -43,6 +43,9 @@ DEFAULT_ACCOUNT = []  # the name of the "default" line, when it has one
 RULES = []  # (folder prefix, account name) per "rule" line
 TAB_ACCOUNTS = {}  # surface id -> account name, for a Codex process that runs with a listed account folder
 CODEX_ENV = re.compile(r" CODEX_HOME=([^ ]{1,300})(?: |$)")
+SHARED_BRANCHES = {"main", "master", "dev", "develop", "trunk"}  # two sessions on one of these are not a duplicate
+NEXT_LINE = re.compile(r"^[\s*_`>-]{0,6}Next:[\s*_`]{0,4}(.+)$", re.M)
+GIT_MARKS = {}  # folder -> (branch, commits that no remote holds), for one pass
 
 
 def run(args):
@@ -119,6 +122,85 @@ def wrong_account(session, account):
     return [f"wrong {wanted}"] if re.fullmatch(ACCOUNT_NAME, wanted) else []
 
 
+def transcript_marks(sid, home):
+    """["comp 3", "next you push both repos"] from the transcript of a Claude Code session: how often its context
+    was compacted, and the last "Next: ..." line of its last reply. Only the part of the file that is new since
+    the last pass is read; the position, the count and the line are kept in ~/.cache/cmux-agents/<sid>.seen
+    (mode 600). A new request from the user, or a reply without such a line, clears the line."""
+    found = glob.glob(os.path.join(home, "projects", "*", f"{sid}.jsonl"))
+    if not found:
+        return []
+    seen = os.path.expanduser(f"~/.cache/cmux-agents/{sid}.seen")
+    offset, count, step = 0, 0, ""
+    try:
+        with open(seen) as fh:
+            parts = fh.read(400).rstrip("\n").split("\t")
+        offset, count, step = int(parts[0]), int(parts[1]), parts[2] if len(parts) > 2 else ""
+    except (OSError, ValueError, IndexError):
+        pass  # no state yet, or a damaged one: the file is read from its start
+    try:
+        size = os.path.getsize(found[0])
+        if size < offset:
+            offset, count, step = 0, 0, ""
+        if size > offset:
+            with open(found[0], "rb") as fh:
+                fh.seek(offset)
+                data = fh.read()
+            data = data[:data.rfind(b"\n") + 1]
+            start = offset
+            for line in data.splitlines(keepends=True):
+                start += len(line)
+                if b'"isCompactSummary":true' in line:
+                    count += 1
+                # The reply text matters only near the end of the file; older lines are not parsed.
+                if size - start > 2_000_000 or b'"isSidechain":true' in line:
+                    continue
+                if not (b'"type":"assistant"' in line or b'"type":"user"' in line):
+                    continue
+                try:
+                    record = json.loads(line)
+                except ValueError:
+                    continue
+                content = (record.get("message") or {}).get("content")
+                blocks = content if isinstance(content, list) else [{"type": "text", "text": content}]
+                text = "\n".join(str(b.get("text") or "") for b in blocks if isinstance(b, dict) and b.get("type") == "text")
+                if not text.strip() or record.get("isCompactSummary") or record.get("isMeta"):
+                    continue
+                if record.get("type") == "assistant":
+                    lines = NEXT_LINE.findall(text)
+                    step = clean(re.sub(r"[`*_]", "", lines[-1]), 70) if lines else ""
+                elif record.get("type") == "user":
+                    step = ""
+            offset += len(data)
+            fd = os.open(seen, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "w") as fh:
+                fh.write(f"{offset}\t{count}\t{step}\n")
+    except OSError as err:
+        print(f"label-tabs: transcript of {sid}: {err}", file=sys.stderr)
+    return ([f"comp {count}"] if count else []) + ([f"next {step}"] if step else [])
+
+
+def git_marks(folder):
+    """(branch, commits of HEAD that no remote holds) for a folder; ("", 0) outside a repository, on a detached
+    HEAD, or in a repository without remote branches. Asked once per folder and pass."""
+    if folder not in GIT_MARKS:
+        mark = ("", 0)
+        try:
+            ask = lambda *args: subprocess.run(["git", "-C", folder, *args], capture_output=True, text=True, timeout=3,
+                                               env={**os.environ, "GIT_OPTIONAL_LOCKS": "0"})
+            branch = ask("symbolic-ref", "--short", "-q", "HEAD")
+            if branch.returncode == 0 and branch.stdout.strip():
+                ahead = 0
+                if ask("for-each-ref", "--count=1", "refs/remotes").stdout.strip():
+                    counted = ask("rev-list", "--count", "HEAD", "--not", "--remotes").stdout.strip()
+                    ahead = int(counted) if counted.isdigit() else 0
+                mark = (branch.stdout.strip(), ahead)
+        except (OSError, subprocess.TimeoutExpired) as err:
+            print(f"label-tabs: git in {folder}: {err}", file=sys.stderr)
+        GIT_MARKS[folder] = mark
+    return GIT_MARKS[folder]
+
+
 def homes(tool, usual):
     """[(folder, account name)] for one tool: its usual folder first ("" when no line lists that folder),
     then the other listed folders in file order."""
@@ -129,7 +211,7 @@ def homes(tool, usual):
 
 
 def claude_names():
-    names, newest = {}, {}
+    names, newest, places = {}, {}, {}
     prs = open_prs()
     for home, account in homes("claude", "~/.claude"):
         for path in glob.glob(os.path.join(home, "sessions", "*.json")):
@@ -151,11 +233,27 @@ def claude_names():
             names[session["pid"]] = (session["name"], waits, session.get("status") == "busy" and quiet(session, home),
                                      model_of(session, prs, home, account), HIVE_STATUS.get(session.get("status"), ""),
                                      since if isinstance(since, (int, float)) else 0, str(session.get("sessionId") or ""))
+            sid, cwd = str(session.get("sessionId") or ""), str(session.get("cwd") or "")
+            fields = names[session["pid"]][3]
+            if re.fullmatch(SESSION_ID, sid):
+                fields += transcript_marks(sid, home)
+            if cwd.startswith("/") and os.path.isdir(cwd):
+                branch, ahead = git_marks(cwd)
+                if ahead:
+                    fields.append(f"ahead {min(ahead, 999)}")
+                if branch and branch not in SHARED_BRANCHES:
+                    places.setdefault((cwd, branch), {})[session["pid"]] = fields
+    # Two live sessions in one folder on one work branch: both get "dup".
+    for group in places.values():
+        if len(group) > 1:
+            for fields in group.values():
+                fields.append("dup")
     return names
 
 
 def clean_cache(live_ids):
-    """Deletes hand-over files older than KEEP_SECONDS. Only regular files whose name is a session id;
+    """Deletes hand-over files older than KEEP_SECONDS. Only regular files whose name is a session id, or a
+    session id with ".seen";
     a symlink is never followed; the file of a session that still runs stays."""
     folder = os.path.expanduser("~/.cache/cmux-agents")
     try:
@@ -167,7 +265,8 @@ def clean_cache(live_ids):
         return
     for entry in entries:
         try:
-            if (not re.fullmatch(SESSION_ID, entry.name) or entry.name in live_ids
+            sid = entry.name[:-5] if entry.name.endswith(".seen") else entry.name
+            if (not re.fullmatch(SESSION_ID, sid) or sid in live_ids
                     or not entry.is_file(follow_symlinks=False)
                     or time.time() - entry.stat(follow_symlinks=False).st_mtime < KEEP_SECONDS):
                 continue
@@ -223,7 +322,7 @@ def hive_agent(fields):
             agent["l"] = field[5:]
         elif field.startswith("acct "):
             agent["u"] = field[5:]
-        elif not field.startswith(("cold ", "waits ")) and "m" not in agent:
+        elif not field.startswith(("cold ", "waits ", "comp ", "next ", "ahead ", "wrong ")) and field != "dup" and "m" not in agent:
             agent["m"] = field
     return agent
 
