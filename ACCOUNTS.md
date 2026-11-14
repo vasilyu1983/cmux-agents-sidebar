@@ -69,6 +69,7 @@ tool gets there. For one start against the rule, name the account: `cla personal
 | `cla <account> [arguments]` | Claude Code with that account, for this start only |
 | `cdx <account> [arguments]` | Codex with that account, for this start only |
 | `accounts` | The account list, and the account that the current folder gets |
+| `accounts doctor` | Checks the folder and the links of every extra account, and adds missing links |
 
 ## Maintain
 
@@ -78,6 +79,8 @@ account. It changes nothing that is in order, adds links that a newer list holds
 ```
 ~/.config/cmux/scripts/agents-account-add.sh claude work
 ```
+
+`accounts doctor` runs that command for every extra account in one go.
 
 **Check the links.** The same command is the health check. The states:
 
@@ -134,6 +137,7 @@ not read personal notes.
 | Sign | Likely cause | Check |
 |---|---|---|
 | A session runs on the wrong account | No rule matches the folder, or the names differ between tools | `accounts` in that folder |
+| `≠ work` in orange on a panel row | The session was started on another account than the folder rule names | Close it and start it again with plain `claude`, or with `cla work` |
 | `unknown account` | A typing error, or no line names it | The accounts file |
 | `the folder ... is missing` | The folder was deleted or never made | Run the add script |
 | The tool asks for a login on every start | The login for that folder did not save | Log in again with that account's line |

@@ -42,6 +42,16 @@ const showLimits = () => showLimitsS() ?? saved().l;
 const collapsed = () => ({ ...saved().folds, ...collapsedS() });
 const [openKids, setOpenKids] = signal({});
 const [openInfo, setOpenInfo] = signal({});
+// The account filter: "" = every account. Not saved; it lasts until the panel reloads.
+const [acctFilter, setAcctFilter] = signal("");
+// One fixed colour per account name. The status line script uses the same list and the same sum, so a session
+// and its row carry one colour.
+const ACCT_COLORS = ["#5fd7ff", "#af87ff", "#ff87d7", "#00d7af", "#d7d75f", "#5fafff"];
+const acctColor = (name) => {
+  let h = 0;
+  for (const ch of String(name ?? "")) h = (h * 31 + ch.charCodeAt(0)) % 1000003;
+  return ACCT_COLORS[h % ACCT_COLORS.length];
+};
 const flip = (get, set, id) => set({ ...get(), [id]: !get()[id] });
 // One filter chip at a time ("" = all rows), and the row order: tab order, or the sessions that need attention first.
 const filter = () => { const c = filterS() ?? saved().c; return FILTERS.some((f) => f[0] === c) ? c : ""; };
@@ -143,6 +153,11 @@ function sessionsOf(w) {
         const m = /^acct ([a-z0-9-]{1,16})$/.exec(f);
         if (m) s.acct = m[1];
       }
+      else if (f.startsWith("wrong ")) {
+        // "wrong work": the folder rules name this account for the session's folder, and the session runs on another.
+        const m = /^wrong ([a-z0-9-]{1,16})$/.exec(f);
+        if (m) s.wrong = m[1];
+      }
       else if (f.startsWith("sub ")) {
         // "sub 2/7: Explore repo; Review diff": subagents from the Claude Code records, running ones by name.
         // A field that does not have this form is left out.
@@ -217,7 +232,10 @@ const dirTail = (d) => {
 const view = computed(() => {
   const epoch = data.clock()?.epoch ?? 0;
   const all = data.workspaces() ?? [];
-  const scoped = scopeAll() ? all : all.filter((w) => w.selected);
+  // A search text looks in every workspace, whatever the scope: a typed query must find the session.
+  const scoped = scopeAll() || query().trim() ? all : all.filter((w) => w.selected);
+  // Rows per account, counted before the filters: the number on each account chip.
+  const accts = {};
   const out = [];
   const waiting = [];
   // Rows per chip, counted before the chip filter: the number on each chip.
@@ -246,6 +264,10 @@ const view = computed(() => {
       const sess = { ...(models[sessionName(tabTitle)] ?? {}) };
       if (!sess.acct) sess.acct = accountMarks().tabs[String(tab?.id ?? "").toUpperCase()] ?? "";
       const stalled = /^\[[^\]]* \?\]/.test(tabTitle);
+      // The account of the row: a listed one, or the primary for a tool that can have several.
+      const who = sess.acct || (/claude|codex/.test(String(a.kind ?? "")) ? accountMarks().primary : "");
+      if (who) accts[who] = (accts[who] ?? 0) + 1;
+      if (acctFilter() && who !== acctFilter()) continue;
       for (const id of Object.keys(chips)) if (chipHit(id, a, sess, epoch)) chips[id] += 1;
       if (filter() && !chipHit(filter(), a, sess, epoch)) continue;
       // Subagents: what cmux reports; when it reports none, what label-tabs.py found in the Claude Code records.
@@ -257,6 +279,7 @@ const view = computed(() => {
         // The PR of the lane branch where the session works, with the state from your merge tool: "#644 needs grant".
         prText: sess.pr ?? "",
         acct: sess.acct ?? "",
+        wrong: sess.wrong ?? "",
         cold: a.status === "idle" ? sess.cold ?? "" : "",
         folder: String(a.directory ?? ""),
         // Why the session waits, and its context share when that is 80% or more (the row shows it in red).
@@ -277,6 +300,7 @@ const view = computed(() => {
           ["waits", a.status === "needs_input" ? sess.wait ?? "" : ""],
           ["tool", a.name],
           ["account", sess.acct || (accountMarks().primary && /claude|codex/.test(String(a.kind ?? "")) ? accountMarks().primary + " (primary)" : "")],
+          ["rule", sess.wrong ? "the folder rule names " + sess.wrong + "; start the session again on that account" : ""],
           ["model", sess.model ?? ""],
           ["context", sess.ctx >= 0 ? sess.ctx + "%" : ""],
           ["cost", sess.cost ?? ""],
@@ -305,7 +329,7 @@ const view = computed(() => {
       });
     }
     // A workspace with no agent still gets its band, so the panel can stand in for the left list. Not during a search.
-    if (rows.length === 0 && (query().trim() || filter())) continue;
+    if (rows.length === 0 && (query().trim() || filter() || acctFilter())) continue;
     // Same order as the tabs of the workspace; waiting sessions also show in the top block.
     // The "attention" toggle puts the sessions that need the owner first, and keeps tab order inside each rank.
     rows.sort((x, y) => (attention() ? x.rank - y.rank : 0) || x.tabIndex - y.tabIndex);
@@ -358,8 +382,8 @@ const view = computed(() => {
   }
   // "Needs you": every waiting session of every workspace, longest wait first, above the groups.
   waiting.sort((x, y) => (x.agent.sinceEpoch ?? 0) - (y.agent.sinceEpoch ?? 0));
-  if (waiting.length === 0) return { rows: out, chips };
-  return { chips, rows: [{ key: "h:needs-you", kind: "header", needsYou: true, wsTitle: "NEEDS YOU", wsColor: "#FF9F0A", count: waiting.length, wsSelected: true, dots: [] }, ...waiting, ...out] };
+  if (waiting.length === 0) return { rows: out, chips, accts };
+  return { chips, accts, rows: [{ key: "h:needs-you", kind: "header", needsYou: true, wsTitle: "NEEDS YOU", wsColor: "#FF9F0A", count: waiting.length, wsSelected: true, dots: [] }, ...waiting, ...out] };
 });
 // A search text brings the session list back, also while Limits is on: a search must always find sessions.
 const limitsShown = () => showLimits() && !query().trim();
@@ -419,6 +443,20 @@ const limits = computed(() => {
   }
   // Lines of one tool stay together, and inside a tool the lines of one account.
   out.sort((a, b) => a.tool - b.tool || (a.acct < b.acct ? -1 : a.acct > b.acct ? 1 : 0));
+  // The cost estimate per account, summed over the sessions that report one (Claude Code only).
+  const sums = {};
+  for (const w of accountMarks().primary ? data.workspaces() ?? [] : []) {
+    for (const s of Object.values(sessionsOf(w))) {
+      const cost = parseFloat(String(s.cost ?? "").slice(1)) || 0;
+      if (!cost) continue;
+      const who = s.acct || accountMarks().primary;
+      sums[who] = { sum: (sums[who]?.sum ?? 0) + cost, n: (sums[who]?.n ?? 0) + 1 };
+    }
+  }
+  for (const who of Object.keys(sums).sort()) {
+    const value = "$" + sums[who].sum.toFixed(2) + " · " + sums[who].n + (sums[who].n === 1 ? " session" : " sessions");
+    out.push({ key: "cost-" + who, label: "cost " + who, value, color: "secondary", copy: "cost " + who + " " + value, wsId: data.selectedId(), acct: who });
+  }
   if (out.length === 0) out.push({ key: "limit-none", label: "limits", value: "no data yet: the watcher writes it within 15 seconds", color: "tertiary", copy: "", wsId: data.selectedId() });
   return out;
 });
@@ -596,8 +634,12 @@ const rowTitle = (t) => {
 
 // The tool of the session as a small tag after the name: "claude", "codex", or what cmux reports for another tool.
 // With an account in the data, the tag also names it: "claude · work".
-const toolTag = (entry) =>
-  Text(() => (entry().agent.kind ?? "") + (entry().acct ? " · " + entry().acct : "")).font(9).monospaced().color("tertiary").lineLimit(1);
+// The account has its own colour. "≠ work" in orange: the folder rule names another account than the session's.
+const toolTag = (entry) => HStack({ spacing: 0 }, [
+  Text(() => entry().agent.kind ?? "").font(9).monospaced().color("tertiary").lineLimit(1),
+  Text(() => (entry().acct ? " · " + entry().acct : "")).font(9).monospaced().color(() => acctColor(entry().acct)).lineLimit(1),
+  Text(() => (entry().wrong ? " ≠ " + entry().wrong : "")).font(9).weight("semibold").monospaced().color("#FF9F0A").lineLimit(1),
+]);
 const ctxBadge = (entry) =>
   Text(() => entry().ctxHigh).font(9).weight("semibold").monospaced().color("#FF453A").lineLimit(1);
 // One line of the project strip: a dim label and its text. A click opens the workspace that carries it.
@@ -830,14 +872,20 @@ sidebar(() =>
           .opacity(() => ((view().chips[f().id] ?? 0) === 0 && filter() !== f().id ? 0.45 : 1))),
       Spacer(),
       // Back to the default view: no chip, tab order, all workspaces, no ended rows. The search text stays.
-      toggleButton("✕", () => false, () => setView({ c: "", a: false, s: true, e: false, l: false })),
+      toggleButton("✕", () => false, () => { setAcctFilter(""); setView({ c: "", a: false, s: true, e: false, l: false }); }),
       toggleButton("↑", () => attention(), () => setView({ a: !attention() })),
+    ]).paddingHorizontal(10),
+    // One chip per account, shown when the sessions run on two accounts or more. A second click shows all again.
+    HStack({ spacing: 3 }, [
+      ForEach({ items: () => { const all = Object.entries(view().accts); return all.length > 1 || acctFilter() ? all.sort().map(([id, n]) => ({ id, n })) : []; }, key: (a) => a.id },
+        (a) => toggleButton(() => a().id + " " + a().n, () => acctFilter() === a().id, () => setAcctFilter(acctFilter() === a().id ? "" : a().id))),
+      Spacer(),
     ]).paddingHorizontal(10),
     Text(() => {
       const on = FILTERS.find((f) => f[0] === filter());
-      return [on ? "showing: " + on[2] : "", attention() ? "sorted: needs attention first" : "",
+      return [on ? "showing: " + on[2] : "", acctFilter() ? "account: " + acctFilter() : "", attention() ? "sorted: needs attention first" : "",
         scopeAll() ? "" : "this workspace only", showEnded() ? "with ended" : "",
-        on || attention() || !scopeAll() || showEnded() ? "✕ resets" : ""].filter(Boolean).join(" · ");
+        on || acctFilter() || attention() || !scopeAll() || showEnded() ? "✕ resets" : ""].filter(Boolean).join(" · ");
     }).font(10).color("tertiary").lineLimit(1).paddingHorizontal(12),
 
     VStack({ spacing: 3 }, [ForEach({ items: strip, key: (s) => s.key }, (s) => stripRow(s))]),

@@ -25,7 +25,12 @@ A drawing of a cmux window with the panel, with sample names.
 | `hive ↗` | A graph page: workspace → session → subagent, in a cmux browser tab. It updates every 15 seconds. The open tab has a blue box. A click on a session goes to its tab, and the page follows you to another workspace |
 | Next waiting | `next-waiting.sh` goes to the Claude Code session that has waited for you the longest |
 | `Limits` | Next to `Here` and `All`: the rate limits of each agent tool on this Mac, per window (5 hours, week), with the reset time and the age of the figure. With an accounts file: one line per tool and account. The panel remembers the choice |
-| Search | Type in `Search agents`: rows stay when the text is in the tab title (with the session name), the tool, the account, the workspace name or the folder. Capital letters do not matter. Search looks only in the current scope: with `Here` it sees this workspace, so choose `All` to search every workspace. A chip narrows the result further. While `Limits` is on, a search text shows the sessions again |
+| Search | Type in `Search agents`: rows stay when the text is in the tab title (with the session name), the tool, the account, the workspace name or the folder. Capital letters do not matter. A search text looks in every workspace, also with `Here` on. A chip narrows the result further. While `Limits` is on, a search text shows the sessions again |
+| Account chips | With sessions on two accounts or more, one chip per account under the filter chips, with its row count. A click shows only that account; a second click, or `✕`, shows all |
+| Account colour | Each account name has one fixed colour, the same on the row tag and at the start of the session's status line |
+| Wrong-account mark | `≠ work` in orange on a row: the folder rules name `work` for that folder, and the session runs on another account. Needs `rule` lines |
+| Limit warning | One cmux notification when a limit window of any account passes 80% |
+| Cost per account | In `Limits`, under the limit lines: the summed cost estimate of the open Claude Code sessions per account |
 
 With the optional Claude Code status line, each Claude Code row also shows the model and effort, the context share (red from 80%), the session cost estimate, a `cold` mark when the prompt cache went cold, and the count line shows the summed cost.
 
@@ -243,6 +248,9 @@ Where you see the account:
 - A panel row names the account after the tool (`claude · work`, `codex · work`). For Codex the watcher reads one variable, `CODEX_HOME`, from the process of that tab.
 - The detail lines of a row hold `account`; a session on the default account reads `personal (primary)`, with the name from your `default` line.
 - `Limits` names the default account on the lines of the normal folder.
+- The account name has one fixed colour on the row tag and in the status line. The status line takes the name from the folder (`~/.claude-work` gives `work`), so the colours match when the folder follows that pattern.
+- `≠ work` on a row means that the folder rules name another account for that folder than the one the session runs on. Start the session again with the right account.
+- `accounts doctor` checks the folder and the links of every extra account in one run.
 
 Limits to know:
 
@@ -296,12 +304,14 @@ Without a watcher the strip shows only the `week` line.
 
 ## Remove
 
+Run this in Terminal, in the folder of the repo. The first line shows the plan; the second deletes.
+
 ```sh
-rm ~/.config/cmux/sidebars/agents.js
-rm ~/.config/cmux/scripts/label-tabs.py ~/.config/cmux/scripts/agents-watch.sh ~/.config/cmux/scripts/hive.html
-rm -f ~/.config/cmux/scripts/next-waiting.sh ~/.config/cmux/scripts/hive-data.js
-rm -r ~/.cache/cmux-agents
+bash uninstall.sh
+bash uninstall.sh --yes
 ```
+
+It removes the panel, the scripts and `~/.cache/cmux-agents`. It never touches your accounts file, your account folders, a login, or the Claude Code settings, and it lists what is left for you.
 
 If you installed the status line: delete `~/.claude/statusline-command.sh` and the `statusLine` key in `~/.claude/settings.json`, or restore your `.bak` copies.
 Tab labels stay until you rename the tabs or close them.

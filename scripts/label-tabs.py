@@ -40,6 +40,7 @@ ACCOUNT_NAME = r"[a-z0-9-]{1,16}"
 ACCOUNT_TOOLS = ("claude", "codex", "opencode")
 ACCOUNTS = []  # (tool, name, folder) per valid "account" line of the accounts file, in file order
 DEFAULT_ACCOUNT = []  # the name of the "default" line, when it has one
+RULES = []  # (folder prefix, account name) per "rule" line
 TAB_ACCOUNTS = {}  # surface id -> account name, for a Codex process that runs with a listed account folder
 CODEX_ENV = re.compile(r" CODEX_HOME=([^ ]{1,300})(?: |$)")
 
@@ -90,13 +91,32 @@ def read_accounts():
             if good:
                 ACCOUNTS.append((words[1], words[2], folder))
         elif words[0] == "rule":
-            good = len(words) == 3 and bool(re.fullmatch(ACCOUNT_NAME, words[2]))
+            # The name is the last word, so the folder prefix may hold spaces (the launcher reads it the same way).
+            good = len(words) >= 3 and bool(re.fullmatch(ACCOUNT_NAME, words[-1]))
+            if good:
+                RULES.append((os.path.expanduser(" ".join(words[1:-1])).rstrip("/"), words[-1]))
         elif words[0] == "default":
             good = len(words) == 2 and bool(re.fullmatch(ACCOUNT_NAME, words[1])) and not DEFAULT_ACCOUNT
             if good:
                 DEFAULT_ACCOUNT.append(words[1])
         if not good:
             print(f"label-tabs: accounts file: line {number} skipped", file=sys.stderr)
+
+
+def wrong_account(session, account):
+    """["wrong <name>"] when the folder rules name another account for the start folder of a Claude Code session
+    than the one it runs on; [] without rules. `account` is "" for the normal folder. A rule name with no
+    Claude Code account line means the normal folder, as in the launcher."""
+    cwd = str(session.get("cwd") or "")
+    if not RULES or not cwd.startswith("/"):
+        return []
+    best = max((rule for rule in RULES if cwd == rule[0] or cwd.startswith(rule[0] + "/")),
+               key=lambda rule: len(rule[0]), default=None)
+    wanted = best[1] if best else (DEFAULT_ACCOUNT[0] if DEFAULT_ACCOUNT else "")
+    listed = {name for tool, name, _folder in ACCOUNTS if tool == "claude"}
+    if (wanted if wanted in listed else "") == account:
+        return []
+    return [f"wrong {wanted}"] if re.fullmatch(ACCOUNT_NAME, wanted) else []
 
 
 def homes(tool, usual):
@@ -304,14 +324,14 @@ def model_of(session, prs, home, account):
             parts = fh.read(300).split("\t")
         at = os.path.getmtime(path)
     except OSError:
-        return ([f"acct {account}"] if account else []) + subagents_of(sid, home)
+        return ([f"acct {account}"] if account else []) + wrong_account(session, account) + subagents_of(sid, home)
     parts += [""] * (10 - len(parts))
     if not account and parts[9]:
         # The record sits in the usual folder: the status line's config folder name decides, when one line has it.
         named = [name for kind, name, folder in ACCOUNTS if kind == "claude" and os.path.basename(folder) == parts[9]]
         account = named[0] if len(named) == 1 else ""
     model = re.sub(r"[^\w .-]", "", parts[0]).strip()
-    fields = ([model] if model else []) + ([f"acct {account}"] if account else [])
+    fields = ([model] if model else []) + ([f"acct {account}"] if account else []) + wrong_account(session, account)
     if re.fullmatch(r"\d{1,3}", parts[1]):
         fields.append(f"ctx {parts[1]}%")
     if re.fullmatch(r"\d{1,6}\.\d\d", parts[2]):
@@ -343,6 +363,7 @@ def general_marks():
     if week:
         found.append(f"@week: {week['used']}%")
     limits = all_limits()
+    warn_limits(limits)
     if limits:
         found.append("@limits: " + ";".join(limits))
     if ACCOUNTS and DEFAULT_ACCOUNT:
@@ -413,6 +434,42 @@ def codex_limits(home, account):
             if found:
                 return found
     return []
+
+
+def warn_limits(items):
+    """One cmux notification when a limit window passes 80%. The windows that are at 80% or more are kept in
+    ~/.cache/cmux-agents/limit-warned, so each one warns once; a window that drops below 80% can warn again."""
+    hot = {}
+    for item in items:
+        parts = item.split(",")
+        if len(parts) >= 5 and parts[2].isdigit() and int(parts[2]) >= 80 and parts[3] != "ended":
+            hot[",".join([parts[0], parts[1]] + parts[5:6])] = parts
+    path = os.path.expanduser("~/.cache/cmux-agents/limit-warned")
+    try:
+        with open(path) as fh:
+            known = set(fh.read(4000).split("\n"))
+    except FileNotFoundError:
+        known = set()
+    except OSError as err:
+        print(f"label-tabs: limit warnings not read: {err}", file=sys.stderr)
+        return
+    kept = set(hot) & known
+    for key in sorted(set(hot) - known):
+        parts = hot[key]
+        who = " ".join([parts[0].capitalize()] + parts[5:6])
+        sent = run(["cmux", "notify", "--title", f"{who}: {parts[1] or 'limit'} window at {parts[2]}%",
+                    "--body", f"resets {parts[3]}" if parts[3] else "reset time unknown"])
+        if sent.returncode == 0:
+            kept.add(key)
+        else:
+            print(f"label-tabs: limit warning not sent: {sent.stderr.strip()}", file=sys.stderr)
+    if kept != known - {""}:
+        try:
+            os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
+            with open(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600), "w") as fh:
+                fh.write("\n".join(sorted(kept)))
+        except OSError as err:
+            print(f"label-tabs: limit warnings not saved: {err}", file=sys.stderr)
 
 
 def all_limits():

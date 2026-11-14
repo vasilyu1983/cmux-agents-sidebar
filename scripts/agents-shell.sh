@@ -5,6 +5,7 @@
 # cla <account> [args]      Claude Code with that account, for this start only
 # cdx <account> [args]      Codex with that account, for this start only
 # accounts                  the account list, and the account that this folder gets
+# accounts doctor           checks the folder and the links of every extra account, and adds missing links
 _agent_run="$HOME/.config/cmux/scripts/agent-run.sh"
 claude() { "$_agent_run" claude "$@"; }
 codex() { "$_agent_run" codex "$@"; }
@@ -20,7 +21,18 @@ cdx() {
   AGENT_ACCOUNT="$account" "$_agent_run" codex "$@"
 }
 accounts() {
-  local conf="$HOME/.config/cmux/agents-accounts" tool
+  local conf="$HOME/.config/cmux/agents-accounts" tool kw name rest
+  if [ "${1:-}" = doctor ]; then
+    # Checks the folder and the links of every extra account, and adds missing links.
+    [ -f "$conf" ] || { echo "no accounts file: $conf"; return 1; }
+    # The file is read on its own descriptor, so the add script keeps the terminal as its input.
+    while read -r -u 3 kw tool name rest; do
+      [ "$kw" = account ] || continue
+      echo "== $tool $name"
+      "$HOME/.config/cmux/scripts/agents-account-add.sh" "$tool" "$name"
+    done 3<"$conf"
+    return 0
+  fi
   if [ -f "$conf" ]; then grep -v '^[[:space:]]*\(#\|$\)' "$conf"; else echo "no accounts file: $conf"; fi
   for tool in claude codex opencode; do
     command -v "$tool" >/dev/null 2>&1 && echo "this folder, $tool: $("$_agent_run" --which "$tool")"

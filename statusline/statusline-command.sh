@@ -101,7 +101,15 @@ acct_seg=""
 if [ -n "${CLAUDE_CONFIG_DIR:-}" ]; then
   acct=${CLAUDE_CONFIG_DIR%/}; acct=${acct##*/}; acct=${acct#.claude-}
   acct=$(printf '%s' "$acct" | LC_ALL=C tr -cd 'A-Za-z0-9._-' | cut -c1-24)
-  [ -n "$acct" ] && [ "$acct" != ".claude" ] && acct_seg="\033[1;36m${acct}${RESET} "
+  if [ -n "$acct" ] && [ "$acct" != ".claude" ]; then
+    # One fixed colour per name, from the same list and the same sum as the Agents panel.
+    acct_sum=0; acct_i=0
+    while [ "$acct_i" -lt "${#acct}" ]; do
+      acct_sum=$(( (acct_sum * 31 + $(LC_ALL=C printf '%d' "'${acct:$acct_i:1}")) % 1000003 )); acct_i=$((acct_i + 1))
+    done
+    acct_codes=(81 141 212 43 185 75)
+    acct_seg="\033[1;38;5;${acct_codes[$((acct_sum % 6))]}m${acct}${RESET} "
+  fi
 fi
 
 printf "${acct_seg}${YELLOW}%s${RESET}${BLUE}%s%s${RESET}  ${GREEN}%s${RESET}${ctx_color}%s${RESET} ${limit_color}%s${RESET} %s${RED}%s${RESET}" \
