@@ -76,7 +76,8 @@ const workspaces = [
       agent("a1", T(1), "needs_input", "claude"),
       agent("a2", T(2), "idle", "claude", { lastActivityAt: EPOCH - 7200 }),
       agent("a5", T(5), "ended", "claude", { lastActivityAt: EPOCH - 60 }),
-      agent("a1old", T(1), "ended", "claude", { lastActivityAt: EPOCH - 600 }),  // an earlier run in the tab of lead-1
+      agent("a1old", T(1), "ended", "claude", { lastActivityAt: EPOCH - 600 }),  // two earlier runs in the tab of lead-1
+      agent("a1older", T(1), "ended", "claude", { lastActivityAt: EPOCH - 900 }),
     ],
     prs: [{ branch: "lane/fix", number: 12, status: "open" }],
   },
@@ -233,7 +234,8 @@ check("a row shows 2 pills by priority, then a +N pill that names the rest; a lo
 });
 check("an earlier ended run in a tab does not take the data or the focus of the live session of that tab", () => {
   // Tab 1 hosts lead-1 (live, focused, $1.20, 83%) and an ended run. Only the live one may show that data.
-  must(withText((t) => t === "earlier run in this tab").length === 1, "the earlier run does not say what it is");
+  // Two earlier runs ended in that tab: they share one row, which gives their count.
+  must(withText((t) => t === "2 earlier runs in this tab").length === 1, "the earlier runs of a tab do not share one row with their count");
   must(withText((t) => t === "$1.20").length === 2, "the cost of lead-1 shows on its earlier run too");
   must(withText((t) => t === "83%").length === 2, "the context pill of lead-1 shows on its earlier run too");
   must(withText((t) => t === "→ you").length === 2, "the your-turn pill of lead-1 shows on its earlier run too");

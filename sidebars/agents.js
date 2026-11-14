@@ -370,6 +370,10 @@ const view = computed(() => {
       // An ended run in a tab that hosts a live session is an earlier run of that tab. The data of the tab (marks,
       // model, cost, request, focus) belongs to the live session, so the earlier run shows none of it.
       const earlier = a.status === "ended" && liveInTab;
+      // All earlier runs of one tab share one row: the newest of them, with their count.
+      const runs = earlier ? (w.agents ?? []).filter((b) => b.status === "ended" && b.panelId === a.panelId) : [];
+      if (earlier && runs.some((b) => b !== a && ((b.lastActivityAt ?? 0) > (a.lastActivityAt ?? 0)
+          || ((b.lastActivityAt ?? 0) === (a.lastActivityAt ?? 0) && runs.indexOf(b) < runs.indexOf(a))))) continue;
       const sess = earlier ? {} : { ...(models[sessionName(tabTitle)] ?? {}), ...(models[String(tab?.id ?? "").toUpperCase()] ?? {}) };
       if (!sess.acct) sess.acct = accountMarks().tabs[String(tab?.id ?? "").toUpperCase()] ?? "";
       sess.look = lookOf(a, sess);
@@ -415,7 +419,7 @@ const view = computed(() => {
         pills: ((shown) => [...shown,
           ...(shown.length <= 2 && a.status !== "needs_input" && sess.look !== "working" && sess.next ? [{ id: "nextl", text: "next", color: TEXT2, bg: "clear" }] : [])])(cappedPills(pillsOf(a, sess, w))),
         // The second line: why it waits; else what comes next for a session that does not work; else the request.
-        line2: earlier ? "earlier run in this tab" : (a.status === "needs_input" && sess.wait) || (sess.look !== "working" && sess.next) || "",
+        line2: earlier ? (runs.length > 1 ? runs.length + " earlier runs in this tab" : "earlier run in this tab") : (a.status === "needs_input" && sess.wait) || (sess.look !== "working" && sess.next) || "",
         // The end of the second line, in three columns: the model (the tool when no model is known), the context
         // share (yellow from 50%; from 80% it is a red pill, not a column value) and the cost.
         model: String(sess.model ?? "").split(" ")[0] || String(a.kind ?? ""),
@@ -662,7 +666,14 @@ const counts = computed(() => {
   const all = data.workspaces() ?? [];
   const c = { working: 0, needs_input: 0, idle: 0, ended: 0 };
   for (const w of all) {
+    // The earlier runs of a tab that hosts a live session count as one, as they share one row.
+    const live = new Set((w.agents ?? []).filter((a) => a.status !== "ended").map((a) => a.panelId));
+    const folded = new Set();
     for (const a of w.agents ?? []) {
+      if (a.status === "ended" && live.has(a.panelId)) {
+        if (folded.has(a.panelId)) continue;
+        folded.add(a.panelId);
+      }
       if (c[a.status] !== undefined) c[a.status] += 1;
     }
   }
