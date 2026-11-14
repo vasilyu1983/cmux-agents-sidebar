@@ -80,10 +80,12 @@ const workspaces = [
   },
   {
     id: "ws-web", title: "ignored", directory: "/work/web", description: webDescription, color: "#654321", selected: false, unread: 0,
-    tabs: [tab(3, "[scout-4] search", { hasUnread: true }), tab(4, "[helper-6] notes")],
+    tabs: [tab(3, "[scout-4] search", { hasUnread: true }), tab(4, "[helper-6] notes"),
+      tab(7, "[solo-7] bare", { latestPrompt: "<task-notification> <task-id>x1</task-id>" })],
     agents: [
       agent("a3", T(3), "working", "claude", { children: [{ id: "c1", label: "Explore repo", running: true, startedEpoch: EPOCH - 30 }] }),
       agent("a4", T(4), "idle", "codex"),
+      agent("a7", T(7), "working", "opencode"),  // no session data: its only pill would be the tool name
     ],
     prs: [],
   },
@@ -202,7 +204,7 @@ check("render shows all four states", () => {
   must(!rendered.includes("Working"), "a plain working row shows a state word");
   must(reachable().some((n) => n.props.fill === "#0A84FF"), "no blue dot for the working session");
   // The panel head counts each state in words: one needs you, one working, two idle; one ended while Ended is on.
-  for (const t of ["1 need you", "1 working", "2 idle", "1 ended"]) {
+  for (const t of ["1 need you", "2 working", "2 idle", "1 ended"]) {
     must(withText((x) => x === t).length === 1, "no head count " + JSON.stringify(t));
   }
   must(withText((x) => x === "1 need you")[0].props.color === ORANGE, "the need-you count is not orange");
@@ -248,7 +250,7 @@ check("workspace bands take the workspace colour; the selected one is stronger",
   must(reachable().some((n) => n.props.background === "#8d735a29"), "no band tint for web");
   must(reachable().some((n) => n.props.hoverBackground === "#667c9247"), "no hover tint for api");
   // The band name takes the workspace colour, and a bright colour stays as it is.
-  must(withText((t) => t === "api").some((n) => n.props.color === "#667c92" && n.props.weight === "bold"), "the api band name is not in its colour");
+  must(withText((t) => t === "api").some((n) => n.props.color === "#9fadba" && n.props.weight === "bold"), "the api band name is not in its colour");
   must(withText((t) => t === "3 · $1").length === 1, "no \"3 · $1\" count and cost on the api band");
   must(reachable().some((n) => n.props.size === 6 && n.props.fill === "#BF5AF2"), "no unread dot on the api band");
   must(!reachable().some((n) => n.props.size === 5), "session dots show on an open band");
@@ -256,7 +258,7 @@ check("workspace bands take the workspace colour; the selected one is stronger",
 });
 check("an empty workspace is a thin band in its own colour with a hover-only +", () => {
   const name = withText((t) => t === "docs");
-  must(name.length === 1 && name[0].props.font === 12 && name[0].props.color === "#5580aa", "docs line is not 12 pt in its colour");
+  must(name.length === 1 && name[0].props.font === 12 && name[0].props.color === "#94afca", "docs line is not 12 pt in its colour");
   must(reachable().some((n) => n.props.background === "#5580aa14"), "the empty workspace has no faint tint");
   must(withText((t) => t === "+").filter((n) => n.props.showOnHover === true).length === 1, "no hover-only + on the docs line");
 });
@@ -264,6 +266,11 @@ check("the rows of a workspace sit inside its band; the top block and the view b
   const margins = reachable().map((n) => n.props.marginLeading).filter((m) => m !== undefined && m !== null);
   must(margins.includes(12), "no row is indented under its band");
   must(margins.includes(0), "the top copy of the waiting row is indented");
+});
+check("a tool name alone makes no second line, and a system notice is not a request", () => {
+  must(withText((t) => t === "[solo-7]").length === 1, "the solo-7 row is missing");
+  must(withText((t) => t === "opencode").length === 0, "a lone tool pill shows");
+  must(!rendered.includes("<task-notification"), "a system notice shows as a request");
 });
 check("the two parts of a title sit directly in the row and rank above the gap", () => {
   const name = withText((t) => t === "[lead-1]")[0];
@@ -294,7 +301,9 @@ check("strip lines: one 12 pt line with the full text on hover; the train line d
   must(train[0].props.help === "merged #12", "the strip value has no hover text");
   must(withText((t) => t === "refused none; skipped none").length === 1, "a train line with only \"none\" clauses did not keep its text");
   const label = withText((t) => t === "train")[0];
-  must(label.props.font === 11 && !label.props.monospaced && label.props.width === 56 && label.props.color === META, "the strip label is not 11 pt META, 56 wide");
+  must(label.props.font === 11 && !label.props.monospaced && label.props.color === META, "the strip label is not 11 pt META");
+  // A label sits in a 56 pt cell at the leading side: the text takes its own width, a gap fills the rest.
+  must(label.props.fixedSize === true && reachable().some((n) => n.props.width === 56), "the strip label has no 56 pt cell");
 });
 check("the week line shows its percent, a 44 x 4 bar, then the rest of the text", () => {
   must(withText((t) => t === "47%").length === 1, "no \"47%\" on the week line");
@@ -428,7 +437,7 @@ check("the Limits view lists the limit windows", () => {
   tap(btn);
   // The percent is its own column; the window, reset time and age follow it.
   const pct = withText((t) => t === "42%")[0];
-  must(pct && pct.props.width === 34 && pct.props.alignment === "trailing" && pct.props.monospaced === true && pct.props.color === META,
+  must(pct && pct.props.fixedSize === true && reachable().some((n) => n.props.width === 34) && pct.props.monospaced === true && pct.props.color === META,
     "42% is not a 34 pt META percent column: " + JSON.stringify(pct?.props));
   const rest = withText((t) => t.startsWith("5h · resets 14:10"));
   must(rest.length === 1 && rest[0].props.lineLimit === 1 && String(rest[0].props.help).startsWith("5h 42% · resets 14:10"), "no one-line \"5h · resets 14:10\" text with the full text on hover");

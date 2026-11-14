@@ -191,7 +191,9 @@ def transcript_marks(sid, home):
                     # Runs of spaces, tabs and line breaks become one space, so no tab or line break reaches the file.
                     if asked.strip():
                         step = ""  # only a typed request clears the line, not a reminder that the system adds
-                        prompt = clean(" ".join(asked.split()), 60)
+                        prompt = clean(" ".join(asked.split()), 61)
+                        if len(prompt) > 60:
+                            prompt = prompt[:59].rstrip() + "…"  # a cut request shows that it is cut
             offset += len(data)
             fd = os.open(seen, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
             with os.fdopen(fd, "w") as fh:

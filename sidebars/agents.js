@@ -289,7 +289,7 @@ function pillsOf(a, sess, w) {
   if (!alert) plain("pr", sess.pr);
   const tool = String(a.kind ?? "") + (sess.acct ? " · " + sess.acct : "");
   if (sess.acct) add("tool", tool, acctColor(sess.acct));
-  else plain("tool", tool);
+  else if (out.length) plain("tool", tool);  // alone, a tool name is no reason for a second line
   const tail = dirTail(a.directory).replace(/^lane-/, "");
   if (tail !== wsName) plain("dir", tail);
   return out;
@@ -402,7 +402,9 @@ const view = computed(() => {
         wrong: sess.wrong ?? "",
         // Work marks (pillsOf): a duplicate session, commits that no remote holds, 3 or more compactions.
         // The request the session works on: what label-tabs.py read from the transcript, else what cmux reports.
-        prompt: String(sess.prompt || tab?.latestPrompt || "").replace(/\s+/g, " ").trim().slice(0, 120),
+        // A text that starts with "<" or "[SYSTEM" is a notice that the tool added, not a request of the user.
+        prompt: [sess.prompt, tab?.latestPrompt].map((t) => String(t ?? "").replace(/\s+/g, " ").trim())
+          .find((t) => t && !/^(<|\[SYSTEM)/.test(t))?.slice(0, 120) ?? "",
         pills: cappedPills(pillsOf(a, sess, w)),
         marks: marksOf(pillsOf(a, sess, w)),
         cold: sess.look === "idle" ? String(sess.cold ?? "").replace(/^cold /, "❄") : "",
@@ -766,15 +768,20 @@ const usedBar = (pctFn, width, height) =>
   ]).frame({ width, height });
 
 // The workspace colour at a given alpha ("14" is about 8%). A colour that is not "#RRGGBB" gets a faint white.
+// A cell with a fixed width and the text at one side. A frame alone centres its text.
+const cell = (text, width, side) =>
+  HStack({ spacing: 0 }, side === "trailing" ? [Spacer(), text.fixedSize()] : [text.fixedSize(), Spacer()]).frame({ width });
 // A workspace colour that shows on a dark panel: a dark colour is mixed with white up to a fixed brightness.
-const seen = (color) => {
-  if (!/^#[0-9A-Fa-f]{6}$/.test(color ?? "")) return "#8E8E93";
+const seen = (color, floor = 120) => {
+  if (!/^#[0-9A-Fa-f]{6}$/.test(color ?? "")) return floor > 120 ? META : "#8E8E93";
   const c = [1, 3, 5].map((i) => parseInt(color.slice(i, i + 2), 16));
   const lum = 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2];
-  if (lum >= 120) return color;
-  const t = (120 - lum) / (255 - lum);
+  if (lum >= floor) return color;
+  const t = (floor - lum) / (255 - lum);
   return "#" + c.map((v) => Math.round(v + (255 - v) * t).toString(16).padStart(2, "0")).join("");
 };
+// The same colour for text: brighter, so a name reads on its own tint (4.5:1 or more).
+const ink = (color) => seen(color, 170);
 const tint = (color, alpha) => (/^#[0-9A-Fa-f]{6}$/.test(color ?? "") ? seen(color) + alpha : "#FFFFFF0A");
 // The rows of a workspace sit 12 pt inside its band. The top block and the view by state have no band above them.
 const inset = (entry) => () => (byState() || /^(?:[dc]:)?n:/.test(String(entry().key ?? "")) ? 0 : 12);
@@ -811,7 +818,7 @@ function emptyRow(entry) {
     HStack({ spacing: 4 }, [
       HStack({ spacing: 7 }, [
         Capsule().fill(() => seen(entry().wsColor)).frame({ width: 4, height: 12 }),
-        Text(() => entry().wsTitle || "untitled").font(12).weight("medium").color(() => seen(entry().wsColor)).lineLimit(1).truncation("tail"),
+        Text(() => entry().wsTitle || "untitled").font(12).weight("medium").color(() => ink(entry().wsColor)).lineLimit(1).truncation("tail"),
         Spacer(),
       ]).frame({ maxWidth: "infinity" }).onTap(selectWs(entry)),
       plusMark(entry).showOnHover(),
@@ -837,7 +844,7 @@ function bandRow(entry) {
       HStack({ spacing: 7 }, [
         Capsule().fill(() => seen(entry().wsColor)).frame({ width: 4, height: 16 }),
         Text(() => entry().wsTitle || "untitled")
-          .font(13).weight("bold").lineLimit(1).truncation("tail").color(() => seen(entry().wsColor)),
+          .font(13).weight("bold").lineLimit(1).truncation("tail").color(() => ink(entry().wsColor)),
         Spacer(),
         ForEach(
           { items: () => (entry().folded ? entry().dots.map((c, i) => ({ id: String(i) + c, color: c })) : []), key: (d) => d.id },
@@ -878,15 +885,15 @@ const rowTitle = (t) => {
 // line that starts with a percent shows the percent, a bar, then the rest. A click opens the workspace that carries it.
 function stripRow(entry) {
   const value = entry().bar >= 0
-    ? HStack({ spacing: 6 }, [
+    ? [
       Text(() => entry().pct).font(12).lineLimit(1).fixedSize().color(() => entry().color),
       usedBar(() => entry().bar, 44, 4),
-      Text(() => entry().rest).font(11).color(META).lineLimit(1).truncation("tail").help(() => entry().value),
-    ])
-    : Text(() => entry().value).font(12).color(() => entry().color).lineLimit(1).truncation("tail").help(() => entry().value);
+      Text(() => entry().rest).font(11).color(META).lineLimit(1).truncation("tail").layoutPriority(1).help(() => entry().value),
+    ]
+    : [Text(() => entry().value).font(12).color(() => entry().color).lineLimit(1).truncation("tail").layoutPriority(1).help(() => entry().value)];
   return HStack({ spacing: 8 }, [
-    Text(() => entry().label).font(11).color(META).lineLimit(1).truncation("tail").frame({ width: 56, alignment: "leading" }),
-    value,
+    cell(Text(() => entry().label).font(11).color(META).lineLimit(1), 56, "leading"),
+    ...value,  // plain parts of the row: a text inside an inner HStack is cut while the row has space
     Spacer(),
   ])
     .paddingHorizontal(10)
@@ -901,8 +908,8 @@ function limitRow(entry, width) {
   const cells = entry().bar >= 0
     ? [
       usedBar(() => entry().bar, 60, 5),
-      Text(() => entry().pct).font(11).monospaced().lineLimit(1)
-        .color(() => (entry().bar >= 80 ? "primary" : META)).frame({ width: 34, alignment: "trailing" }),
+      cell(Text(() => entry().pct).font(11).monospaced().lineLimit(1)
+        .color(() => (entry().bar >= 80 ? "primary" : META)), 34, "trailing"),
       Text(() => entry().rest).font(11).color(META).lineLimit(1).truncation("tail").help(() => entry().value),
     ]
     : [Text(() => entry().value).font(11).color(() => entry().color).lineLimit(1).truncation("tail").help(() => entry().value)];
@@ -968,7 +975,7 @@ function detailRow(entry) {
   return HStack({ spacing: 8 }, [
     guide(entry, 16),
     HStack({ spacing: 8 }, [
-      Text(() => entry().label).font(11).monospaced().color(META).frame({ width: 58, alignment: "leading" }),
+      cell(Text(() => entry().label).font(11).monospaced().color(META), 58, "leading"),
       Text(() => entry().value).font(11).color(TEXT2).lineLimit(2).truncation("tail"),
       Spacer(),
     ]).paddingLeading(UNDER_TITLE),
@@ -1007,20 +1014,19 @@ const titleLine = (entry, compact) => {
   const a = () => entry().agent;
   return HStack({ spacing: 6 }, [
     haloDot(entry),
-    // Both parts sit directly in the row and rank above the gap, so a title is cut only when the row is full.
+    // Both parts are plain texts of the row and rank above the gap, so a title is cut only when the row is full.
+    // A text inside a wrapper (a ForEach, an inner HStack) is cut while the row still has space.
     Text(() => titleParts(entry).name)
       .font(13).weight("semibold").lineLimit(1).truncation("tail").layoutPriority(3)
       .color(() => (a().status === "ended" || entry().old ? META : "primary")),
-    ForEach({ items: () => (titleParts(entry).rest ? [{ id: "rest" }] : []), key: (x) => x.id },
-      () => Text(() => titleParts(entry).rest).font(13).lineLimit(1).truncation("tail").layoutPriority(2).color(META)),
+    Text(() => titleParts(entry).rest).font(13).lineLimit(1).truncation("tail").layoutPriority(2).color(META),
     ...(compact ? [markRow(entry)] : []),
     unreadBadge(entry),
     Spacer(),
     kidsBadge(entry),
-    Text(() => timeText(a(), data.clock()?.epoch ?? 0))
+    cell(Text(() => timeText(a(), data.clock()?.epoch ?? 0))
       .font(11).monospaced().lineLimit(1)
-      .color(() => (entry().look === "needs_input" ? ORANGE : META))
-      .frame({ width: 44, alignment: "trailing" }),
+      .color(() => (entry().look === "needs_input" ? ORANGE : META)), 36, "trailing"),
     infoMark(entry),
   ]);
 };
