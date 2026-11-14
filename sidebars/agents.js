@@ -239,11 +239,12 @@ const view = computed(() => {
       if (a.status === "ended" && !showEnded()
           && (liveInTab || epoch - (a.lastActivityAt ?? 0) > ENDED_VISIBLE_SECS)) continue;
       if (!matches(tabTitle) && !matches(a.title) && !matches(a.name) && !matches(a.kind)
-          && !matches(w.title) && !matches(a.directory) && !matches(models[sessionName(tabTitle)]?.acct)) continue;
+          && !matches(w.title) && !matches(a.directory) && !matches(models[sessionName(tabTitle)]?.acct) && !matches(accountMarks().tabs[String(tab?.id ?? "").toUpperCase()])) continue;
       // A settled session takes one line; a working or waiting one keeps two, so it stands out by size.
       // The key carries the form, because a row's template is fixed per key.
       const compact = a.status === "idle" || a.status === "ended";
-      const sess = models[sessionName(tabTitle)] ?? {};
+      const sess = { ...(models[sessionName(tabTitle)] ?? {}) };
+      if (!sess.acct) sess.acct = accountMarks().tabs[String(tab?.id ?? "").toUpperCase()] ?? "";
       const stalled = /^\[[^\]]* \?\]/.test(tabTitle);
       for (const id of Object.keys(chips)) if (chipHit(id, a, sess, epoch)) chips[id] += 1;
       if (filter() && !chipHit(filter(), a, sess, epoch)) continue;
@@ -275,7 +276,7 @@ const view = computed(() => {
           ["cache", sess.cold ? sess.cold + " tokens to rewrite on the next message" : ""],
           ["waits", a.status === "needs_input" ? sess.wait ?? "" : ""],
           ["tool", a.name],
-          ["account", sess.acct ?? ""],
+          ["account", sess.acct || (accountMarks().primary && /claude|codex/.test(String(a.kind ?? "")) ? accountMarks().primary + " (primary)" : "")],
           ["model", sess.model ?? ""],
           ["context", sess.ctx >= 0 ? sess.ctx + "%" : ""],
           ["cost", sess.cost ?? ""],
@@ -369,6 +370,23 @@ const STRIP = { train: ["train", "secondary"], week: ["week", "secondary"], queu
 // label-tabs.py reads the limit windows that each tool leaves in local files. An item with no window is a tool
 // that is installed and leaves no limit data.
 const TOOLS = { claude: "Claude", codex: "Codex", opencode: "OpenCode", grok: "Grok", agy: "Antigravity" };
+// "@primary: personal" names the account of the tool's normal folder; "@accts: <tab id>=work,..." names the account
+// of a tab whose tool keeps no session record (Codex). Both come from label-tabs.py.
+const accountMarks = computed(() => {
+  const out = { primary: "", tabs: {} };
+  for (const w of data.workspaces() ?? []) {
+    for (const part of String(w.description ?? "").split(" | ")) {
+      const p = /^@primary: ([a-z0-9-]{1,16})$/.exec(part);
+      if (p) out.primary = p[1];
+      if (!part.startsWith("@accts: ")) continue;
+      for (const item of part.slice(8).split(",").slice(0, 200)) {
+        const m = /^([0-9A-F-]{36})=([a-z0-9-]{1,16})$/.exec(item);
+        if (m) out.tabs[m[1]] = m[2];
+      }
+    }
+  }
+  return out;
+});
 const limits = computed(() => {
   const epoch = data.clock()?.epoch ?? 0;
   let newest = null;
@@ -393,7 +411,8 @@ const limits = computed(() => {
         color = used >= 80 ? "#FF453A" : "secondary";
       }
     }
-    const label = TOOLS[m[1]] + (m[6] ? " " + m[6] : "");
+    const primary = (m[1] === "claude" || m[1] === "codex") ? accountMarks().primary : "";
+    const label = TOOLS[m[1]] + (m[6] ? " " + m[6] : primary ? " " + primary : "");
     out.push({ key: "limit" + out.length + m[1] + m[2], label, value, color, copy: label + " " + value, wsId: newest.wsId, tool: Object.keys(TOOLS).indexOf(m[1]), acct: m[6] ?? "" });
   }
   // Lines of one tool stay together, and inside a tool the lines of one account.

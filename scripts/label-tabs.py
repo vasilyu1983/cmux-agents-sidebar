@@ -40,6 +40,8 @@ ACCOUNT_NAME = r"[a-z0-9-]{1,16}"
 ACCOUNT_TOOLS = ("claude", "codex", "opencode")
 ACCOUNTS = []  # (tool, name, folder) per valid "account" line of the accounts file, in file order
 DEFAULT_ACCOUNT = []  # the name of the "default" line, when it has one
+TAB_ACCOUNTS = {}  # surface id -> account name, for a Codex process that runs with a listed account folder
+CODEX_ENV = re.compile(r" CODEX_HOME=([^ ]{1,300})(?: |$)")
 
 
 def run(args):
@@ -343,6 +345,10 @@ def general_marks():
     limits = all_limits()
     if limits:
         found.append("@limits: " + ";".join(limits))
+    if ACCOUNTS and DEFAULT_ACCOUNT:
+        found.append("@primary: " + DEFAULT_ACCOUNT[0])
+    if TAB_ACCOUNTS:
+        found.append("@accts: " + ",".join(f"{key}={name}" for key, name in sorted(TAB_ACCOUNTS.items())[:200]))
     return found
 
 
@@ -483,7 +489,7 @@ def set_models(tree, models, strip):
         # gets fresh general parts, and keeps its other "@" parts.
         target = next((ref for ref, old in found.items() if " | @home: " in old), next(iter(found)))
         kept = [part for part in found[target].split(" | ")[1:]
-                if part.startswith("@") and not part.startswith(("@home: ", "@week: "))]
+                if part.startswith("@") and not part.startswith(("@home: ", "@week: ", "@limits: ", "@primary: ", "@accts: "))]
         strip = {target: kept + general_marks()}
     for workspace, old in found.items():
         parts = old.split(" | ")
@@ -551,6 +557,13 @@ def main():
         if not surface or len(parts) < 3 or not parts[0].isdigit():
             continue
         key, pid, command = surface.group(1).upper(), int(parts[0]), parts[2]
+        codex_home = CODEX_ENV.search(line) if ACCOUNTS else None
+        if codex_home and "codex" in command.split(" ", 1)[0]:
+            # Only this one variable is read from the environment of the process.
+            place = os.path.realpath(codex_home.group(1))
+            for tool, account, folder in ACCOUNTS:
+                if tool == "codex" and folder == place:
+                    TAB_ACCOUNTS[key] = account
         if pid in names and "claude" in command.split(" ", 1)[0]:
             name, waits, stalled, model, status, since, _sid = names[pid]
             live.append((key, name, waits, stalled, model, status, since))

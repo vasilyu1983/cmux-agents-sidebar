@@ -95,5 +95,14 @@ cold_seg=$(echo "$input" | jq -r '
   .prompt_cache // empty | select(.caching_observed == true and .warm == false)
   | "  cold" + (if .recache_tokens_if_cold then " \(.recache_tokens_if_cold | short)" else "" end)')
 
-printf "${YELLOW}%s${RESET}${BLUE}%s%s${RESET}  ${GREEN}%s${RESET}${ctx_color}%s${RESET} ${limit_color}%s${RESET} %s${RED}%s${RESET}" \
+# Account segment: shown only when the session runs with another config folder than the normal one.
+# "~/.claude-work" shows as "work"; another folder name shows whole.
+acct_seg=""
+if [ -n "${CLAUDE_CONFIG_DIR:-}" ]; then
+  acct=${CLAUDE_CONFIG_DIR%/}; acct=${acct##*/}; acct=${acct#.claude-}
+  acct=$(printf '%s' "$acct" | LC_ALL=C tr -cd 'A-Za-z0-9._-' | cut -c1-24)
+  [ -n "$acct" ] && [ "$acct" != ".claude" ] && acct_seg="\033[1;36m${acct}${RESET} "
+fi
+
+printf "${acct_seg}${YELLOW}%s${RESET}${BLUE}%s%s${RESET}  ${GREEN}%s${RESET}${ctx_color}%s${RESET} ${limit_color}%s${RESET} %s${RED}%s${RESET}" \
   "$dir" "$git_seg" "$lane_seg" "$model" "$ctx_seg" "$limit_seg" "$cost_seg" "$cold_seg"

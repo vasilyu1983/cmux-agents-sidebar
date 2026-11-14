@@ -231,6 +231,13 @@ What an account folder shares: `agents-account-add.sh` links a fixed list of set
 
 A tool that saves a linked file by replacing it turns the link into a real file of that account. Run the script again to see the state of each link.
 
+Where you see the account:
+
+- The status line of a Claude Code session starts with the account name when the session runs on an extra account. A session on the default account shows no name.
+- A panel row names the account after the tool (`claude · work`, `codex · work`). For Codex the watcher reads one variable, `CODEX_HOME`, from the process of that tab.
+- The detail lines of a row hold `account`; a session on the default account reads `personal (primary)`, with the name from your `default` line.
+- `Limits` names the default account on the lines of the normal folder.
+
 Limits to know:
 
 - If a link is missing, that account runs without the part. A missing `hooks` or `settings.json` link means your hooks and permission rules do not run there. Read the table that the script prints.
