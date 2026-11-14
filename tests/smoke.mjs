@@ -217,15 +217,18 @@ check("render shows the unread mark of the working session, and not on the finis
   must(marks.length === 1, "expected one \"new\" mark (scout-4), got " + marks.length);
 });
 check("render shows the work marks: ahead count and duplicate", () => {
-  mustContain(rendered, "↑2");
+  mustContain(helpText(), "↑2");  // lead-1 has more pills than its second line holds
   mustContain(helpText(), "dup");  // lead-1 has more pills than its second line holds
 });
-check("a full row shows 3 pills by priority, then a +N pill that names the rest", () => {
-  const more = withText((t) => t === "+4");
+check("a row shows 2 pills by priority, then a +N pill that names the rest; a long pill is cut", () => {
+  // The pills have a fixed size. A row wider than the panel would make the whole panel wider than its place.
+  const more = withText((t) => t === "+5");
   // lead-1 waits, so it shows twice: in the top block and in its workspace. Both rows have the same form.
-  must(more.length === 2, "expected a \"+4\" pill on both rows of lead-1, got " + more.length);
-  must(more[0].props.help === "dup · ⟳3 · claude · work · a1", "help of +4 is " + JSON.stringify(more[0].props.help));
-  for (const t of ["83%", "→ you", "↑2"]) must(withText((x) => x === t).length > 0, "pill " + t + " not shown");
+  must(more.length === 2, "expected a \"+5\" pill on both rows of lead-1, got " + more.length);
+  must(more[0].props.help === "↑2 · dup · ⟳3 · work · a1", "help of +5 is " + JSON.stringify(more[0].props.help));
+  for (const t of ["83%", "→ you"]) must(withText((x) => x === t).length > 0, "pill " + t + " not shown");
+  const pills = reachable().filter((n) => n.props.cornerRadius === 4 && typeof n.props.text === "string");
+  must(pills.length > 0 && pills.every((n) => n.props.text.length <= 10), "a pill is longer than 10 characters: " + pills.map((n) => n.props.text).filter((t) => t.length > 10).join(", "));
 });
 check("a waiting session shows in the top block and in its workspace, in the same two-line form", () => {
   must(withText((t) => t === "[lead-1]").length === 2, "lead-1 is not shown twice");
@@ -318,8 +321,8 @@ check("every session row has the same two lines, whatever its state", () => {
 });
 check("render shows the cold-cache mark of the idle session", () => mustContain(rendered, "❄5m"));
 check("render shows the account of a session and of a tab named in @accts", () => {
-  mustContain(helpText(), "claude · work");  // lead-1, behind its "+N" pill
-  mustContain(rendered, "· personal");
+  mustContain(helpText(), "· work ·");  // lead-1: the account pill is behind its "+N" pill
+  must(withText((t) => t === "personal").some((n) => n.props.cornerRadius === 4), "no account pill \"personal\" on a row");
   // helper-6 is a one-line row with no tool pill: its @accts account shows in the account chip count.
   // A chip holds its label and its count as two texts.
   const work = withText((t) => t === "work").find((n) => parentOf(n.id)?.children.map(node).some((c) => c?.props.text === "2"));
@@ -453,7 +456,7 @@ check("the state button groups the rows into sections by state, and a second cli
 });
 check("a row carries its marks as pills: account, your-turn mark and compaction count", () => {
   const all = textOf();
-  mustContain(helpText(), "claude · work");  // past the third pill: named by "+N"
+  mustContain(helpText(), "· work ·");  // past the second pill: named by "+N"
   mustContain(all, "→ you");
   mustContain(helpText(), "⟳3");
 });

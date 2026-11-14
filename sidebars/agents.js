@@ -290,18 +290,20 @@ function pillsOf(a, sess, w) {
   add("comp", sess.comp >= 3 ? "⟳" + sess.comp : "", sess.comp >= 10 ? "#FFD60A" : META, NEUTRAL);
   plain("cold", sess.look === "idle" ? String(sess.cold ?? "").replace(/^cold /, "❄") : "");
   if (!alert) plain("pr", sess.pr);
-  const tool = String(a.kind ?? "") + (sess.acct ? " · " + sess.acct : "");
-  // The tool has a pill only with an account: the end of the second line names the model or the tool.
-  if (sess.acct) add("tool", tool, acctColor(sess.acct));
+  // The account has a pill, in its colour. The tool has none: the end of the second line names the model or the tool.
+  add("tool", sess.acct, acctColor(sess.acct));
   const tail = dirTail(a.directory).replace(/^lane-/, "");
   if (tail !== wsName) plain("dir", tail);
   return out;
 }
-// The second line of a full row shows 3 pills; "+N" stands for the rest and names them on hover.
+// The second line shows 2 pills, each cut to 10 characters; "+N" stands for the rest and names them on hover.
+// The pills have a fixed size, so their total must stay small: a row wider than the panel makes the whole panel
+// wider than its place, and cmux then cuts it on both sides.
 function cappedPills(all) {
-  if (all.length <= 3) return all;
-  const rest = all.slice(3);
-  return [...all.slice(0, 3), { id: "more", text: "+" + rest.length, color: META, bg: NEUTRAL, help: rest.map((p) => p.text).join(" · ") }];
+  const short = (p) => (p.text.length > 10 ? { ...p, text: p.text.slice(0, 9) + "…", help: p.text } : p);
+  if (all.length <= 2) return all.map(short);
+  const rest = all.slice(2);
+  return [...all.slice(0, 2).map(short), { id: "more", text: "+" + rest.length, color: META, bg: NEUTRAL, help: rest.map((p) => p.text).join(" · ") }];
 }
 // A one-line row shows 2 bare marks: no tool and no folder. The workspace counts, in the view by state.
 const pill = (p) =>
@@ -406,8 +408,9 @@ const view = computed(() => {
         prompt: [sess.prompt, tab?.latestPrompt].map((t) => String(t ?? "").replace(/\s+/g, " ").trim())
           .find((t) => t && !/^(<|\[SYSTEM)/.test(t))?.slice(0, 120) ?? "",
         // After the pills, a bare "next" label when the text of the line is the next step and not the request.
-        pills: [...cappedPills(pillsOf(a, sess, w)),
-          ...(a.status !== "needs_input" && sess.look !== "working" && sess.next ? [{ id: "nextl", text: "next", color: TEXT2, bg: "clear" }] : [])],
+        // A row with a "+N" pill has no room for the label.
+        pills: ((shown) => [...shown,
+          ...(shown.length <= 2 && a.status !== "needs_input" && sess.look !== "working" && sess.next ? [{ id: "nextl", text: "next", color: TEXT2, bg: "clear" }] : [])])(cappedPills(pillsOf(a, sess, w))),
         // The second line: why it waits; else what comes next for a session that does not work; else the request.
         line2: (a.status === "needs_input" && sess.wait) || (sess.look !== "working" && sess.next) || "",
         // The end of the second line, in three columns: the model (the tool when no model is known), the context
