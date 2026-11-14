@@ -25,7 +25,7 @@ A drawing of a cmux window with the panel, with sample names.
 | `hive ↗` | A graph page: workspace → session → subagent, in a cmux browser tab. It updates every 15 seconds. The open tab has a blue box. A click on a session goes to its tab, and the page follows you to another workspace |
 | Next waiting | `next-waiting.sh` goes to the Claude Code session that has waited for you the longest |
 | `Limits` | Next to `Here` and `All`: the rate limits of each agent tool on this Mac, per window (5 hours, week), with the reset time and the age of the figure. With an accounts file: one line per tool and account. The panel remembers the choice |
-| Search | Filters rows by title, tool, workspace or folder |
+| Search | Type in `Search agents`: rows stay when the text is in the tab title (with the session name), the tool, the account, the workspace name or the folder. Capital letters do not matter. Search looks only in the current scope: with `Here` it sees this workspace, so choose `All` to search every workspace. A chip narrows the result further. While `Limits` is on, a search text shows the sessions again |
 
 With the optional Claude Code status line, each Claude Code row also shows the model and effort, the context share (red from 80%), the session cost estimate, a `cold` mark when the prompt cache went cold, and the count line shows the summed cost.
 
@@ -38,6 +38,10 @@ The pictures use sample names. The panel picture is a drawing of the layout; it 
 ![Drawing of the Agents panel: counts and cost, filter chips, a NEEDS YOU block, and one band per workspace with its session rows](examples/panel.svg)
 
 ![Render of the hive page: workspaces, their sessions, and subagents, with a blue box on the open tab](examples/hive.png)
+
+The `Limits` view with two accounts per tool: one line per tool, account and window, red from 80%. A drawing with sample names, made from `examples/limits.html`.
+
+<img src="examples/limits.png" alt="Drawing of the Limits view: rate limits of Claude and Codex for a personal and a work account, with reset times and the age of each figure" width="420">
 
 A tab title, as `label-tabs.py` writes it:
 

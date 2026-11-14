@@ -361,7 +361,9 @@ const view = computed(() => {
   if (waiting.length === 0) return { rows: out, chips };
   return { chips, rows: [{ key: "h:needs-you", kind: "header", needsYou: true, wsTitle: "NEEDS YOU", wsColor: "#FF9F0A", count: waiting.length, wsSelected: true, dots: [] }, ...waiting, ...out] };
 });
-const entries = computed(() => (showLimits() ? [] : view().rows));
+// A search text brings the session list back, also while Limits is on: a search must always find sessions.
+const limitsShown = () => showLimits() && !query().trim();
+const entries = computed(() => (limitsShown() ? [] : view().rows));
 
 // The project strip: the "@train", "@queue" and "@unpushed" parts that label-tabs.py puts in a workspace description.
 // Read from every workspace, also when the list shows one workspace only.
@@ -840,7 +842,7 @@ sidebar(() =>
 
     VStack({ spacing: 3 }, [ForEach({ items: strip, key: (s) => s.key }, (s) => stripRow(s))]),
     // The Limits view takes the place of the session list.
-    VStack({ spacing: 5 }, [ForEach({ items: () => (showLimits() ? limits() : []), key: (s) => s.key }, (s) => stripRow(s, limits().some((x) => x.acct) ? 150 : 58))]),
+    VStack({ spacing: 5 }, [ForEach({ items: () => (limitsShown() ? limits() : []), key: (s) => s.key }, (s) => stripRow(s, limits().some((x) => x.acct) ? 150 : 58))]),
 
     TextField("", {
       placeholder: "Search agents",
@@ -860,7 +862,7 @@ sidebar(() =>
       }
     )]),
 
-    Text(() => (entries().length === 0 && !showLimits()
+    Text(() => (entries().length === 0 && !limitsShown()
       ? (query().trim()
         ? "No matches."
         : "No agents yet. Sessions started in cmux terminals show up here with live status.")
