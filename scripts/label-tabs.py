@@ -14,6 +14,10 @@ It deletes hand-over files of ended sessions in ~/.cache/cmux-agents that are ol
 A process is matched to its tab by the CMUX_SURFACE_ID in its environment (the tty in the cmux tree can be stale).
 Run it inside cmux (it needs the cmux socket).
 
+With ~/.config/cmux/agents-accounts it also reads the sessions of the account folders listed there
+("account claude work ~/.claude-work") and tags them: the field "acct work" after the model, and a 6th part
+with the account name on that account's limit items. Without that file nothing changes.
+
 With --next-waiting it changes nothing: it prints "<workspace id> <tab id>" of the session that has waited
 for the owner the longest, or nothing when no session waits.
 """
@@ -32,6 +36,10 @@ KEEP_SECONDS = 14 * 86400
 SESSION_ID = r"[0-9a-f-]{8,64}"
 HIVE_STATUS = {"waiting": "needs_input", "busy": "working", "idle": "idle"}
 SURFACE_ENV = re.compile(r" CMUX_SURFACE_ID=([0-9A-Fa-f-]{36})(?: |$)")
+ACCOUNT_NAME = r"[a-z0-9-]{1,16}"
+ACCOUNT_TOOLS = ("claude", "codex", "opencode")
+ACCOUNTS = []  # (tool, name, folder) per valid "account" line of the accounts file, in file order
+DEFAULT_ACCOUNT = []  # the name of the "default" line, when it has one
 
 
 def run(args):
@@ -52,21 +60,74 @@ def surfaces(node, found, workspace=None):
             surfaces(value, found, workspace)
 
 
-def claude_names():
-    names = {}
-    prs = open_prs()
-    for path in glob.glob(os.path.expanduser("~/.claude/sessions/*.json")):
-        try:
-            with open(path) as fh:
-                session = json.load(fh)
-        except (OSError, ValueError) as err:
-            print(f"label-tabs: skipped {path}: {err}", file=sys.stderr)
+def read_accounts():
+    """Fills ACCOUNTS and DEFAULT_ACCOUNT from ~/.config/cmux/agents-accounts. The lines:
+    "account <claude|codex|opencode> <name> <folder>", "rule <folder prefix> <name>" (for the launcher; not used
+    here) and "default <name>". A folder must resolve to a place inside the home folder (a symlink or ".." that
+    leaves it is refused). A bad line is skipped and named by its number only. No file: nothing is listed."""
+    try:
+        with open(os.path.expanduser("~/.config/cmux/agents-accounts")) as fh:
+            lines = fh.read(20000).splitlines()
+    except FileNotFoundError:
+        return
+    except (OSError, ValueError) as err:
+        print(f"label-tabs: accounts file not read: {err}", file=sys.stderr)
+        return
+    home = os.path.realpath(os.path.expanduser("~"))
+    for number, line in enumerate(lines, 1):
+        words = line.split()
+        if not words or words[0].startswith("#"):
             continue
-        if session.get("name") and isinstance(session.get("pid"), int):
+        good = False
+        if words[0] == "account" and len(words) == 4 and words[1] in ACCOUNT_TOOLS:
+            folder = os.path.realpath(os.path.expanduser(words[3]))
+            good = (bool(re.fullmatch(ACCOUNT_NAME, words[2])) and words[3].startswith(("~/", "/"))
+                    and folder.startswith(home + "/")
+                    and not any(tool == words[1] and (name == words[2] or place == folder)
+                                for tool, name, place in ACCOUNTS))
+            if good:
+                ACCOUNTS.append((words[1], words[2], folder))
+        elif words[0] == "rule":
+            good = len(words) == 3 and bool(re.fullmatch(ACCOUNT_NAME, words[2]))
+        elif words[0] == "default":
+            good = len(words) == 2 and bool(re.fullmatch(ACCOUNT_NAME, words[1])) and not DEFAULT_ACCOUNT
+            if good:
+                DEFAULT_ACCOUNT.append(words[1])
+        if not good:
+            print(f"label-tabs: accounts file: line {number} skipped", file=sys.stderr)
+
+
+def homes(tool, usual):
+    """[(folder, account name)] for one tool: its usual folder first ("" when no line lists that folder),
+    then the other listed folders in file order."""
+    usual = os.path.expanduser(usual)
+    listed = [(folder, name) for kind, name, folder in ACCOUNTS if kind == tool]
+    own = next((name for folder, name in listed if folder == os.path.realpath(usual)), "")
+    return [(usual, own)] + [(folder, name) for folder, name in listed if name != own]
+
+
+def claude_names():
+    names, newest = {}, {}
+    prs = open_prs()
+    for home, account in homes("claude", "~/.claude"):
+        for path in glob.glob(os.path.join(home, "sessions", "*.json")):
+            try:
+                with open(path) as fh:
+                    session = json.load(fh)
+                at = os.path.getmtime(path)
+            except (OSError, ValueError) as err:
+                print(f"label-tabs: skipped {path}: {err}", file=sys.stderr)
+                continue
+            if not (session.get("name") and isinstance(session.get("pid"), int)):
+                continue
+            # A pid can be on record in two account folders (one record is stale): the newer record wins.
+            if newest.get(session["pid"], -1) > at:
+                continue
+            newest[session["pid"]] = at
             waits = session.get("waitingFor") or "input" if session.get("status") == "waiting" else None
             since = session.get("statusUpdatedAt")
-            names[session["pid"]] = (session["name"], waits, session.get("status") == "busy" and quiet(session),
-                                     model_of(session, prs), HIVE_STATUS.get(session.get("status"), ""),
+            names[session["pid"]] = (session["name"], waits, session.get("status") == "busy" and quiet(session, home),
+                                     model_of(session, prs, home, account), HIVE_STATUS.get(session.get("status"), ""),
                                      since if isinstance(since, (int, float)) else 0, str(session.get("sessionId") or ""))
     return names
 
@@ -118,7 +179,7 @@ def hive_places(tree):
 
 def hive_agent(fields):
     """The description fields of one session, as the hive page's keys: m model, x context %, c cost, p PR,
-    l lane, ch subagents (the running ones by name, the finished ones as a count)."""
+    l lane, u account, ch subagents (the running ones by name, the finished ones as a count)."""
     agent = {"k": "claude"}
     for field in fields:
         sub = re.fullmatch(r"sub (\d{1,4})/(\d{1,4})(?:: (.*))?", field)
@@ -138,6 +199,8 @@ def hive_agent(fields):
             agent["p"] = field[3:]
         elif field.startswith("lane "):
             agent["l"] = field[5:]
+        elif field.startswith("acct "):
+            agent["u"] = field[5:]
         elif not field.startswith(("cold ", "waits ")) and "m" not in agent:
             agent["m"] = field
     return agent
@@ -167,7 +230,7 @@ def write_hive(tree, live, titles):
         print(f"label-tabs: hive data not written: {err}", file=sys.stderr)
 
 
-WEEK = {}  # the newest hand-over file that carries the week limit: {"at": mtime, "used": "36"}
+WEEKS = {}  # account name ("" = not listed) -> its newest hand-over file with the week limit: {"at": mtime, "used": "36"}
 
 
 def short(tokens):
@@ -199,12 +262,12 @@ def open_prs():
     return {branch: f"#{number} {verdicts.get(number, 'open')}".strip() for branch, number in heads.items()}
 
 
-def subagents_of(sid):
+def subagents_of(sid, home):
     """The subagents that Claude Code recorded for the session, as one field: "sub 2/7: Explore repo; Review diff".
     2 run now, 7 in all; the names are those of the running ones. A subagent counts as running while its record
     is not finished and its transcript got a line in the last 15 minutes (a killed session leaves it unfinished)."""
     running, total = [], 0
-    for meta in glob.glob(os.path.expanduser(f"~/.claude/projects/*/{sid}/subagents/*.meta.json")):
+    for meta in glob.glob(os.path.join(home, "projects", "*", sid, "subagents", "*.meta.json")):
         try:
             with open(meta) as fh:
                 record = json.load(fh)
@@ -223,10 +286,13 @@ def subagents_of(sid):
     return [f"sub {len(running)}/{total}" + (f": {names}" if names else "")]
 
 
-def model_of(session, prs):
+def model_of(session, prs, home, account):
     """What the status line script left for the session, as description fields:
     ["Fable 5.2 high", "ctx 42%", "$12.34", "lane lane/x", "pr #644 needs grant", "cold 198K"].
-    The file holds "model<TAB>context %<TAB>cost<TAB>lane branch<TAB>cold tokens<TAB>week %"; older files hold fewer parts."""
+    The file holds "model<TAB>context %<TAB>cost<TAB>lane branch<TAB>cold tokens<TAB>week %<TAB>5h %<TAB>5h reset
+    <TAB>week reset<TAB>config folder name"; older files hold fewer parts. `home` is the Claude Code folder that
+    holds the session's record and `account` its name in the accounts file ("" when not listed): a listed
+    account adds "acct <name>" after the model."""
     sid = str(session.get("sessionId") or "")
     if not re.fullmatch(SESSION_ID, sid):
         return []
@@ -236,10 +302,14 @@ def model_of(session, prs):
             parts = fh.read(300).split("\t")
         at = os.path.getmtime(path)
     except OSError:
-        return subagents_of(sid)
-    parts += [""] * (9 - len(parts))
+        return ([f"acct {account}"] if account else []) + subagents_of(sid, home)
+    parts += [""] * (10 - len(parts))
+    if not account and parts[9]:
+        # The record sits in the usual folder: the status line's config folder name decides, when one line has it.
+        named = [name for kind, name, folder in ACCOUNTS if kind == "claude" and os.path.basename(folder) == parts[9]]
+        account = named[0] if len(named) == 1 else ""
     model = re.sub(r"[^\w .-]", "", parts[0]).strip()
-    fields = [model] if model else []
+    fields = ([model] if model else []) + ([f"acct {account}"] if account else [])
     if re.fullmatch(r"\d{1,3}", parts[1]):
         fields.append(f"ctx {parts[1]}%")
     if re.fullmatch(r"\d{1,6}\.\d\d", parts[2]):
@@ -250,9 +320,10 @@ def model_of(session, prs):
             fields.append(f"pr {prs[parts[3]]}")
     if re.fullmatch(r"\d{1,9}", parts[4]):
         fields.append(f"cold {short(int(parts[4]))}")
-    if re.fullmatch(r"\d{1,3}(\.\d+)?", parts[5]) and at > WEEK.get("at", 0):
-        WEEK.update(at=at, used=str(round(float(parts[5]))), five=parts[6], five_reset=parts[7], week_reset=parts[8])
-    return fields + subagents_of(sid)
+    if re.fullmatch(r"\d{1,3}(\.\d+)?", parts[5]) and at > WEEKS.get(account, {}).get("at", 0):
+        WEEKS[account] = dict(at=at, used=str(round(float(parts[5]))), five=parts[6], five_reset=parts[7],
+                              week_reset=parts[8])
+    return fields + subagents_of(sid, home)
 
 
 def clean(text, limit):
@@ -266,17 +337,19 @@ def general_marks():
     found = []
     if re.fullmatch(r"/Users/[A-Za-z0-9._-]{1,64}", os.path.expanduser("~")):
         found.append("@home: " + os.path.expanduser("~"))
-    if WEEK.get("used"):
-        found.append(f"@week: {WEEK['used']}%")
+    week = WEEKS.get("".join(DEFAULT_ACCOUNT)) or max(WEEKS.values(), key=lambda one: one["at"], default=None)
+    if week:
+        found.append(f"@week: {week['used']}%")
     limits = all_limits()
     if limits:
         found.append("@limits: " + ";".join(limits))
     return found
 
 
-def limit_item(tool, window, used, reset, seen):
+def limit_item(tool, window, used, reset, seen, account=""):
     """One limit window for the Limits view of the panel: "claude,5h,42,14:10,1794650000" =
     tool, window, share used in %, local reset time ("ended" when it passed, "" when unknown), time seen (epoch).
+    The window of a listed account gets a 6th part, its name: "claude,5h,42,14:10,1794650000,work".
     None when the share is not a number."""
     try:
         used = round(float(used))
@@ -293,13 +366,13 @@ def limit_item(tool, window, used, reset, seen):
             text = time.strftime("%H:%M" if reset - time.time() < 86400 else "%a %H:%M", time.localtime(reset))
     except (TypeError, ValueError, OverflowError, OSError):
         text = ""
-    return f"{tool},{window},{used},{text},{int(seen)}"
+    return f"{tool},{window},{used},{text},{int(seen)}" + (f",{account}" if account else "")
 
 
-def codex_limits():
-    """The limit windows in the newest Codex session file that holds any: Codex writes "rate_limits" into
-    its session records. Reads the file tail only, and keeps the windows, not the plan or the credits."""
-    files = glob.glob(os.path.expanduser("~/.codex/sessions/*/*/*/rollout-*.jsonl"))
+def codex_limits(home, account):
+    """The limit windows in the newest Codex session file of one Codex folder that holds any: Codex writes
+    "rate_limits" into its session records. Reads the file tail only, and keeps the windows, not the plan or the credits."""
+    files = glob.glob(os.path.join(home, "sessions", "*", "*", "*", "rollout-*.jsonl"))
     try:
         files.sort(key=os.path.getmtime, reverse=True)
     except OSError:
@@ -328,7 +401,7 @@ def codex_limits():
                     continue
                 minutes = window.get("window_minutes")
                 name = {300: "5h", 10080: "week"}.get(minutes, f"{minutes}m" if isinstance(minutes, int) else "")
-                item = limit_item("codex", name[:8], window.get("used_percent"), window.get("resets_at"), seen)
+                item = limit_item("codex", name[:8], window.get("used_percent"), window.get("resets_at"), seen, account)
                 if item:
                     found.append(item)
             if found:
@@ -340,15 +413,23 @@ def all_limits():
     """Limit windows of the agent tools on this Mac, from local files only. A tool whose data folder exists
     but that leaves no limit data gets an empty item, and the panel says so."""
     found = []
-    if WEEK.get("used"):
-        found.append(limit_item("claude", "5h", WEEK.get("five"), WEEK.get("five_reset"), WEEK["at"]))
-        found.append(limit_item("claude", "week", WEEK["used"], WEEK.get("week_reset"), WEEK["at"]))
-    codex = codex_limits()
-    if codex:
-        found += codex
-    elif os.path.isdir(os.path.expanduser("~/.codex")):
-        found.append("codex,,,,0")
-    for tool, folder in (("opencode", "~/.local/share/opencode"), ("grok", "~/.grok"), ("agy", "~/.antigravity")):
+    for _home, account in homes("claude", "~/.claude"):
+        week = WEEKS.get(account)
+        if week:
+            found.append(limit_item("claude", "5h", week.get("five"), week.get("five_reset"), week["at"], account))
+            found.append(limit_item("claude", "week", week["used"], week.get("week_reset"), week["at"], account))
+        elif account:
+            found.append(f"claude,,,,0,{account}")
+    for home, account in homes("codex", "~/.codex"):
+        codex = codex_limits(home, account)
+        if codex:
+            found += codex
+        elif os.path.isdir(home):
+            found.append("codex,,,,0" + (f",{account}" if account else ""))
+    for home, account in homes("opencode", "~/.local/share/opencode"):
+        if os.path.isdir(home):
+            found.append("opencode,,,,0" + (f",{account}" if account else ""))
+    for tool, folder in (("grok", "~/.grok"), ("agy", "~/.antigravity")):
         if os.path.isdir(os.path.expanduser(folder)):
             found.append(f"{tool},,,,0")
     return [item for item in found if item]
@@ -418,9 +499,9 @@ def set_models(tree, models, strip):
             print(f"label-tabs: description failed for {workspace}: {done.stderr.strip()}", file=sys.stderr)
 
 
-def quiet(session):
+def quiet(session, home):
     """True when the session's transcript exists and got no line for QUIET_SECONDS."""
-    found = glob.glob(os.path.expanduser(f"~/.claude/projects/*/{session.get('sessionId')}.jsonl"))
+    found = glob.glob(os.path.join(home, "projects", "*", f"{session.get('sessionId')}.jsonl"))
     return bool(found) and time.time() - os.path.getmtime(found[0]) > QUIET_SECONDS
 
 
@@ -456,6 +537,7 @@ def main():
     tree = json.loads(tree.stdout)
     surfaces(tree, by_id)
 
+    read_accounts()
     names = claude_names()
     live = []  # (surface id, name, waits, stalled, fields, hive status, status time) per Claude Code session in a tab
     labels = {}  # surface id -> label

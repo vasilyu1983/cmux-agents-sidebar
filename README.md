@@ -14,7 +14,7 @@ A drawing of a cmux window with the panel, with sample names.
 | Part | What it shows |
 |------|---------------|
 | One band per workspace | Project folder, colour bar, agent count, summed session cost, unread count. A click opens the workspace |
-| One row per session | Status dot, tab title, tool tag, time since the last activity. A click goes to the tab |
+| One row per session | Status dot, tab title, tool tag, time since the last activity. A click goes to the tab. With an accounts file the tag names the account (`claude · work`), and search matches it |
 | `NEEDS YOU` block | All sessions that wait for your input, at the top, with the reason when it is known |
 | Filter chips | `!` needs you, `▶` working, `80%` context nearly full, `PR` has a pull request, `1h+` idle for an hour. Each chip shows its count |
 | `↑` sort | Sessions that need attention first; the default order is the tab order |
@@ -24,7 +24,7 @@ A drawing of a cmux window with the panel, with sample names.
 | Right-click menu | Go to session, copy name, copy folder, copy PR number, fast commands |
 | `hive ↗` | A graph page: workspace → session → subagent, in a cmux browser tab. It updates every 15 seconds. The open tab has a blue box. A click on a session goes to its tab, and the page follows you to another workspace |
 | Next waiting | `next-waiting.sh` goes to the Claude Code session that has waited for you the longest |
-| `Limits` | Next to `Here` and `All`: the rate limits of each agent tool on this Mac, per window (5 hours, week), with the reset time and the age of the figure |
+| `Limits` | Next to `Here` and `All`: the rate limits of each agent tool on this Mac, per window (5 hours, week), with the reset time and the age of the figure. With an accounts file: one line per tool and account. The panel remembers the choice |
 | Search | Filters rows by title, tool, workspace or folder |
 
 With the optional Claude Code status line, each Claude Code row also shows the model and effort, the context share (red from 80%), the session cost estimate, a `cold` mark when the prompt cache went cold, and the count line shows the summed cost.
@@ -174,6 +174,55 @@ Two cautions about the send action:
 - It runs only on an idle session. On a session that works or waits, the text could answer a prompt, so the item does nothing.
 
 The other tools only copy, because their waiting state in cmux is not confirmed yet. To change a tool to sending, add `send: true` to its line in `COMMANDS` at the top of `agents.js`. To add a tool, add a line there.
+
+## Several accounts
+
+You can keep a personal account and a work account of the same tool logged in at once, and let the folder decide which one a session uses. Each account is a separate data folder of the tool; a launcher sets one variable before the tool starts.
+
+| Tool | Variable that the launcher sets | Status |
+|------|--------------------------------|--------|
+| Claude Code | `CLAUDE_CONFIG_DIR` | Documented by Claude Code for work and personal accounts. On macOS the Keychain entry is per folder. |
+| Codex | `CODEX_HOME` | Named in `codex --help`. |
+| OpenCode | `XDG_DATA_HOME` | Its login file and sessions are in the data folder. The variable also reaches each command that OpenCode runs. |
+| Grok Build, Antigravity (`agy`) | none found in their help | One account. The launcher refuses them; start them as before. |
+
+The accounts file is `~/.config/cmux/agents-accounts`. Without it, everything works as before. [`examples/agents-accounts.example`](examples/agents-accounts.example) is a start:
+
+```
+account claude work ~/.claude-work
+account codex work ~/.codex-work
+rule ~/Projects/work work
+default personal
+```
+
+- `account <tool> <name> <folder>`: the data folder of one account. The name has 1 to 16 characters from `a-z`, `0-9` and `-`. The folder must be under your home folder.
+- `rule <folder prefix> <name>`: a session started in that folder, or below it, uses that account. The longest matching prefix wins.
+- `default <name>`: the account when no rule matches.
+- A name with no `account` line for a tool means the tool's normal folder (`~/.claude`, `~/.codex`). In the example, `personal` is the login that you have today.
+
+Two scripts:
+
+- `scripts/agents-account-add.sh <tool> <name>` makes the folder `~/.<tool>-<name>` and adds the `account` line. With `--dry-run` it only prints. At the end it prints the one login command; you run it and log in yourself.
+- `scripts/agent-run.sh <tool> [arguments]` chooses the account and starts the tool with your arguments unchanged. `agent-run.sh --which <tool>` prints the name. `AGENT_ACCOUNT=<name>` overrides the rules for one start. An unknown name or a missing folder is an error, and the tool does not start.
+
+To use the launcher for every start, add these functions to `~/.zshrc` yourself:
+
+```zsh
+claude() { ~/.config/cmux/scripts/agent-run.sh claude "$@"; }
+codex() { ~/.config/cmux/scripts/agent-run.sh codex "$@"; }
+```
+
+What a Claude Code account folder shares: `agents-account-add.sh` links `settings.json`, `CLAUDE.md`, `hooks`, `rules`, `skills`, `agents`, `commands`, `output-styles`, `plugins` and `statusline-command.sh` from `~/.claude`, when they exist there. It never replaces a real file in the account folder. Separate for each account: the login, the sessions, project memory and history. For Codex and OpenCode the script links nothing; a new Codex folder starts without your `config.toml`, `AGENTS.md` and `hooks.json`.
+
+Limits to know:
+
+- If a link is missing, that account runs without the part. A missing `hooks` or `settings.json` link means your hooks and permission rules do not run there. Read the table that the script prints.
+- `/resume` and `--resume` see only the sessions of the account in use. Under cmux, `claude --resume <id>` with an id that is stored in `~/.claude` moves that start to the normal folder, and so to that account.
+- The folder does not separate every sign-in. `ANTHROPIC_AUTH_TOKEN` and `CLAUDE_CODE_OAUTH_TOKEN` in the environment rank above the login of any folder; so does `ANTHROPIC_API_KEY` outside cmux (the cmux wrapper removes it). Claude Code stores a Console sign-in without an API key outside the folder.
+- The linked `settings.json` applies to every account. If it sets `apiKeyHelper`, a credential in `env`, `forceLoginMethod` or `forceLoginOrgUUID`, all accounts get that sign-in rule, and `forceLoginOrgUUID` can refuse the login of the second account. In that case give the account its own `settings.json` in place of the link.
+- With an accounts file, the launcher removes an inherited `CLAUDE_CONFIG_DIR` or `CODEX_HOME` when the chosen account uses the normal folder. It leaves `XDG_DATA_HOME` alone.
+- The plan terms of each tool are your responsibility. Separate accounts for separate work are one thing; several accounts to pass a usage limit can break the terms.
+- The scripts read, copy and move no login token. They make folders and links, write one line of text, and set one variable.
 
 ## How it works
 

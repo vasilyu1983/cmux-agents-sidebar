@@ -8,9 +8,10 @@
 //   cmux right-sidebar set custom panel-subagents
 
 const [query, setQuery] = signal("");
-const [showLimits, setShowLimits] = signal(false);
+const [showLimitsS, setShowLimitsS] = signal(null);
 // The view (chip, sort, scope, ended rows, folded groups) survives a panel reload. A panel has no storage of its
-// own, so each change goes into a workspace description as one part: "@view: t=<epoch>,c=<chip|all>,a=0,s=1,e=0,f=0".
+// own, so each change goes into a workspace description as one part: "@view: t=<epoch>,c=<chip|all>,a=0,s=1,e=0,l=0,f=0"
+// ("l" = the Limits view; a part without it reads as 0).
 // label-tabs.py rebuilds the description and keeps that part. A signal here holds null until a click; before
 // the first click the value comes from the newest "@view" part (t). "f" is the fold of the workspace that carries it.
 const [scopeAllS, setScopeAllS] = signal(null);
@@ -33,10 +34,11 @@ const saved = computed(() => {
       if ((Number(v.t) || 0) > bestT) { bestT = Number(v.t) || 0; best = v; }
     }
   }
-  return { c: best.c ?? "", a: best.a === "1", s: best.s !== "0", e: best.e === "1", folds };
+  return { c: best.c ?? "", a: best.a === "1", s: best.s !== "0", e: best.e === "1", l: best.l === "1", folds };
 });
 const scopeAll = () => scopeAllS() ?? saved().s;
 const showEnded = () => showEndedS() ?? saved().e;
+const showLimits = () => showLimitsS() ?? saved().l;
 const collapsed = () => ({ ...saved().folds, ...collapsedS() });
 const [openKids, setOpenKids] = signal({});
 const [openInfo, setOpenInfo] = signal({});
@@ -62,20 +64,20 @@ function persist(next, wsId, fold) {
   if (!w || !all.some((x) => /(?:^| \| )@home: /.test(String(x.description ?? "")))) return;
   const on = (b) => (b ? 1 : 0);
   const part = "@view: t=" + (data.clock()?.epoch ?? 0) + ",c=" + (next.c || "all") + ",a=" + on(next.a)
-    + ",s=" + on(next.s) + ",e=" + on(next.e) + ",f=" + on(fold ?? collapsed()[wsId]);
+    + ",s=" + on(next.s) + ",e=" + on(next.e) + ",l=" + on(next.l) + ",f=" + on(fold ?? collapsed()[wsId]);
   const parts = String(w.description ?? "").split(" | ").filter((p) => !p.startsWith("@view: "));
   cmux("workspace.action", { workspace_id: wsId, action: "set_description", description: [...parts, part].join(" | ") });
 }
-// One change of the view: c = chip, a = attention sort, s = all workspaces, e = ended rows.
+// One change of the view: c = chip, a = attention sort, s = all workspaces, e = ended rows, l = the Limits view.
 function setView(patch) {
-  const next = { c: filter(), a: attention(), s: scopeAll(), e: showEnded(), ...patch };
-  setFilterS(next.c); setAttentionS(next.a); setScopeAllS(next.s); setShowEndedS(next.e);
+  const next = { c: filter(), a: attention(), s: scopeAll(), e: showEnded(), l: showLimits(), ...patch };
+  setFilterS(next.c); setAttentionS(next.a); setScopeAllS(next.s); setShowEndedS(next.e); setShowLimitsS(next.l);
   persist(next, data.selectedId());
 }
 function toggleFold(wsId) {
   const fold = !collapsed()[wsId];
   setCollapsedS({ ...collapsedS(), [wsId]: fold });
-  persist({ c: filter(), a: attention(), s: scopeAll(), e: showEnded() }, wsId, fold);
+  persist({ c: filter(), a: attention(), s: scopeAll(), e: showEnded(), l: showLimits() }, wsId, fold);
 }
 
 // One agent record per tab: cmux can keep an older live record for the same tab. The record that waits or works
@@ -136,6 +138,11 @@ function sessionsOf(w) {
       else if (f.startsWith("lane ")) s.lane = f.slice(5);
       else if (f.startsWith("pr ")) s.pr = f.slice(3);
       else if (f.startsWith("cold ")) s.cold = f;
+      else if (f.startsWith("acct ")) {
+        // "acct work": the account of the session, a short name from your account list. Another form is left out.
+        const m = /^acct ([a-z0-9-]{1,16})$/.exec(f);
+        if (m) s.acct = m[1];
+      }
       else if (f.startsWith("sub ")) {
         // "sub 2/7: Explore repo; Review diff": subagents from the Claude Code records, running ones by name.
         // A field that does not have this form is left out.
@@ -232,7 +239,7 @@ const view = computed(() => {
       if (a.status === "ended" && !showEnded()
           && (liveInTab || epoch - (a.lastActivityAt ?? 0) > ENDED_VISIBLE_SECS)) continue;
       if (!matches(tabTitle) && !matches(a.title) && !matches(a.name) && !matches(a.kind)
-          && !matches(w.title) && !matches(a.directory)) continue;
+          && !matches(w.title) && !matches(a.directory) && !matches(models[sessionName(tabTitle)]?.acct)) continue;
       // A settled session takes one line; a working or waiting one keeps two, so it stands out by size.
       // The key carries the form, because a row's template is fixed per key.
       const compact = a.status === "idle" || a.status === "ended";
@@ -248,6 +255,7 @@ const view = computed(() => {
         sessName: sessionName(tabTitle) ?? "",
         // The PR of the lane branch where the session works, with the state from your merge tool: "#644 needs grant".
         prText: sess.pr ?? "",
+        acct: sess.acct ?? "",
         cold: a.status === "idle" ? sess.cold ?? "" : "",
         folder: String(a.directory ?? ""),
         // Why the session waits, and its context share when that is 80% or more (the row shows it in red).
@@ -267,6 +275,7 @@ const view = computed(() => {
           ["cache", sess.cold ? sess.cold + " tokens to rewrite on the next message" : ""],
           ["waits", a.status === "needs_input" ? sess.wait ?? "" : ""],
           ["tool", a.name],
+          ["account", sess.acct ?? ""],
           ["model", sess.model ?? ""],
           ["context", sess.ctx >= 0 ? sess.ctx + "%" : ""],
           ["cost", sess.cost ?? ""],
@@ -369,7 +378,8 @@ const limits = computed(() => {
   }
   const out = [];
   for (const item of newest ? newest.text.split(";") : []) {
-    const m = /^([a-z]{1,12}),([\w]{0,8}),(\d{0,3}),([\w: ]{0,12}),(\d{1,12})$/.exec(item);
+    // The sixth part, the account, is optional: "claude,5h,42,14:10,1794650000,work".
+    const m = /^([a-z]{1,12}),([\w]{0,8}),(\d{0,3}),([\w: ]{0,12}),(\d{1,12})(?:,([a-z0-9-]{1,16}))?$/.exec(item);
     if (!m || !TOOLS[m[1]]) continue;
     const seen = Number(m[5]);
     const age = seen && epoch >= seen ? " · seen " + fmtAgo(epoch - seen) + " ago" : "";
@@ -383,8 +393,11 @@ const limits = computed(() => {
         color = used >= 80 ? "#FF453A" : "secondary";
       }
     }
-    out.push({ key: "limit" + out.length + m[1] + m[2], label: TOOLS[m[1]], value, color, copy: TOOLS[m[1]] + " " + value, wsId: newest.wsId });
+    const label = TOOLS[m[1]] + (m[6] ? " " + m[6] : "");
+    out.push({ key: "limit" + out.length + m[1] + m[2], label, value, color, copy: label + " " + value, wsId: newest.wsId, tool: Object.keys(TOOLS).indexOf(m[1]), acct: m[6] ?? "" });
   }
+  // Lines of one tool stay together, and inside a tool the lines of one account.
+  out.sort((a, b) => a.tool - b.tool || (a.acct < b.acct ? -1 : a.acct > b.acct ? 1 : 0));
   if (out.length === 0) out.push({ key: "limit-none", label: "limits", value: "no data yet: the watcher writes it within 15 seconds", color: "tertiary", copy: "", wsId: data.selectedId() });
   return out;
 });
@@ -455,7 +468,7 @@ function hiveUrl(mark) {
       const sess = models[sessionName(tab?.title)] ?? {};
       agents.push({
         n: rowTitle(tab?.title ?? "") || a.title || a.name || "session", k: a.kind ?? "", s: a.status,
-        i: tab?.id ?? "", w: w.id, f: mark ? mark.ws === w.id && mark.tab === tab?.id : Boolean(w.selected && tab?.focused), m: sess.model ?? "", x: sess.ctx ?? null, c: sess.cost ?? "", p: sess.pr ?? "", l: sess.lane ?? "",
+        i: tab?.id ?? "", w: w.id, f: mark ? mark.ws === w.id && mark.tab === tab?.id : Boolean(w.selected && tab?.focused), m: sess.model ?? "", u: sess.acct ?? "", x: sess.ctx ?? null, c: sess.cost ?? "", p: sess.pr ?? "", l: sess.lane ?? "",
         // Subagents: what cmux reports for the agent; when it reports none, what label-tabs.py found on disk.
         ch: (a.children ?? []).length > 0
           ? a.children.map((c) => ({ n: c.label || "subagent", r: Boolean(c.running) }))
@@ -561,14 +574,15 @@ const rowTitle = (t) => {
 };
 
 // The tool of the session as a small tag after the name: "claude", "codex", or what cmux reports for another tool.
+// With an account in the data, the tag also names it: "claude · work".
 const toolTag = (entry) =>
-  Text(() => entry().agent.kind ?? "").font(9).monospaced().color("tertiary").lineLimit(1);
+  Text(() => (entry().agent.kind ?? "") + (entry().acct ? " · " + entry().acct : "")).font(9).monospaced().color("tertiary").lineLimit(1);
 const ctxBadge = (entry) =>
   Text(() => entry().ctxHigh).font(9).weight("semibold").monospaced().color("#FF453A").lineLimit(1);
 // One line of the project strip: a dim label and its text. A click opens the workspace that carries it.
-function stripRow(entry) {
+function stripRow(entry, width = 58) {
   return HStack({ spacing: 8 }, [
-    Text(() => entry().label).font(10).monospaced().color("tertiary").frame({ width: 58, alignment: "leading" }),
+    Text(() => entry().label).font(10).monospaced().color("tertiary").lineLimit(1).truncation("tail").frame({ width, alignment: "leading" }),
     Text(() => entry().value).font(10).color(() => entry().color).lineLimit(2).truncation("tail"),
     Spacer(),
   ])
@@ -768,9 +782,9 @@ sidebar(() =>
     ]).paddingHorizontal(10),
 
     HStack({ spacing: 4 }, [
-      toggleButton("Here", () => !scopeAll() && !showLimits(), () => { setShowLimits(false); setView({ s: false }); }),
-      toggleButton("All", () => scopeAll() && !showLimits(), () => { setShowLimits(false); setView({ s: true }); }),
-      toggleButton("Limits", () => showLimits(), () => setShowLimits(!showLimits())),
+      toggleButton("Here", () => !scopeAll() && !showLimits(), () => setView({ s: false, l: false })),
+      toggleButton("All", () => scopeAll() && !showLimits(), () => setView({ s: true, l: false })),
+      toggleButton("Limits", () => showLimits(), () => setView({ l: !showLimits() })),
       Spacer(),
       // No text: this view reads the tab titles, so it runs again when one changes, and serves the hive page's jumps.
       Text(() => hiveGo()).font(1),
@@ -795,7 +809,7 @@ sidebar(() =>
           .opacity(() => ((view().chips[f().id] ?? 0) === 0 && filter() !== f().id ? 0.45 : 1))),
       Spacer(),
       // Back to the default view: no chip, tab order, all workspaces, no ended rows. The search text stays.
-      toggleButton("✕", () => false, () => setView({ c: "", a: false, s: true, e: false })),
+      toggleButton("✕", () => false, () => setView({ c: "", a: false, s: true, e: false, l: false })),
       toggleButton("↑", () => attention(), () => setView({ a: !attention() })),
     ]).paddingHorizontal(10),
     Text(() => {
@@ -807,7 +821,7 @@ sidebar(() =>
 
     VStack({ spacing: 3 }, [ForEach({ items: strip, key: (s) => s.key }, (s) => stripRow(s))]),
     // The Limits view takes the place of the session list.
-    VStack({ spacing: 5 }, [ForEach({ items: () => (showLimits() ? limits() : []), key: (s) => s.key }, (s) => stripRow(s))]),
+    VStack({ spacing: 5 }, [ForEach({ items: () => (showLimits() ? limits() : []), key: (s) => s.key }, (s) => stripRow(s, limits().some((x) => x.acct) ? 108 : 58))]),
 
     TextField("", {
       placeholder: "Search agents",

@@ -51,7 +51,7 @@ const ident = (v) => (typeof v === "string" && /^[0-9A-Fa-f-]{1,40}$/.test(v) ? 
 function tidyAgent(a) {
   if (!a || typeof a !== "object") return null;
   const out = { n: text(a.n, 200), k: text(a.k, 40), s: text(a.s, 20), i: ident(a.i), w: ident(a.w), f: a.f === true,
-    m: text(a.m, 60), x: Number.isFinite(a.x) ? a.x : null, c: text(a.c, 20), p: text(a.p, 60), l: text(a.l, 60) };
+    m: text(a.m, 60), x: Number.isFinite(a.x) ? a.x : null, c: text(a.c, 20), p: text(a.p, 60), l: text(a.l, 60), u: text(a.u, 16) };
   if (Array.isArray(a.ch)) {
     out.ch = a.ch.slice(0, 40).filter((c) => c && typeof c === "object").map((c) => ({ n: text(c.n, 60), r: c.r === true }));
   }
@@ -134,7 +134,7 @@ function draw(data) {
     title: cut(w.n, 26), sub: (w.a || []).length + " session(s)" + (w.f ? " · current" : ""), here: w.f === true, color: /^#[0-9a-fA-F]{6,8}$/.test(w.c) ? w.c : "#8E8E93",
     kids: (w.a || []).map((a) => ({
       title: cut(a.n, 40), go: /^[0-9A-Fa-f-]{1,40}$/.test(a.i || "") && /^[0-9A-Fa-f-]{1,40}$/.test(a.w || "") ? a.w + ":" + a.i : "",
-      sub: cut([a.k, a.m, a.x != null ? "ctx " + a.x + "%" : "", a.c, a.p].filter(Boolean).join(" · "), 52),
+      sub: cut([a.u ? a.k + " " + a.u : a.k, a.m, a.x != null ? "ctx " + a.x + "%" : "", a.c, a.p].filter(Boolean).join(" · "), 52),
       here: a.f === true, color: (STATUS[a.s] || ["#8E8E93"])[0], hot: a.s === "needs_input" || a.x >= 80,
       kids: (a.ch || []).map((c) => ({ title: cut(c.n, 28), sub: c.r ? "running" : "done", color: c.r ? "#0A84FF" : "#8E8E93" })),
     })),
