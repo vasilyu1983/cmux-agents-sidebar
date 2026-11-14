@@ -422,20 +422,44 @@ def write_hive(tree, live, titles):
         print(f"label-tabs: hive data not written: {err}", file=sys.stderr)
 
 
-HISTORY_SECONDS = 7 * 86400  # the views page shows one week at most
+HISTORY_SECONDS = 30 * 86400  # the Rhythm view shows a month of days; the other views show one week at most
+HISTORY_SAMPLE = 60  # seconds between two context and cost samples of one session
 HISTORY_GAP = 60  # a longer silence of the watcher (sleep, a stopped watcher) ends a block of the timeline
 HISTORY_BLOCKS = 20000
 HISTORY_STATES = ("working", "needs_input", "idle")
 
 
-def history_step(old, rows, readings, now):
+def subagent_runs(sids):
+    """[[session id, agent type, start, end]] per subagent record of the sessions, from the times of its transcript
+    file: made at the start, changed at the last line. It reads no content of a transcript."""
+    runs = []
+    for home, _account in homes("claude", "~/.claude"):
+        for sid in sids:
+            for meta in glob.glob(os.path.join(home, "projects", "*", sid, "subagents", "*.meta.json")):
+                try:
+                    with open(meta) as fh:
+                        record = json.load(fh)
+                    times = os.stat(meta[:-len(".meta.json")] + ".jsonl")
+                except (OSError, ValueError):
+                    continue
+                kind = re.sub(r"[^\w .-]", "", str(record.get("agentType") or "subagent") if isinstance(record, dict) else "subagent")
+                start = int(getattr(times, "st_birthtime", times.st_mtime))
+                runs.append([sid, kind[:28] or "subagent", start, max(start, int(times.st_mtime))])
+    return runs
+
+
+def history_step(old, rows, readings, now, runs=()):
     """The history for the views page after one pass of the watcher.
     old: the history before (any value; a broken one counts as empty).
-    rows: (session id, name, workspace name, state, model, context %, cost, account) per live Claude Code session.
-    readings: LIMIT_READINGS of this pass.
-    Result: {"t": now, "s": {session id: {n, w, m, x, c, u}}, "b": [[session id, state, start, end], ...],
-    "l": [[tool, window, account, used, reset, seen], ...]}. A block grows while its session keeps its state and
-    the watcher keeps running. It holds names, states, times, costs and limit figures: no request and no reply text."""
+    rows: (session id, name, workspace name, state, model, context %, cost, account[, compactions, cold cache])
+    per live Claude Code session. readings: LIMIT_READINGS of this pass. runs: subagent_runs of this pass.
+    Result: {"t": now, "s": {session id: {n, w, m, x, c, u, q, k}}, "b": [[session id, state, start, end], ...],
+    "l": [[tool, window, account, used, reset, seen], ...], "p": [[session id, time, context % or None, cost], ...],
+    "e": [[session id, "compact" or "cold", time], ...], "g": [[session id, agent type, start, end], ...]}.
+    A block grows while its session keeps its state and the watcher keeps running. p has one sample per session
+    and minute at most, and only when a figure changed. e has a mark when the compaction count rose or the prompt
+    cache went cold; the first pass that sees a session only notes its figures.
+    It holds names, states, times, costs and limit figures: no request and no reply text."""
     old = old if isinstance(old, dict) else {}
     blocks = [b for b in old.get("b", []) if isinstance(b, list) and len(b) == 4 and isinstance(b[2], (int, float))
               and isinstance(b[3], (int, float)) and b[3] >= now - HISTORY_SECONDS]
@@ -444,9 +468,27 @@ def history_step(old, rows, readings, now):
         if block[0] not in last or block[3] >= last[block[0]][3]:
             last[block[0]] = block
     sessions = {sid: info for sid, info in (old.get("s") or {}).items() if sid in last and isinstance(info, dict)}
-    for sid, name, space, state, model, ctx, cost, account in rows:
+    keep = now - HISTORY_SECONDS
+    samples = [p for p in old.get("p", []) if isinstance(p, list) and len(p) == 4 and isinstance(p[1], (int, float)) and p[1] >= keep]
+    events = [e for e in old.get("e", []) if isinstance(e, list) and len(e) == 3 and isinstance(e[2], (int, float)) and e[2] >= keep]
+    newest = {p[0]: p for p in samples}  # session id -> its newest sample
+    for sid, name, space, state, model, ctx, cost, account, *marks in rows:
         if state not in HISTORY_STATES or not re.fullmatch(SESSION_ID, str(sid)):
             continue
+        before = sessions.get(sid, {})
+        count = marks[0] if marks and isinstance(marks[0], int) else before.get("q")
+        cold = bool(marks[1]) if len(marks) > 1 else False
+        if isinstance(count, int) and isinstance(before.get("q"), int) and count > before["q"]:
+            events.append([sid, "compact", now])
+        if cold and before.get("k") is False:
+            events.append([sid, "cold", now])
+        paid = re.fullmatch(r"\$?(\d{1,6}(?:\.\d{1,2})?)", str(cost))
+        share = ctx if isinstance(ctx, int) and not isinstance(ctx, bool) else None
+        if paid or share is not None:
+            sample, prior = [sid, now, share, float(paid.group(1)) if paid else None], newest.get(sid)
+            if not prior or (prior[2:] != sample[2:] and now - prior[1] >= HISTORY_SAMPLE):
+                samples.append(sample)
+                newest[sid] = sample
         block = last.get(sid)
         if block and block[1] == state and now - block[3] <= HISTORY_GAP:
             block[3] = now
@@ -457,7 +499,12 @@ def history_step(old, rows, readings, now):
             blocks.append(block)
             last[sid] = block
         sessions[sid] = {"n": str(name)[:60], "w": str(space)[:60], "m": str(model)[:40], "x": ctx, "c": str(cost)[:16],
-                         "u": str(account)[:16]}
+                         "u": str(account)[:16], "q": count, "k": cold}
+    # A subagent run is known by its session and start; a newer pass brings its newer end.
+    known = {}
+    for run_ in list(old.get("g", [])) + [list(r) for r in runs]:
+        if isinstance(run_, list) and len(run_) == 4 and isinstance(run_[2], (int, float)) and isinstance(run_[3], (int, float)) and run_[3] >= keep:
+            known[(run_[0], run_[2])] = run_
     seen = set()
     limits = []
     for item in list(old.get("l", [])) + [list(r) for r in readings]:
@@ -468,7 +515,8 @@ def history_step(old, rows, readings, now):
             continue
         seen.add(key)
         limits.append(item)
-    return {"t": int(now), "s": sessions, "b": blocks[-HISTORY_BLOCKS:], "l": limits[-5000:]}
+    return {"t": int(now), "s": sessions, "b": blocks[-HISTORY_BLOCKS:], "l": limits[-5000:], "p": samples[-HISTORY_BLOCKS:],
+            "e": events[-2000:], "g": sorted(known.values(), key=lambda r: r[2])[-5000:]}
 
 
 def write_history(rows):
@@ -488,7 +536,7 @@ def write_history(rows):
     except (OSError, ValueError) as err:
         print(f"label-tabs: history not read, a new one starts: {err}", file=sys.stderr)
     try:
-        data = history_step(old, rows, LIMIT_READINGS, int(time.time()))
+        data = history_step(old, rows, LIMIT_READINGS, int(time.time()), subagent_runs([row[0] for row in rows]))
         handle, path = tempfile.mkstemp(dir=folder, prefix=".history-data.")  # mkstemp makes the file with mode 600
         with os.fdopen(handle, "w") as fh:
             fh.write(head + json.dumps(data, separators=(",", ":")).replace("<", "\\u003c") + tail)
@@ -923,7 +971,8 @@ def main():
     for key, sid, name, status, model in past:
         agent = hive_agent(model)
         space = spaces.get(tabs[key][0], ("", False))[0] if key in tabs else ""
-        rows.append((sid, name, space, status, agent.get("m", ""), agent.get("x"), agent.get("c", ""), agent.get("u", "")))
+        rows.append((sid, name, space, status, agent.get("m", ""), agent.get("x"), agent.get("c", ""), agent.get("u", ""),
+                     agent.get("q", 0), any(field.startswith("cold ") for field in model)))
     write_history(rows)
     clean_cache({sid for *_rest, sid in names.values()})
 

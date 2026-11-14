@@ -222,7 +222,7 @@ Files that appear later, while the kit runs:
 | `~/.cache/cmux-agents/<session id>.seen` | `label-tabs.py` | How far the transcript was read, the compaction count, the last `Next:` line, the start of the last request and the session title |
 | `~/.cache/cmux-agents/limit-warned` | `label-tabs.py` | The limit windows that already got a warning, so each one warns once |
 | `~/.config/cmux/scripts/hive-data.js` | `label-tabs.py` | The data of the hive page; it holds your session titles (mode 600) |
-| `~/.config/cmux/scripts/history-data.js` | `label-tabs.py` | The history for the Timeline, Limits, Queue and Rhythm views: at most 7 days (mode 600) |
+| `~/.config/cmux/scripts/history-data.js` | `label-tabs.py` | The history for the Timeline, Limits, Queue and Rhythm views: at most 30 days (mode 600) |
 | `~/.config/cmux/agents-accounts` | You, or `agents-account-add.sh` | The account list and the folder rules |
 
 The `statusLine` key that it adds:
@@ -417,7 +417,7 @@ Without a watcher of your own the strip shows only the limit lines, one per tool
 - From the same transcript `label-tabs.py` takes the title of the session (the one you set with `/rename`, else the one the tool gave it), cut to 48 characters. It goes into the workspace description and into `~/.cache/cmux-agents/<session id>.seen`, and the panel shows it on a tab with no title of its own.
 - The start of your last request (60 characters) also goes into the workspace description.
 - For a tab that runs Codex, OpenCode, Grok or Antigravity, `label-tabs.py` asks cmux for the last 30 lines on screen (`cmux read-screen`). It tests them for two fixed interface lines and keeps one word: `working`, `asks` or `idle`. No screen text is stored or shown.
-- `label-tabs.py` keeps a history file, `~/.config/cmux/scripts/history-data.js`, for the views page. Every 15 seconds it records, per live Claude Code session: the session id, the session name (the one you gave it, else the short one of the tool, at most 60 characters), the workspace name, the state (working, needs input, idle) with start and end times, the model, the context share, the cost and the account name. It also records each limit figure with its time. It holds no request text and no reply text. It keeps 7 days, is readable by you only (mode 600), and never leaves your Mac. `uninstall.sh` removes it.
+- `label-tabs.py` keeps a history file, `~/.config/cmux/scripts/history-data.js`, for the views page. Every 15 seconds it records, per live Claude Code session: the session id, the session name (the one you gave it, else the short one of the tool, at most 60 characters), the workspace name, the state (working, needs input, idle) with start and end times, the model, the context share, the cost and the account name. It also records each limit figure with its time; a sample of the context share and the cost per session (one per minute at most, when a figure changed); the time of each compaction and of each cold prompt cache; and per subagent of a live session its agent type (for example `Explore`) with the start and end time, taken from the file times of its transcript. It holds no request text and no reply text. It keeps 30 days, is readable by you only (mode 600), and never leaves your Mac. `uninstall.sh` removes it.
 - The views page stores two words in the browser's local storage of its cmux tab: the last view and the last time range.
 - `~/.cache/cmux-agents` is created with mode 700.
 - The panel writes to the clipboard only from a menu item that you click.
