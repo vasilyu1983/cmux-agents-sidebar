@@ -1253,7 +1253,7 @@ sidebar(() =>
         toggleButton("↑", () => attention(), () => setView({ a: !attention() })),
         toggleButton("state", () => byState(), () => setByState(!byState())),
         toggleButton("Ended", () => showEnded(), () => setView({ e: !showEnded() })),
-        // Opens the views page in the browser: the hive tree, the timeline, cost, limits, queue, context and rhythm.
+        // Opens the views page in the browser: the hive tree, the timeline, cost, flow, limits, queue, context and rhythm.
         toggleButton("views ↗", () => false, () => openViews()),
       ]).paddingHorizontal(10),
     ]),

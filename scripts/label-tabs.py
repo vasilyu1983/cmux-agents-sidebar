@@ -478,6 +478,9 @@ def history_step(old, rows, readings, now, runs=()):
         before = sessions.get(sid, {})
         count = marks[0] if marks and isinstance(marks[0], int) else before.get("q")
         cold = bool(marks[1]) if len(marks) > 1 else False
+        # The count never falls: a pass that could not read the transcript must not give a mark on the next pass.
+        if isinstance(count, int) and isinstance(before.get("q"), int):
+            count = max(count, before["q"])
         if isinstance(count, int) and isinstance(before.get("q"), int) and count > before["q"]:
             events.append([sid, "compact", now])
         if cold and before.get("k") is False:

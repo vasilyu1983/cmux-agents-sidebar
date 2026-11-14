@@ -8,7 +8,7 @@
      workspaces, their sessions, and the subagents of each session. Every 15 seconds the page also loads
      hive-data.js, a local file next to it that label-tabs.py writes, and brings the picture up to date.
      A switch at the top changes the view: Hive, Timeline, Cost, Limits, Queue, Context, Rhythm. Timeline, Limits,
-     Queue and Rhythm also read history-data.js, the local history that label-tabs.py keeps (states, times, costs
+     Queue and Rhythm also read history-data.js, the local history that label-tabs.py keeps (states, times, costs, samples of context and cost, marks, subagent runs
      and limit figures; no request or reply text).
      It loads nothing from the network. It stores two words in the browser's local storage: the last view and the
      last time range. Every source passes a check (tidy, tidyHistory), and every text goes in with textContent,
@@ -223,7 +223,14 @@ function tidyHistory(raw) {
     && typeof x[0] === "string" && typeof x[1] === "string" && typeof x[2] === "string"
     && Number.isFinite(x[3]) && Number.isFinite(x[4]) && Number.isFinite(x[5]))
     .map((x) => [x[0].slice(0, 16), x[1].slice(0, 8), x[2].slice(0, 16), x[3], x[4], x[5]]);
-  return { t: Number.isFinite(raw.t) ? raw.t : 0, s, b, l };
+  const num = Number.isFinite, list = (v) => (Array.isArray(v) ? v : []);
+  // p: samples of context share and cost. e: marks (a compaction, a cold prompt cache). g: subagent runs.
+  const p = list(raw.p).slice(-20000).filter((x) => Array.isArray(x) && x.length === 4 && s[x[0]] && num(x[1])
+    && (x[2] === null || num(x[2])) && (x[3] === null || num(x[3])));
+  const e = list(raw.e).slice(-2000).filter((x) => Array.isArray(x) && x.length === 3 && s[x[0]] && (x[1] === "compact" || x[1] === "cold") && num(x[2]));
+  const g = list(raw.g).slice(-5000).filter((x) => Array.isArray(x) && x.length === 4 && s[x[0]] && typeof x[1] === "string" && num(x[2]) && num(x[3]) && x[3] >= x[2])
+    .map((x) => [x[0], x[1].slice(0, 28), x[2], x[3]]);
+  return { t: num(raw.t) ? raw.t : 0, s, b, l, p, e, g };
 }
 
 // ---- Shared helpers of the views ----
@@ -280,6 +287,37 @@ function fit(values, length, min) {
   return values.map((v) => ((v / sum) * length < floor ? floor : (v / rest) * (length - small.length * floor)));
 }
 const size = (svg, w, h) => { svg.setAttribute("width", w); svg.setAttribute("height", h); };
+// The records of a list by their first field (the session id).
+const bySession = (list) => { const m = new Map(); for (const r of list) { if (!m.has(r[0])) m.set(r[0], []); m.get(r[0]).push(r); } return m; };
+// How many sessions were in a state at one time: [[time, count], ...] from the blocks, between from and now.
+function steps(blocks, state, from, now) {
+  const ev = [];
+  for (const b of blocks) if (b[1] === state && b[3] > from && b[3] > b[2]) ev.push([Math.max(b[2], from), 1], [Math.min(b[3], now), -1]);
+  ev.sort((p, q) => p[0] - q[0] || p[1] - q[1]);
+  const out = [[from, 0]];
+  let n = 0;
+  for (const [t, d] of ev) { n += d; out.push([t, n]); }
+  out.push([now, n]);
+  return out;
+}
+// The waits that ended with an answer: a "needs you" block that another state of the same session follows at once.
+function answeredWaits(since) {
+  const out = [];
+  for (const list of bySession(hist.b).values()) {
+    list.sort((p, q) => p[2] - q[2]);
+    list.forEach((b, k) => {
+      const next = list[k + 1];
+      if (b[1] === "needs_input" && b[3] >= since && next && next[2] === b[3] && next[1] !== "needs_input") out.push(b[3] - b[2]);
+    });
+  }
+  return out.sort((p, q) => p - q);
+}
+// A title over a part of a view, with a note at the right.
+function section(svg, y, w, title, note) {
+  svg.appendChild(el("text", { x: 2, y: y + 12, style: "font-size:12px;font-weight:700" }, title));
+  if (note) svg.appendChild(el("text", { class: "sub", x: w - 2, y: y + 12, "text-anchor": "end", style: "font-size:11px" }, note));
+  return y + 22;
+}
 
 // ---- Timeline: one lane per session, one block per state ----
 const RANGES = [["auto", 0], ["1h", 3600], ["6h", 21600], ["24h", 86400], ["7d", 604800]];
@@ -331,6 +369,26 @@ function drawTimeline(svg) {
   svg.appendChild(el("text", { class: "sub", x: LEFT + plot + 18, y: y + 10, style: "font-size:11px" }, "worked"));
   svg.appendChild(el("text", { class: "sub", x: LEFT + plot + 96, y: y + 10, style: "font-size:11px" }, "waited for you"));
   y += 20;
+  // Agents at work: how many sessions worked at one time, on the time axis of the lanes.
+  const inRange = hist.b.filter((b) => b[3] >= from), work = steps(inRange, "working", from, now), asks = steps(inRange, "needs_input", from, now);
+  const peak = work.reduce((m, p) => (p[1] > m[1] ? p : m), [from, 0]), most = Math.max(peak[1], ...asks.map((p) => p[1]), 1);
+  const SH = 62, top0 = y, level = (n) => top0 + SH - 9 - (n / most) * (SH - 22);
+  const stair = (pts) => pts.map(([t, n], k) => (k ? "H" + x(t) + " V" + level(n) : "M" + x(t) + "," + level(n))).join(" ");
+  svg.appendChild(card(y, W, SH));
+  svg.appendChild(el("text", { x: 14, y: y + 26, style: "font-size:13px;font-weight:600" }, "Agents at work"));
+  svg.appendChild(el("text", { class: "sub", x: 14, y: y + 43, style: "font-size:11px" }, "sessions that worked at one time"));
+  for (const t of marks) svg.appendChild(el("line", { class: "grid", x1: x(t), x2: x(t), y1: y + 8, y2: y + SH - 8, style: "opacity:.5" }));
+  svg.appendChild(el("line", { class: "grid", x1: LEFT, x2: LEFT + plot, y1: level(0), y2: level(0) }));
+  if (peak[1]) {
+    svg.appendChild(el("path", { d: stair(work) + " V" + level(0) + " H" + x(from) + " Z", style: "fill:" + STATUS.working[0] + ";fill-opacity:.2;stroke:none" }));
+    svg.appendChild(el("path", { d: stair(work), style: "stroke:" + STATUS.working[0] + ";stroke-width:2;stroke-linejoin:round" }));
+  }
+  const waitsPath = asks.map(([t, n], k) => (n > 0 && asks[k + 1] ? "M" + x(t) + "," + level(0) + " V" + level(n) + " H" + x(asks[k + 1][0]) + " V" + level(0) : "")).join(" ").trim();
+  if (waitsPath) svg.appendChild(el("path", { d: waitsPath, style: "stroke:" + STATUS.needs_input[0] + ";stroke-width:2;stroke-linejoin:round" }));
+  svg.appendChild(el("text", { x: LEFT + plot + 18, y: y + 26, style: "font-size:16px;font-weight:600" + (peak[1] ? "" : ";opacity:.3") }, peak[1] ? String(peak[1]) : "–"));
+  svg.appendChild(el("text", { class: "sub", x: LEFT + plot + 18, y: y + 43, style: "font-size:11px" }, peak[1] ? "most at one time, " + hhmm(peak[0]) : "no work in this range"));
+  y += SH + 12;
+  const runsBy = bySession(hist.g), marksBy = bySession(hist.e);
   let group = null;
   order.forEach((sid, k) => {
     const info = hist.s[sid];
@@ -354,14 +412,40 @@ function drawTimeline(svg) {
       rect.appendChild(el("title", {}, STATUS[b[1]][1] + " " + hhmm(b[2]) + " to " + hhmm(b[3]) + " (" + dur(b[3] - b[2]) + ")"));
       g.appendChild(rect);
     }
+    // Under the blocks: one thin bar per subagent run. On the blocks: a mark per compaction and per cold cache.
+    for (const r of runsBy.get(sid) || []) {
+      if (r[3] < from) continue;
+      const bar = el("rect", { x: x(r[2]), y: mid + bh / 2 + 2, width: Math.max(2, x(Math.min(r[3], now)) - x(r[2])), height: 3, rx: 1.5, style: "fill:var(--fg);opacity:.5" });
+      bar.appendChild(el("title", {}, r[1] + " subagent " + hhmm(r[2]) + " to " + hhmm(r[3]) + " (" + dur(r[3] - r[2]) + ")"));
+      g.appendChild(bar);
+    }
+    for (const e of marksBy.get(sid) || []) {
+      if (e[2] < from) continue;
+      const cx = x(e[2]), look = "fill:var(--card);stroke:var(--fg);stroke-width:1.5";
+      const mark = e[1] === "compact" ? el("path", { d: `M${cx},${mid - 5.5} l5.5,5.5 l-5.5,5.5 l-5.5,-5.5 Z`, style: look }) : el("circle", { cx, cy: mid, r: 4, style: look });
+      mark.appendChild(el("title", {}, (e[1] === "compact" ? "context compacted at " : "prompt cache went cold at ") + hhmm(e[2])));
+      g.appendChild(mark);
+    }
     g.appendChild(el("text", { x: LEFT + plot + 18, y: mid + 4.5, style: "font-size:13px;font-weight:600" + (w ? "" : ";opacity:.3") }, w ? dur(w) : "–"));
     g.appendChild(el("text", { x: LEFT + plot + 96, y: mid + 4.5, style: "font-size:13px;font-weight:600;" + (q ? "fill:#FF9F0A" : "opacity:.3") }, q ? dur(q) : "–"));
     if (go) jump(g, go);
     svg.appendChild(g);
     y += h + (live ? GAP : 3);
   });
+  // A red line where a limit window was first seen at 80% or more.
+  const hits = new Map();
+  for (const r of hist.l) {
+    const key = r[0] + "|" + r[1] + "|" + r[2] + "|" + r[4];
+    if (r[3] >= 80 && (!hits.has(key) || r[5] < hits.get(key)[5])) hits.set(key, r);
+  }
+  for (const r of hits.values()) {
+    if (r[5] <= from || r[5] > now) continue;
+    svg.appendChild(el("line", { x1: x(r[5]), x2: x(r[5]), y1: top0 + 4, y2: y - 4, style: "stroke:#FF6B61;stroke-width:1.2;stroke-dasharray:3 4" }));
+    svg.appendChild(el("text", { x: x(r[5]) + 5, y: top0 + 14, style: "font-size:10px;font-weight:600;fill:#FF6B61" }, (TOOL_NAMES[r[0]] || r[0]) + " " + r[1] + " limit at " + r[3] + "%"));
+  }
   size(svg, W, y + 4);
-  legendItems = [[STATUS.working[0], "working"], [STATUS.needs_input[0], "waited for you"], [STATUS.idle[0], "idle (thin line)"], ["#98989d", "empty = the watcher did not run"]];
+  legendItems = [[STATUS.working[0], "working"], [STATUS.needs_input[0], "waited for you"], [STATUS.idle[0], "idle (thin line)"], ["#98989d", "empty = the watcher did not run"],
+    ["#98989d", "◇ = context compacted"], ["#98989d", "○ = prompt cache went cold"], ["#98989d", "thin grey bar = subagent run"]];
   return "The last " + dur(span) + ", Claude Code sessions. A thin lane is a closed session. Click a lane to go to its tab.";
 }
 
@@ -427,10 +511,105 @@ function drawCost(svg) {
     svg.appendChild(g);
     y += ROW + 5;
   }
-  size(svg, W, y + 4);
+  // Cost per hour: the rise of a session's cost between two samples counts in the hour of the later sample.
+  const HOURS = 12, clockNow = hist.t || Math.floor(Date.now() / 1000), hourNow = Math.floor(clockNow / 3600), sums = Array.from({ length: HOURS }, () => new Map());
+  let since = Infinity;
+  for (const [sid, list] of bySession(hist.p)) {
+    const pts = list.filter((p) => p[3] !== null).sort((p, q) => p[1] - q[1]), model = modelOf(hist.s[sid].m);
+    if (pts.length) since = Math.min(since, pts[0][1]);
+    for (let k = 1; k < pts.length; k++) {
+      const slot = HOURS - 1 - (hourNow - Math.floor(pts[k][1] / 3600)), rise = pts[k][3] - pts[k - 1][3];
+      if (slot >= 0 && rise > 0) sums[slot].set(model, (sums[slot].get(model) || 0) + rise);
+    }
+  }
+  const perHour = sums.map((m) => [...m.values()].reduce((p, q) => p + q, 0)), peak = Math.max(...perHour);
+  y = section(svg, y + 14, W, "Cost per hour", peak > 0 ? "$" + perHour[HOURS - 1].toFixed(2) + " in this hour so far" : "");
+  if (peak <= 0) {
+    svg.appendChild(el("text", { class: "sub", x: 2, y: y + 10, style: "font-size:12px" }, "No rise of a cost recorded yet. This part fills while your sessions work"
+      + (since < Infinity ? ": the history takes cost samples since " + hhmm(since) + "." : ".")));
+    y += 22;
+  } else {
+    const TALL = 150, slotW = (W - 36) / HOURS, bw = Math.min(46, slotW - 10), base = y + TALL - 28;
+    svg.appendChild(card(y, W, TALL));
+    svg.appendChild(el("line", { class: "grid", x1: 18, x2: W - 18, y1: base, y2: base }));
+    sums.forEach((bySlot, k) => {
+      const bx = 18 + k * slotW + (slotW - bw) / 2, start = (hourNow - (HOURS - 1 - k)) * 3600;
+      let top = base;
+      for (const model of MODELS) {
+        const v = bySlot.get(model);
+        if (!v) continue;
+        const h = Math.max(3, (v / peak) * (TALL - 62));
+        const seg = el("rect", { x: bx, y: top - h, width: bw, height: Math.max(1, h - 2), rx: 3, fill: model[1] });
+        seg.appendChild(el("title", {}, model[2] + " · $" + v.toFixed(2) + " · " + hhmm(start) + " to " + hhmm(start + 3600)));
+        svg.appendChild(seg);
+        top -= h;
+      }
+      if (perHour[k] > 0) svg.appendChild(el("text", { x: bx + bw / 2, y: top - 5, "text-anchor": "middle", style: "font-size:11px;font-weight:600" }, "$" + perHour[k].toFixed(perHour[k] < 10 ? 2 : 0)));
+      svg.appendChild(el("text", { class: "sub", x: bx + bw / 2, y: base + 16, "text-anchor": "middle", style: "font-size:10px" + (k === HOURS - 1 ? ";font-weight:700" : "") }, k === HOURS - 1 ? "now" : hhmm(start)));
+    });
+    y += TALL;
+  }
+  size(svg, W, y + 6);
   const seen = new Set(all.map((x) => modelOf(x.a.m)));
   legendItems = MODELS.filter((m) => seen.has(m) && m[0] !== "mythos").map((m) => [m[1], m[2]]);
   return "One column per workspace; the area of a box follows the cost of its session (a box under the readable size is enlarged). Costs are estimates at list price. Click a box or a line to go to its tab.";
+}
+
+// ---- Flow: where the cost goes: account (when there is more than one), workspace, model ----
+function drawFlow(svg) {
+  const rows = agents().map((a) => ({ a, v: money(a.c) })).filter((r) => r.v > 0);
+  const total = rows.reduce((sum, r) => sum + r.v, 0);
+  if (total <= 0) {
+    empty(svg, ["No cost figures yet.", "A Claude Code session reports its cost through the status line of this kit, after its first reply."]);
+    return "Flow: no data.";
+  }
+  const cols = [{ head: "Workspace", key: (r) => r.a.wn || "no workspace", color: () => "#98989d" },
+    { head: "Model", key: (r) => modelOf(r.a.m)[2], color: (k) => MODELS.find((m) => m[2] === k)[1] }];
+  const several = new Set(rows.map((r) => r.a.u)).size > 1;
+  if (several) cols.unshift({ head: "Account", key: (r) => r.a.u || "main account", color: (k) => acctColor(k) });
+  const W = Math.min(pageWidth(), 1100), NODE = 12, GAP = 34, scale = 230 / total;
+  for (const c of cols) {
+    const sums = new Map();
+    for (const r of rows) sums.set(c.key(r), (sums.get(c.key(r)) || 0) + r.v);
+    c.nodes = [...sums].sort((p, q) => q[1] - p[1]).map(([k, v]) => ({ k, v, h: Math.max(3, v * scale), out: 0, in: 0 }));
+  }
+  const last = cols[cols.length - 1], top = cols[cols.length - 1].nodes[0];
+  let y = tiles(svg, [["$" + total.toFixed(2), "open sessions, list price", ""],
+    [Math.round((top.v / total) * 100) + "%", "goes to " + top.k, last.color(top.k)],
+    [String(cols[cols.length - 2].nodes.length), cols[cols.length - 2].nodes.length === 1 ? "workspace with a cost" : "workspaces with a cost", ""]]);
+  cols.forEach((c, j) => {
+    c.x = cols.length === 1 ? 0 : j * (W - NODE) / (cols.length - 1);
+    svg.appendChild(el("text", { class: "sub", x: j === cols.length - 1 ? W : c.x, y: y + 10, "text-anchor": j === cols.length - 1 ? "end" : "start", style: "font-size:11px" }, c.head));
+    let ny = y + 22;
+    for (const n of c.nodes) { n.y = ny; ny += n.h + GAP; }
+    c.bottom = ny - GAP;
+  });
+  // The bands first, so the nodes and the names lie on them.
+  for (let j = 0; j + 1 < cols.length; j++) {
+    const a = cols[j], b = cols[j + 1], x0 = a.x + NODE, x1 = b.x, mx = (x0 + x1) / 2;
+    for (const s of a.nodes) for (const t of b.nodes) {
+      const v = rows.filter((r) => a.key(r) === s.k && b.key(r) === t.k).reduce((sum, r) => sum + r.v, 0);
+      if (v <= 0) continue;
+      const h = Math.max(1.5, v * scale), ya = s.y + s.out, yb = t.y + t.in;
+      s.out += v * scale; t.in += v * scale;
+      const band = el("path", { d: `M${x0},${ya} C${mx},${ya} ${mx},${yb} ${x1},${yb} V${yb + h} C${mx},${yb + h} ${mx},${ya + h} ${x0},${ya + h} Z`,
+        style: "stroke:none;fill:" + (b === last ? b.color(t.k) : a.color(s.k)) + ";fill-opacity:.3" });
+      band.appendChild(el("title", {}, "$" + v.toFixed(2) + " · " + s.k + " → " + t.k));
+      svg.appendChild(band);
+    }
+  }
+  cols.forEach((c, j) => {
+    const right = j === cols.length - 1;
+    for (const n of c.nodes) {
+      svg.appendChild(el("rect", { x: c.x, y: n.y, width: NODE, height: n.h, rx: Math.min(4, n.h / 2), fill: c.color(n.k) }));
+      const tx = right ? c.x - 10 : c.x + NODE + 10, ty = n.y + Math.min(n.h / 2, 14) + 2;
+      svg.appendChild(el("text", { x: tx, y: ty, "text-anchor": right ? "end" : "start", style: "font-size:13px;font-weight:600" }, cut(n.k, 28)));
+      svg.appendChild(el("text", { class: "sub", x: tx, y: ty + 15, "text-anchor": right ? "end" : "start", style: "font-size:11px" }, "$" + n.v.toFixed(2) + " · " + Math.round((n.v / total) * 100) + "%"));
+    }
+  });
+  size(svg, W, Math.max(...cols.map((c) => c.bottom)) + 24);
+  legendItems = last.nodes.map((n) => [last.color(n.k), n.k]);
+  return "The width of a band is the cost. Open Claude Code sessions, at list price." + (several ? "" : " A column for accounts shows when the sessions run under more than one account.");
 }
 
 // ---- Limits: one card per limit window: the readings, and where the line goes ----
@@ -525,14 +704,15 @@ function drawQueue(svg) {
     return { a, since: b && b[1] === a.s && now - b[3] < 120 ? now - b[2] : -1 };
   }).sort((p, q) => (p.a.s === q.a.s ? q.since - p.since : p.a.s === "needs_input" ? -1 : 1));
   const W = Math.min(pageWidth(), 1100);
+  const waits = answeredWaits(now - 604800), median = waits.length ? waits[Math.floor((waits.length - 1) / 2)] : 0;
   const asks = rows.filter((r) => r.a.s === "needs_input"), longest = Math.max(-1, ...asks.map((r) => r.since));
   let y = tiles(svg, [[String(asks.length), asks.length === 1 ? "session asks you" : "sessions ask you", asks.length ? STATUS.needs_input[0] : ""],
     [longest >= 0 ? dur(longest) : "–", "longest wait for an answer", longest >= 600 ? STATUS.needs_input[0] : ""],
-    [String(rows.length - asks.length), "ended a turn", rows.length - asks.length ? STATUS.idle[0] : ""]]);
+    [String(rows.length - asks.length), "ended a turn", rows.length - asks.length ? STATUS.idle[0] : ""],
+    [waits.length ? dur(median) : "–", "your median answer time, 7 days", ""]]);
   if (rows.length === 0) {
     svg.appendChild(el("text", { x: 2, y: y + 14, style: "font-size:13px" }, "Nothing waits for you. A session shows here when it asks you something or when it ended its turn."));
-    size(svg, W, y + 30);
-    return "Queue: nothing waits for you.";
+    y += 34;
   }
   const LEFT = 360, RIGHT = 110, ROW = 46, max = Math.max(60, ...rows.map((r) => r.since));
   let group = "";
@@ -556,9 +736,29 @@ function drawQueue(svg) {
     svg.appendChild(g);
     y += ROW + 6;
   }
-  size(svg, W, y + 4);
+  // How fast you answer: the waits of the last 7 days that ended with your answer, by length.
+  y = section(svg, y + 12, W, "How fast you answer", waits.length ? waits.length + (waits.length === 1 ? " answer" : " answers") + " in the last 7 days" : "");
+  if (waits.length === 0) {
+    svg.appendChild(el("text", { class: "sub", x: 2, y: y + 10, style: "font-size:12px" }, "No answered wait in the history yet. A wait counts when a session asked you something and then went on."));
+    y += 22;
+  } else {
+    const BUCKETS = [["under 1 min", 60], ["1 to 5 min", 300], ["5 to 15 min", 900], ["15 min to 1 h", 3600], ["over 1 h", Infinity]];
+    const counts = BUCKETS.map(([, top], k) => waits.filter((v) => v < top && v >= (k ? BUCKETS[k - 1][1] : 0)).length), most = Math.max(...counts);
+    const LINE = 28, X0 = 150, X1 = W - 150;
+    svg.appendChild(card(y, W, BUCKETS.length * LINE + 14));
+    BUCKETS.forEach(([label], k) => {
+      const ly = y + 8 + k * LINE, n = counts[k];
+      svg.appendChild(el("text", { x: 18, y: ly + 18, style: "font-size:12px" + (n ? "" : ";opacity:.45") }, label));
+      svg.appendChild(track(X0, ly + 8, X1 - X0, 12));
+      if (n) svg.appendChild(el("rect", { x: X0, y: ly + 8, width: Math.max(8, (n / most) * (X1 - X0)), height: 12, rx: 6, fill: STATUS.needs_input[0] }));
+      svg.appendChild(el("text", { x: X1 + 14, y: ly + 18, style: "font-size:13px;font-weight:600" + (n ? "" : ";opacity:.3") }, n ? String(n) : "–"));
+      if (n) svg.appendChild(el("text", { class: "sub", x: W - 16, y: ly + 18, "text-anchor": "end", style: "font-size:11px" }, Math.round((n / waits.length) * 100) + "%"));
+    });
+    y += BUCKETS.length * LINE + 14;
+  }
+  size(svg, W, y + 6);
   legendItems = [[STATUS.needs_input[0], "asks you (permission or question)"], [STATUS.idle[0], "ended its turn"]];
-  return "The longest wait is at the top of each group. Click a line to go to its tab.";
+  return rows.length ? "The longest wait is at the top of each group. Click a line to go to its tab." : "Nothing waits for you.";
 }
 
 // ---- Context: one gauge per session ----
@@ -568,13 +768,20 @@ function drawContext(svg) {
     empty(svg, ["No context figures yet.", "A Claude Code session reports its context share through the status line of this kit."]);
     return "Context: no data.";
   }
-  const W = pageWidth(), CW = 170, CH = 150, cols = Math.max(1, Math.floor(W / CW));
+  const W = pageWidth(), CW = 170, CH = 196, cols = Math.max(1, Math.floor(W / CW));
   svg.setAttribute("width", W); svg.setAttribute("height", Math.ceil(rows.length / cols) * CH + 6);
   const R = 46, arc = (cx, cy, share) => {
     // Three quarters of a circle, open at the bottom.
     const a0 = Math.PI * 0.75, a1 = a0 + Math.PI * 1.5 * Math.min(Math.max(share, 0.001), 1);
     return `M${cx + R * Math.cos(a0)},${cy + R * Math.sin(a0)} A${R},${R} 0 ${a1 - a0 > Math.PI ? 1 : 0} 1 ${cx + R * Math.cos(a1)},${cy + R * Math.sin(a1)}`;
   };
+  // The samples of a session, found by its name: the newest session id with that name wins.
+  const now = hist.t || Math.floor(Date.now() / 1000), SPAN = 6 * 3600, trend = new Map();
+  for (const [sid, list] of bySession(hist.p)) {
+    const pts = list.filter((p) => p[2] !== null && p[1] >= now - SPAN).sort((p, q) => p[1] - q[1]), name = hist.s[sid].n;
+    if (pts.length && (!trend.has(name) || pts[pts.length - 1][1] > trend.get(name)[trend.get(name).length - 1][1])) trend.set(name, pts);
+  }
+  let drawnTrends = 0;
   rows.forEach((a, k) => {
     const cx = (k % cols) * CW + CW / 2, cy = Math.floor(k / cols) * CH + 60, go = goOf(a);
     const g = el("g", go ? { class: "go", tabindex: 0, role: "link" } : {});
@@ -585,11 +792,26 @@ function drawContext(svg) {
     g.appendChild(el("text", { class: "sub", x: cx, y: cy + 24, "text-anchor": "middle", style: a.q >= 10 ? "fill:#FFD60A" : "" }, a.q ? "⟳ " + a.q : ""));
     g.appendChild(el("text", { x: cx, y: cy + 60, "text-anchor": "middle", style: "font-weight:600" }, cut("[" + (sessName(a.n) || a.k) + "]", 20)));
     g.appendChild(el("text", { class: "sub", x: cx, y: cy + 75, "text-anchor": "middle" }, cut([a.wn, a.m].filter(Boolean).join(" · "), 26)));
+    // The share over the last 6 hours: it holds between two samples and falls at a compaction.
+    const x0 = cx - CW / 2 + 20, x1 = cx + CW / 2 - 20, base = cy + 122, tall = 30, pts = trend.get(sessName(a.n)) || [];
+    g.appendChild(el("line", { class: "grid", x1: x0, x2: x1, y1: base, y2: base }));
+    if (pts.length >= 2) {
+      drawnTrends++;
+      const t0 = pts[0][1], px = (t) => x0 + ((t - t0) / Math.max(60, now - t0)) * (x1 - x0), py = (v) => base - (Math.min(v, 100) / 100) * tall;
+      g.appendChild(el("line", { x1: x0, x2: x1, y1: py(80), y2: py(80), style: "stroke:#FF6B61;stroke-width:1;stroke-dasharray:2 3;opacity:.7" }));
+      const line = el("path", { d: pts.map((p, j) => (j ? "H" + px(p[1]) + " V" + py(p[2]) : "M" + px(p[1]) + "," + py(p[2]))).join(" ") + " H" + x1,
+        style: "stroke:var(--fg);stroke-width:1.5;stroke-linejoin:round;opacity:.8" });
+      line.appendChild(el("title", {}, "context share since " + hhmm(t0) + ": lowest " + Math.min(...pts.map((p) => p[2])) + "%, highest " + Math.max(...pts.map((p) => p[2])) + "%"));
+      g.appendChild(line);
+      g.appendChild(el("circle", { cx: x1, cy: py(pts[pts.length - 1][2]), r: 2.5, style: "stroke:none;fill:" + ctxColor(pts[pts.length - 1][2]) }));
+    }
     if (go) jump(g, go);
     svg.appendChild(g);
   });
   legendItems = [["#34C759", "under 50%"], ["#FFD60A", "50% and more"], ["#FF6B61", "80% and more: compact or start a new session"], ["#98989d", "⟳ = times the context was compacted"], ["#98989d", "– = not known until the next message"]];
-  return "Share of the context window in use, fullest first. Click a gauge to go to its tab.";
+  legendItems.push(["#FF6B61", "dotted line = 80%"]);
+  return "Share of the context window in use, fullest first. The line under a gauge is the share over the last 6 hours"
+    + (drawnTrends ? "" : " (it shows after a session worked for some minutes)") + ". Click a gauge to go to its tab.";
 }
 
 // ---- Rhythm: when the agents worked, by hour and day ----
@@ -639,13 +861,46 @@ function drawRhythm(svg) {
     const sum = row.reduce((p, q) => p + q, 0);
     svg.appendChild(el("text", { x: LEFT + 24 * CW + 10, y: base, style: "font-size:12px;font-weight:600" + (sum ? "" : ";opacity:.3") }, sum ? dur(sum) : "–"));
   });
-  legendItems = [["#0A84FF", "stronger blue = more agent work in that hour"], ["#98989d", "the outlined cell is the current hour"]];
-  return "Agent work per hour, last " + DAYS + " days, Claude Code sessions. Two agents that work in one hour count twice."
+  // The month: one cell per day and one row per week, from the first week with history (5 weeks at most).
+  const perDay = new Map(), dayOf = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  for (const b of hist.b) {
+    if (b[1] !== "working") continue;
+    for (let t = b[2]; t < b[3];) {
+      const d = dayOf(new Date(t * 1000)), next = Math.min(b[3], new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime() / 1000);
+      perDay.set(d.getTime(), (perDay.get(d.getTime()) || 0) + next - t);
+      t = next;
+    }
+  }
+  const monday = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate() - ((d.getDay() + 6) % 7));
+  const todayDate = dayOf(new Date(now * 1000)), lastWeek = monday(todayDate), firstDay = new Date(Math.min(...perDay.keys()));
+  const weeks = Math.min(5, Math.round((lastWeek - monday(firstDay)) / 604800000) + 1), dayMax = Math.max(...perDay.values());
+  const gridW = LEFT + 24 * CW + RIGHT, DW = Math.min(132, gridW / 7), DH = 50;
+  let cy = section(svg, TOP + (DAYS - row0) * CHH + 18, gridW, "Days", weeks * 7 + " days, a week per row");
+  for (let c = 0; c < 7; c++) {
+    svg.appendChild(el("text", { class: "sub", x: c * DW + 8, y: cy + 8, style: "font-size:11px" },
+      new Date(lastWeek.getFullYear(), lastWeek.getMonth(), lastWeek.getDate() + c).toLocaleDateString(undefined, { weekday: "short" })));
+  }
+  cy += 16;
+  for (let w = 0; w < weeks; w++) for (let c = 0; c < 7; c++) {
+    const date = new Date(lastWeek.getFullYear(), lastWeek.getMonth(), lastWeek.getDate() - (weeks - 1 - w) * 7 + c);
+    const v = perDay.get(date.getTime()) || 0, share = v / dayMax, later = date > todayDate, cx0 = c * DW, y0 = cy + w * DH, strong = share >= 0.55;
+    const cell = el("rect", { x: cx0, y: y0, width: DW - 4, height: DH - 4, rx: 7,
+      style: v ? "fill:color-mix(in srgb, #0A84FF " + Math.round(22 + 78 * share) + "%, var(--card))" : "fill:var(--card);opacity:" + (later ? ".25" : ".6") });
+    cell.appendChild(el("title", {}, date.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" }) + " · " + (v ? dur(v) + " of agent work" : later ? "not yet" : "no work in the history")));
+    svg.appendChild(cell);
+    svg.appendChild(el("text", { x: cx0 + 8, y: y0 + 16, style: "font-size:11px;pointer-events:none;" + (strong ? "fill:#fff" : "opacity:" + (later ? ".3" : ".7")) },
+      date.getDate() === 1 || (w === 0 && c === 0) ? date.toLocaleDateString(undefined, { day: "numeric", month: "short" }) : String(date.getDate())));
+    if (v) svg.appendChild(el("text", { x: cx0 + DW - 12, y: y0 + DH - 14, "text-anchor": "end", style: "font-size:13px;font-weight:600;pointer-events:none" + (strong ? ";fill:#fff" : "") }, dur(v)));
+    if (date.getTime() === todayDate.getTime()) svg.appendChild(el("rect", { x: cx0 - 1.5, y: y0 - 1.5, width: DW - 1, height: DH - 1, rx: 8.5, style: "fill:none;stroke:var(--fg);stroke-width:1.5" }));
+  }
+  size(svg, gridW, cy + weeks * DH + 6);
+  legendItems = [["#0A84FF", "stronger blue = more agent work in that hour or day"], ["#98989d", "the outlined cells are the current hour and today"]];
+  return "Agent work per hour for the last " + DAYS + " days, and per day for up to 5 weeks, Claude Code sessions. Two agents that work in one hour count twice."
     + (row0 ? " The history started " + (DAYS - row0 === 1 ? "today" : (DAYS - row0) + " days ago") + ": earlier days are not shown." : "");
 }
 
 // ---- The switch and the page loop ----
-const VIEWS = [["hive", "Hive", null], ["timeline", "Timeline", drawTimeline], ["cost", "Cost", drawCost], ["limits", "Limits", drawLimits],
+const VIEWS = [["hive", "Hive", null], ["timeline", "Timeline", drawTimeline], ["cost", "Cost", drawCost], ["flow", "Flow", drawFlow], ["limits", "Limits", drawLimits],
   ["queue", "Queue", drawQueue], ["context", "Context", drawContext], ["rhythm", "Rhythm", drawRhythm]];
 const stored = (key, fallback) => { try { return localStorage.getItem(key) || fallback; } catch (err) { return fallback; } };
 const store = (key, value) => { try { localStorage.setItem(key, value); } catch (err) { console.warn("hive: the view is not remembered", err); } };
@@ -653,7 +908,7 @@ const store = (key, value) => { try { localStorage.setItem(key, value); } catch 
 let drawn = false;
 const pic = read() || { t: 0, ws: [] };
 const fromLink = pic.ws.length > 0;
-let hist = { t: 0, s: {}, b: [], l: [] };
+let hist = { t: 0, s: {}, b: [], l: [], p: [], e: [], g: [] };
 // The link can name a view and a session ("Show in timeline"); else the page opens on the last view.
 let view = VIEWS.some((v) => v[0] === pic.v) ? pic.v : stored("hive-view", "hive");
 if (!VIEWS.some((v) => v[0] === view)) view = "hive";

@@ -109,17 +109,18 @@ A row shows at most 2 pills. Their order of priority is: `≠`, a PR that needs 
 
 ### The views page
 
-`views ↗` opens one page with seven views. The page opens on the view that you used last. A click on a session, in any view, goes to its tab.
+`views ↗` opens one page with eight views. The page opens on the view that you used last. A click on a session, in any view, goes to its tab.
 
 | View | The picture | The question it answers | Data |
 |------|-------------|-------------------------|------|
 | Hive | A tree: workspace → session → subagent | What runs where? | Live |
-| Timeline | One lane per session; a block per state: blue works, orange waited for you, pale green idle. Ranges: auto (fits the history that exists), 1h, 6h, 24h, 7d | How long did each agent work, and how long did it wait for me? | History |
-| Cost | A map: one column per workspace, one box per session; the area is the cost, the tint is the model. Below it, a ranked list of the sessions | Where does the money go? | Live |
+| Timeline | One lane per session; a block per state: blue works, orange waited for you, pale green idle. Ranges: auto (fits the history that exists), 1h, 6h, 24h, 7d. On top, `Agents at work`: how many sessions worked at one time (blue steps) and how many waited for you (orange). On a lane: `◇` = context compacted, `○` = prompt cache went cold, a thin grey bar under the blocks = one subagent run. A red dashed line = a limit reached 80% | How long did each agent work, and how long did it wait for me? How many work at once? | History |
+| Cost | A map: one column per workspace, one box per session; the area is the cost, the tint is the model. Below it, a ranked list of the sessions, then `Cost per hour`: one bar per hour of the last 12, stacked by model | Where does the money go, and how fast? | Live and history |
+| Flow | Bands from workspace to model (and from account, when you use more than one); the width of a band is the cost | Which workspace spends on which model? | Live |
 | Limits | One card per limit window: the share in big figures, a verdict (`about 81% at the reset` or `100% Sat 19:57`), the readings, then a dashed line to the reset. A red card reaches 100% before the reset | Will I hit a limit before it resets? | History |
-| Queue | One bar per waiting session; the longest wait is first. Orange asks you, pale green ended its turn | Who waits for me longest? | Live and history |
-| Context | One gauge per session, fullest first, with the number of compactions (`⟳`). `–` = not known: after a compaction or a resume Claude Code gives no figure until the next reply | Which session must I compact or restart? | Live |
-| Rhythm | A grid of hours × the last 7 days; darker = more agent work | When do my agents work? | History |
+| Queue | One bar per waiting session; the longest wait is first. Orange asks you, pale green ended its turn. Below, `How fast you answer`: the waits of the last 7 days that ended with your answer, counted by length, with the median as a figure | Who waits for me longest? How long do I keep agents waiting? | Live and history |
+| Context | One gauge per session, fullest first, with the number of compactions (`⟳`). `–` = not known: after a compaction or a resume Claude Code gives no figure until the next reply. The line under a gauge is the share over the last 6 hours: it falls at a compaction; the dotted line is 80% | Which session must I compact or restart? | Live and history |
+| Rhythm | A grid of hours × the last 7 days, then a calendar of days (a week per row, up to 5 weeks); darker = more agent work | When do my agents work? | History |
 
 ![Timeline view: one lane per session with blue, orange and pale green blocks, and the worked and waited times at the right](examples/view-timeline.png)
 
@@ -222,7 +223,7 @@ Files that appear later, while the kit runs:
 | `~/.cache/cmux-agents/<session id>.seen` | `label-tabs.py` | How far the transcript was read, the compaction count, the last `Next:` line, the start of the last request and the session title |
 | `~/.cache/cmux-agents/limit-warned` | `label-tabs.py` | The limit windows that already got a warning, so each one warns once |
 | `~/.config/cmux/scripts/hive-data.js` | `label-tabs.py` | The data of the hive page; it holds your session titles (mode 600) |
-| `~/.config/cmux/scripts/history-data.js` | `label-tabs.py` | The history for the Timeline, Limits, Queue and Rhythm views: at most 30 days (mode 600) |
+| `~/.config/cmux/scripts/history-data.js` | `label-tabs.py` | The history for the Timeline, Cost, Limits, Queue, Context and Rhythm views: at most 30 days (mode 600) |
 | `~/.config/cmux/agents-accounts` | You, or `agents-account-add.sh` | The account list and the folder rules |
 
 The `statusLine` key that it adds:
