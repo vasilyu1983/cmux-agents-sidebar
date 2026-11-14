@@ -141,23 +141,26 @@ def transcript_marks(sid, home):
     position, the count, the line and the request are kept in ~/.cache/cmux-agents/<sid>.seen (mode 600; an older
     file without the request is read as one with an empty request). A new request from the user, or a reply
     without such a line, clears the line. A text block that starts with "<" (a system reminder, a command wrapper)
-    is not a request; a tool result has no text block."""
+    is not a request; a tool result has no text block. Also "title Fix the login test": the title that Claude Code
+    gave the session (its "ai-title" record), or the one the user set with /rename ("custom-title"). A state file
+    from before the title was kept is read again from the start of the transcript, once."""
     found = glob.glob(os.path.join(home, "projects", "*", f"{sid}.jsonl"))
     if not found:
         return []
     seen = os.path.expanduser(f"~/.cache/cmux-agents/{sid}.seen")
-    offset, count, step, prompt = 0, 0, "", ""
+    offset, count, step, prompt, title, named = 0, 0, "", "", "", False
     try:
         with open(seen) as fh:
-            parts = fh.read(400).rstrip("\n").split("\t")
-        offset, count, step = int(parts[0]), int(parts[1]), parts[2] if len(parts) > 2 else ""
-        prompt = parts[3] if len(parts) > 3 else ""
+            parts = fh.read(500).rstrip("\n").split("\t")
+        if len(parts) > 5:
+            offset, count, step, prompt = int(parts[0]), int(parts[1]), parts[2], parts[3]
+            title, named = parts[4], parts[5] == "1"
     except (OSError, ValueError, IndexError):
         pass  # no state yet, or a damaged one: the file is read from its start
     try:
         size = os.path.getsize(found[0])
         if size < offset:
-            offset, count, step, prompt = 0, 0, "", ""
+            offset, count, step, prompt, title, named = 0, 0, "", "", "", False
         if size > offset:
             with open(found[0], "rb") as fh:
                 fh.seek(offset)
@@ -168,6 +171,17 @@ def transcript_marks(sid, home):
                 start += len(line)
                 if b'"isCompactSummary":true' in line:
                     count += 1
+                # A title that the user set stays; a title from the tool follows the tool.
+                if b'"type":"custom-title"' in line or (b'"type":"ai-title"' in line and not named):
+                    try:
+                        record = json.loads(line)
+                    except ValueError:
+                        continue
+                    custom = record.get("type") == "custom-title"
+                    text = clean(" ".join(str(record.get("customTitle" if custom else "aiTitle") or "").split()), 48)
+                    if text:
+                        title, named = text, custom
+                    continue
                 # The reply text matters only near the end of the file; older lines are not parsed.
                 if size - start > 2_000_000 or b'"isSidechain":true' in line:
                     continue
@@ -197,11 +211,11 @@ def transcript_marks(sid, home):
             offset += len(data)
             fd = os.open(seen, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
             with os.fdopen(fd, "w") as fh:
-                fh.write(f"{offset}\t{count}\t{step}\t{prompt}\n")
+                fh.write(f"{offset}\t{count}\t{step}\t{prompt}\t{title}\t{1 if named else 0}\n")
     except OSError as err:
         print(f"label-tabs: transcript of {sid}: {err}", file=sys.stderr)
     return (([f"comp {count}"] if count else []) + ([f"next {step}"] if step else [])
-            + ([f"prompt {prompt}"] if prompt else []))
+            + ([f"prompt {prompt}"] if prompt else []) + ([f"title {title}"] if title else []))
 
 
 def screen_state(text):
@@ -374,7 +388,7 @@ def hive_agent(fields):
             agent["l"] = field[5:]
         elif field.startswith("acct "):
             agent["u"] = field[5:]
-        elif not field.startswith(("cold ", "waits ", "comp ", "next ", "ahead ", "wrong ", "prompt ", "screen ")) and field != "dup" and "m" not in agent:
+        elif not field.startswith(("cold ", "waits ", "comp ", "next ", "ahead ", "wrong ", "prompt ", "title ", "screen ")) and field != "dup" and "m" not in agent:
             agent["m"] = field
     return agent
 

@@ -178,6 +178,8 @@ function sessionsOf(w) {
       else if (f === "dup") s.dup = true;
       // "prompt fix the login test": the owner's last request to the session, cut to 60 characters here.
       else if (f.startsWith("prompt ")) s.prompt = f.slice(7, 67);
+      // "title Fix the login test": the title of the session in its tool, for a tab with no title of its own.
+      else if (f.startsWith("title ")) s.title = f.slice(6, 54);
       else if (f.startsWith("screen ")) {
         // "screen asks": the state read from the terminal screen, for a tool that publishes no state.
         // Only "working", "asks" and "idle" count; another form is left out.
@@ -302,20 +304,12 @@ function cappedPills(all) {
   return [...all.slice(0, 3), { id: "more", text: "+" + rest.length, color: META, bg: NEUTRAL, help: rest.map((p) => p.text).join(" · ") }];
 }
 // A one-line row shows 2 bare marks: no tool and no folder. The workspace counts, in the view by state.
-// The marks of a one-line row: a stalled mark, at most 2 work marks, then the account when the session has one.
-const marksOf = (all, stalled, acct) => [
-  ...(stalled ? [{ id: "quiet", text: "quiet 20m+", color: ORANGE }] : []),
-  ...all.filter((p) => p.id !== "tool" && p.id !== "dir").slice(0, stalled ? 1 : 2),
-  ...(acct ? [{ id: "acct", text: "· " + acct, color: acctColor(acct) }] : []),
-];
 const pill = (p) =>
   Text(() => p().text).font(11).weight("medium").monospaced().lineLimit(1).fixedSize()
     .color(() => p().color).paddingHorizontal(5).paddingVertical(1)
     .background(() => p().bg ?? p().color + "26").cornerRadius(4)
     .help(() => p().help ?? null);
 const pillRow = (entry) => ForEach({ items: () => entry().pills, key: (p) => p.id }, pill);
-const markRow = (entry) => ForEach({ items: () => entry().marks, key: (p) => p.id }, (p) =>
-  Text(() => p().text).font(11).monospaced().lineLimit(1).fixedSize().color(() => p().color));
 
 // One flat entry list: workspace headers + agent rows, so a single keyed
 // ForEach owns the whole roster (kind is encoded in the key, so templates
@@ -376,10 +370,7 @@ const view = computed(() => {
       sess.look = lookOf(a, sess);
       // "Finished, not seen": the turn ended and the tab has output that the owner has not looked at.
       sess.done = sess.look === "idle" && Boolean(tab?.hasUnread);
-      // Every row of the list takes one line, so a row keeps its height when its state changes and the list does
-      // not jump. Only a waiting session has a taller copy, in the block at the top, where it shows why it waits.
-      // The key carries the form, because a row's template is fixed per key.
-      const compact = sess.look !== "needs_input";
+      // Every row has the same two lines, so a row keeps its height when its state changes and the list does not jump.
       const settled = (sess.look === "idle" && !sess.done) || sess.look === "ended";
       const stalled = /^\[[^\]]* \?\]/.test(tabTitle);
       // The account of the row: a listed one, or the primary for a tool that can have several.
@@ -402,6 +393,7 @@ const view = computed(() => {
           : sess.look === "needs_input" ? "asked · from screen"
           : sess.done ? "finished · not seen" : "", stalled ? "quiet 20m+" : ""].filter(Boolean).join(" · "),
         sessName: sessionName(tabTitle) ?? "",
+        sessTitle: sess.title ?? "",
         // The name on the workspace band: the second line leaves the folder out when it only repeats this name.
         wsName: dirTail(String(w.description ?? "").split(" | ")[0]) || dirTail(w.directory) || w.title,
         // The PR of the lane branch where the session works, with the state from your merge tool: "#644 needs grant".
@@ -414,14 +406,17 @@ const view = computed(() => {
         prompt: [sess.prompt, tab?.latestPrompt].map((t) => String(t ?? "").replace(/\s+/g, " ").trim())
           .find((t) => t && !/^(<|\[SYSTEM)/.test(t))?.slice(0, 120) ?? "",
         pills: cappedPills(pillsOf(a, sess, w)),
-        marks: marksOf(pillsOf(a, sess, w), stalled, sess.acct),
+        // The second line: why it waits; else what comes next for a session that does not work; else the request.
+        line2: (a.status === "needs_input" && sess.wait) || (sess.look !== "working" && sess.next ? "next: " + sess.next : ""),
+        // The end of the second line: model, context share and cost.
+        meta: [String(sess.model ?? "").split(" ")[0], sess.ctx >= 0 && sess.ctx < 80 ? sess.ctx + "%" : "", sess.cost ?? ""].filter(Boolean).join(" · "),
+        stalled,
         cold: sess.look === "idle" ? String(sess.cold ?? "").replace(/^cold /, "❄") : "",
         folder: String(a.directory ?? ""),
         // Why the session waits, and its context share when that is 80% or more (the row shows it in red).
         wait: a.status === "needs_input" ? sess.wait ?? "" : "",
-        key: "a:" + w.id + ":" + a.id + (compact ? ":c" : ""),
+        key: "a:" + w.id + ":" + a.id,
         kind: "agent",
-        compact,
         focused: Boolean(w.selected && tab?.focused),
         unread: Boolean(tab?.hasUnread),
         rowId: w.id + ":" + a.id,
@@ -448,6 +443,7 @@ const view = computed(() => {
           ["first ask", a.title ?? ""],
           ["last ask", tab?.latestPrompt ?? ""],
           ["last prompt", sess.prompt ?? ""],
+          ["title", sess.title ?? ""],
         ].filter((l) => l[1]),
         kids: subs ? subs.total : (a.children ?? []).length,
         kidsRunning: subs ? subs.run : (a.children ?? []).filter((c) => c.running).length,
@@ -492,8 +488,8 @@ const view = computed(() => {
     for (const r of rows) if (r.look === "needs_input") waiting.push({ ...r, key: "n:" + r.key });
     for (const r of rows) flat.push({ ...r, age: epoch - (r.agent.lastActivityAt ?? epoch) });
     if (collapsed()[w.id]) continue;
-    // A waiting session is shown in full in the top block; its copy in the workspace takes one line.
-    for (const r of rows) expand(r.look === "needs_input" ? { ...r, compact: true, key: r.key + ":w" } : r, out);
+    // A waiting session also shows in the top block; its copy in the workspace has its own key.
+    for (const r of rows) expand(r.look === "needs_input" ? { ...r, key: r.key + ":w" } : r, out);
   }
   // "Needs you": every waiting session of every workspace, longest wait first, above the groups.
   waiting.sort((x, y) => (x.agent.sinceEpoch ?? 0) - (y.agent.sinceEpoch ?? 0));
@@ -1034,17 +1030,17 @@ const titleParts = (entry) => {
   const a = entry().agent;
   const t = rowTitle(entry().tabTitle) || a.title || a.name || "";
   const m = /^(\[[^\]]+\]) (.+)$/.exec(t);
-  // A one-line row with no title of its own shows the last request in its place; a taller row shows it below.
-  const ask = entry().compact ? entry().prompt ?? "" : "";
+  // A tab with no title of its own shows the title of the session in its tool. The request is on the second line.
+  const ask = entry().sessTitle;
   const bare = /^\[[^\]]+\]$/.exec(t);
   if (bare) return { name: t, rest: ask };
   if (!m) return { name: t, rest: "" };
   const tool = [a.name, a.kind, "Claude Code"].some((x) => x && String(x).toLowerCase() === m[2].toLowerCase());
   return { name: m[1], rest: tool ? ask : m[2] };
 };
-// The first line of a row: dot, name, the marks of a one-line row, unread mark, then subagents, time and the
-// detail mark. An old settled row shows its name dim.
-const titleLine = (entry, compact) => {
+// The first line of a row: dot, name, unread mark, then subagents, time and the detail mark. An old settled row
+// shows its name dim.
+const titleLine = (entry) => {
   const a = () => entry().agent;
   return HStack({ spacing: 6 }, [
     haloDot(entry),
@@ -1054,7 +1050,6 @@ const titleLine = (entry, compact) => {
       .font(13).weight("semibold").lineLimit(1).truncation("tail").layoutPriority(3)
       .color(() => (a().status === "ended" || entry().old ? META : "primary")),
     Text(() => titleParts(entry).rest).font(13).lineLimit(1).truncation("tail").layoutPriority(2).color(META),
-    ...(compact ? [markRow(entry)] : []),
     unreadBadge(entry),
     Spacer(),
     kidsBadge(entry),
@@ -1077,32 +1072,22 @@ const card = (entry, row) => row
   .onTap(() => jump(entry()))
   .contextMenu(rowMenu(entry));
 
-// A settled session (idle, ended), and the workspace copy of a waiting one: one line with at most 2 marks.
-function compactRow(entry) {
-  return card(entry, HStack({ spacing: 8 }, [guide(entry, 24), titleLine(entry, true)]).paddingVertical(2));
-}
-
-// A session that works, asks or finished unseen: the name line, the state with the pills, then the request.
-// The second line shows only when it has a state or a pill. A waiting row shows why it waits in place of the request.
+// Every session takes the same two lines. The first: name, title, subagents and time. The second: the state word,
+// the pills, then why it waits, what comes next or the request, and at the end model, context share and cost.
 function agentRow(entry) {
-  const reason = () => (entry().look === "needs_input" && entry().wait ? entry().wait : "");
+  const hot = () => entry().look === "needs_input" || entry().stalled;
   return card(entry, HStack({ spacing: 8 }, [guide(entry, 34), VStack({ spacing: 4 }, [
-    titleLine(entry, false),
-    ForEach({ items: () => (entry().state || entry().pills.length ? [{ id: "state" }] : []), key: (x) => x.id },
-      () => HStack({ spacing: 4 }, [
-        ForEach({ items: () => (entry().state ? [{ id: "word" }] : []), key: (x) => x.id },
-          () => Text(() => entry().state).font(11).weight("medium").lineLimit(1).truncation("tail")
-            .color(() => (entry().look === "needs_input" || entry().stalled ? ORANGE : entry().done ? PURPLE_TEXT : META))),
-        pillRow(entry),
-        Spacer(),
-      ]).paddingLeading(UNDER_TITLE)),
-    ForEach({ items: () => (reason() || entry().prompt ? [{ id: "prompt" }] : []), key: (x) => x.id },
-      () => HStack({ spacing: 0 }, [
-        Text(() => reason() || entry().prompt).font(12).lineLimit(1).truncation("tail")
-          .color(() => (reason() ? ORANGE : META)),
-        Spacer(),
-      ]).paddingLeading(UNDER_TITLE)),
-  ])]).paddingVertical(6));
+    titleLine(entry),
+    // The texts are plain parts of the line: a text inside a wrapper is cut while the line still has space.
+    HStack({ spacing: 5 }, [
+      pillRow(entry),
+      Text(() => [entry().state, entry().line2 || entry().prompt].filter(Boolean).join(" · "))
+        .font(12).lineLimit(1).truncation("tail").layoutPriority(1)
+        .color(() => (hot() ? ORANGE : entry().done ? PURPLE_TEXT : META)),
+      Spacer(),
+      Text(() => entry().meta).font(11).monospaced().lineLimit(1).fixedSize().color(META),
+    ]).paddingLeading(UNDER_TITLE).frame({ minHeight: 16 }),
+  ])]).paddingVertical(4));
 }
 
 // Child (subagent) row: under the title of its parent with a tree tick. Running
@@ -1262,7 +1247,7 @@ sidebar(() =>
         if (entry.kind === "header") return headerRow(e);
         if (entry.kind === "child") return childRow(e);
         if (entry.kind === "detail") return detailRow(e);
-        return entry.compact ? compactRow(e) : agentRow(e);
+        return agentRow(e);
       }
     )]),
 

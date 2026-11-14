@@ -47,6 +47,7 @@ const apiDescription = [
   "lead-1: opus · acct work · ctx 83% · $1.20 · waits permission · next you push the branch · comp 3 · ahead 2 · dup"
     + " · prompt fix the login test · screen asks",
   "worker-2: sonnet · cold 5m · sub 2/7: Review diff; Lint",
+  "old-5: sonnet · ctx 12% · title Release notes",
   "@home: " + HOME,
   "@primary: personal",
   "@view: t=1799999990,c=all,a=0,s=1,e=1,l=0,f=0",
@@ -221,25 +222,23 @@ check("render shows the work marks: ahead count and duplicate", () => {
 });
 check("a full row shows 3 pills by priority, then a +N pill that names the rest", () => {
   const more = withText((t) => t === "+4");
-  must(more.length === 1, "expected one \"+4\" pill on lead-1, got " + more.length);
+  // lead-1 waits, so it shows twice: in the top block and in its workspace. Both rows have the same form.
+  must(more.length === 2, "expected a \"+4\" pill on both rows of lead-1, got " + more.length);
   must(more[0].props.help === "dup · ⟳3 · claude · work · a1", "help of +4 is " + JSON.stringify(more[0].props.help));
   for (const t of ["83%", "→ you", "↑2"]) must(withText((x) => x === t).length > 0, "pill " + t + " not shown");
 });
-check("a waiting session is full in the top block and one line in its workspace", () => {
+check("a waiting session shows in the top block and in its workspace, in the same two-line form", () => {
   must(withText((t) => t === "[lead-1]").length === 2, "lead-1 is not shown twice");
-  must(withText((t) => t.startsWith("asked")).length === 1, "the workspace copy of lead-1 has a state line");
-  // At most 2 marks: "↑2" is the third candidate, so it shows on the full copy only.
-  must(withText((t) => t === "↑2").length === 1, "the one-line copy shows more than 2 marks");
-  // The one-line copy shows its first 2 marks bare: no pill background.
-  must(withText((t) => t === "83%").some((n) => !n.props.background), "no bare 83% mark on the one-line copy");
+  // The second line: the state word, then why it waits, in orange.
+  const why = withText((t) => t === "asked · permission");
+  must(why.length === 2 && why.every((n) => n.props.color === ORANGE && n.props.font === 12), "no orange \"asked · permission\" on both rows");
   must(reachable().some((n) => n.props.borderColor === "#FF9F0A73"), "no orange border on the waiting card");
 });
-check("the title splits into the name and a dim rest; a waiting row shows its reason in place of the request", () => {
+check("the title splits into the name and a dim rest", () => {
   const name = withText((t) => t === "[lead-1]")[0];
   must(name.props.font === 13 && name.props.weight === "semibold", "name is not 13 semibold");
   const rest = withText((t) => t === "fix the login test");
   must(rest.length > 0 && rest.every((n) => n.props.font === 13 && n.props.color === META), "rest is not a 13 pt META title part");
-  must(withText((t) => t === "permission").some((n) => n.props.color === ORANGE), "the wait reason is not orange");
 });
 check("times are short: no \"ago\", minutes without seconds", () => {
   must(withText((t) => t === "5m").length > 0, "no \"5m\" elapsed time");
@@ -283,9 +282,12 @@ check("a tool name alone makes no second line, and a system notice is not a requ
   must(withText((t) => t === "opencode").length === 0, "a lone tool pill shows");
   must(!rendered.includes("<task-notification"), "a system notice shows as a request");
 });
-check("a one-line row with no title of its own shows its last request; the 7-day line of the strip names its tool", () => {
-  must(withText((t) => t === "close the release notes").some((n) => n.props.color === META && n.props.layoutPriority === 2), "old-5 does not show its last request beside the name");
-  must(withText((t) => t === "claude").some((n) => n.props.fixedSize === true && n.props.font === 11), "the strip line of the 7-day limit is not labelled claude");
+check("a tab with no title of its own shows the title of its session; the request, model, context and cost are on the second line", () => {
+  // old-5: the tab title is only the tool name. Its description carries "title Release notes".
+  must(withText((t) => t === "Release notes").some((n) => n.props.font === 13 && n.props.color === META && n.props.layoutPriority === 2), "old-5 does not show its session title beside the name");
+  must(withText((t) => t === "close the release notes").some((n) => n.props.font === 12 && n.props.color === META), "old-5 does not show its last request on the second line");
+  must(withText((t) => t === "sonnet · 12%").some((n) => n.props.fixedSize === true && n.props.font === 11), "old-5 does not end its second line with model and context");
+  must(withText((t) => t === "claude").some((n) => n.props.fixedSize === true && n.props.font === 11), "the strip line of the limit is not labelled claude");
   must(withText((t) => t === "week").length === 0, "the strip still has a line labelled week");
 });
 check("the two parts of a title sit directly in the row and rank above the gap", () => {
@@ -297,12 +299,12 @@ check("render shows the waiting reason, context share and your-turn mark", () =>
   mustContain(rendered, "83%");
   mustContain(rendered, "→ you");
 });
-check("every row of the list has one height; only the waiting copy in the top block is taller", () => {
+check("every session row has the same two lines, whatever its state", () => {
   // A row must not change its height when its state changes, or the list jumps under the pointer.
   const rows = reachable().filter((n) => n.props.cornerRadius === 10 && n.props.borderWidth === 1);
-  const tall = rows.filter((n) => n.props.paddingVertical === 6);
-  must(tall.length === 1 && tall[0].props.borderColor === "#FF9F0A73", "tall rows: " + tall.length + " (want only the waiting copy)");
-  must(rows.filter((n) => n.props.paddingVertical === 2).length === rows.length - 1, "a list row is not the one-line form");
+  must(rows.length >= 6 && rows.every((n) => n.props.paddingVertical === 4), "a session row has another form");
+  const seconds = reachable().filter((n) => n.props.minHeight === 16 && n.props.paddingLeading === 19);
+  must(seconds.length === rows.length, "second lines: " + seconds.length + " for " + rows.length + " rows");
 });
 check("render shows the cold-cache mark of the idle session", () => mustContain(rendered, "❄5m"));
 check("render shows the account of a session and of a tab named in @accts", () => {
@@ -434,8 +436,8 @@ check("the state button groups the rows into sections by state, and a second cli
   const grouped = textOf();
   mustContain(grouped, "NEEDS YOU");
   mustContain(grouped, "RUNNING");
-  // A one-line row keeps its workspace as a bare mark in this view (helper-6 in web).
-  must(withText((t) => t === "web").some((n) => !n.props.background && n.props.color === "#654321"), "no workspace mark on a one-line row");
+  // A row carries its workspace as a pill in this view (helper-6 in web).
+  must(withText((t) => t === "web").some((n) => n.props.color === "#654321"), "no workspace pill on a row");
   tap(btn());
   must(!textOf().includes("RUNNING"), "the sections stayed after the second click");
 });

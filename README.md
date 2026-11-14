@@ -33,18 +33,18 @@ A drawing of a cmux window with the panel, with sample names.
 | Limit warning | One cmux notification when a limit window of any account passes 80% |
 | Next step | If the last reply of a Claude Code session ends with a line `Next: ...`, the row details show it. `→ you` in blue on the row when that line starts with `you` or `owner` |
 | New tab | Right-click a workspace header, or click its `+`: `New tab here` opens a tab in that workspace |
-| Asked or finished | A session that waits for your answer has an orange outline and a taller copy at the top of the panel, which says `asked` and why it waits. A session that ended its turn while you looked elsewhere has a purple fill and an unread mark. The `✓` chip filters the finished ones |
+| Asked or finished | A session that waits for your answer has an orange outline, shows `asked` and why it waits in orange on its second line, and also shows at the top of the panel. A session that ended its turn while you looked elsewhere has a purple fill and shows `finished · not seen`. The `✓` chip filters the finished ones |
 | Last prompt | The start of your last request to a Claude Code session, in the row details and in the search |
 | State from the screen | Codex, OpenCode, Grok and Antigravity tabs publish no state. The row says `working · from screen` or `asked · from screen`, read from the last 30 lines of the tab |
 | Compact layout | The name of a session keeps the room: marks are short (`❄190K` cold cache, `83%` context, `▸2/11` subagents running of total) and never cut. Chips with no matching row are left out. The panel head counts states in words: orange needs you, blue working, green idle |
 | Groups | A workspace band is tinted in the workspace colour and carries its name in that colour. Its sessions sit 12 pt inside it, and subagent rows one step further. A workspace with no session is a flat line in its own colour. A settled session row is flat too: only the focused row, a row that asks and a row that finished unseen have a fill. A dark workspace colour is lightened so it shows on a dark panel |
-| Row height | Every row of the list takes one line, whatever its state, so the list does not jump when a session starts or ends a turn. The line holds `[name]`, the title of the tab, at most 2 marks, the account, the subagent count and the time |
-| Title | `[name]` then the title of the tab. A session with no title of its own shows its last request there |
+| Row | Every session takes the same two lines, whatever its state, so the list does not jump when a session starts or ends a turn. Line 1: `[name]`, the title, the subagent count and the time. Line 2: the pills, then why it waits, what comes next or your last request, and at the end model, context share and cost |
+| Title | `[name]` then the title of the tab. A tab with no title of its own shows the title of its session in Claude Code: the one you set with `/rename`, else the one the tool gave it |
 | Limits | One line per tool and account that has data: bar, percent, window and reset time; the age shows on hover. Tools with no data share one `no data` line. The strip of the session list shows one limit line per tool that reports a live window (`claude`, `codex`, …): the highest window of that tool over all its accounts, with the account, the window and the reset time |
 | Focus and hover | The session of the focused tab has a fill and a thin outline. A row under the pointer has a faint fill only |
-| Request | The last request that you typed, with `…` when it is cut: beside the name of a session with no title, and in the details of every row. A notice that the tool added (a text that starts with `<`) is never shown as a request |
+| Request | The last request that you typed, with `…` when it is cut, on the second line of a session that works. A notice that the tool added (a text that starts with `<`) is never shown as a request |
 | Cards and pills | Each session is a rounded card: orange tint when it asks, purple when it finished and you did not look. Its marks are small coloured pills under the name: tool and account, folder, PR, `→ you`, `dup`, `↑2`, `⟳3`, `❄190K`, `83%` |
-| Stalled | A session with no output for 20 minutes shows `quiet 20m+` in orange on its line |
+| Stalled | A session with no output for 20 minutes shows `quiet 20m+` in orange on its second line |
 | `state` | Next to `↑`: groups the rows by state in place of by workspace: `NEEDS YOU`, `FINISHED · NOT SEEN`, `RUNNING`, `RECENT` (idle under 1 hour), `IDLE`. Each row then carries its workspace as a pill. Not saved across reloads |
 | Limit bars | Each live limit window has a bar and its percent in fixed columns: green, orange from 50%, red from 80%. The `week` line of the strip has a small bar too. The `train` line leaves out clauses such as `refused none` |
 | Empty list | `No sessions yet` when no session runs. `Nothing matches` when a chip, an account, `Here` or the search hides every session; `Clear filters` resets the view and the search |
@@ -144,7 +144,7 @@ Files that appear later, while the kit runs:
 | File | Written by | Content |
 |------|------------|---------|
 | `~/.cache/cmux-agents/<session id>` | The status line | Model, context, cost and limit figures of one session |
-| `~/.cache/cmux-agents/<session id>.seen` | `label-tabs.py` | How far the transcript was read, the compaction count and the last `Next:` line |
+| `~/.cache/cmux-agents/<session id>.seen` | `label-tabs.py` | How far the transcript was read, the compaction count, the last `Next:` line, the start of the last request and the session title |
 | `~/.cache/cmux-agents/limit-warned` | `label-tabs.py` | The limit windows that already got a warning, so each one warns once |
 | `~/.config/cmux/scripts/hive-data.js` | `label-tabs.py` | The data of the hive page; it holds your session titles (mode 600) |
 | `~/.config/cmux/agents-accounts` | You, or `agents-account-add.sh` | The account list and the folder rules |
@@ -338,6 +338,7 @@ Without a watcher the strip shows only the `week` line.
 - `label-tabs.py` reads the environment of your own agent processes to find two values, `CMUX_SURFACE_ID` and `CODEX_HOME`. It keeps nothing else from it.
 - The only message that the kit sends is a local cmux notification for a limit warning.
 - `label-tabs.py` reads the transcripts of your live Claude Code sessions on disk. One line of the last reply, the `Next:` line, goes into the workspace description and the hive data file; nothing else leaves the transcript.
+- From the same transcript `label-tabs.py` takes the title of the session (the one you set with `/rename`, else the one the tool gave it), cut to 48 characters. It goes into the workspace description and into `~/.cache/cmux-agents/<session id>.seen`, and the panel shows it on a tab with no title of its own.
 - The start of your last request (60 characters) also goes into the workspace description.
 - For a tab that runs Codex, OpenCode, Grok or Antigravity, `label-tabs.py` asks cmux for the last 30 lines on screen (`cmux read-screen`). It tests them for two fixed interface lines and keeps one word: `working`, `asks` or `idle`. No screen text is stored or shown.
 - `~/.cache/cmux-agents` is created with mode 700.
