@@ -118,7 +118,7 @@ A row shows at most 2 pills. Their order of priority is: `≠`, a PR that needs 
 | Cost | A map: one column per workspace, one box per session; the area is the cost, the tint is the model. Below it, a ranked list of the sessions | Where does the money go? | Live |
 | Limits | One card per limit window: the share in big figures, a verdict (`about 81% at the reset` or `100% Sat 19:57`), the readings, then a dashed line to the reset. A red card reaches 100% before the reset | Will I hit a limit before it resets? | History |
 | Queue | One bar per waiting session; the longest wait is first. Orange asks you, pale green ended its turn | Who waits for me longest? | Live and history |
-| Context | One gauge per session, fullest first, with the number of compactions (`⟳`) | Which session must I compact or restart? | Live |
+| Context | One gauge per session, fullest first, with the number of compactions (`⟳`). `–` = not known: after a compaction or a resume Claude Code gives no figure until the next reply | Which session must I compact or restart? | Live |
 | Rhythm | A grid of hours × the last 7 days; darker = more agent work | When do my agents work? | History |
 
 ![Timeline view: one lane per session with blue, orange and pale green blocks, and the worked and waited times at the right](examples/view-timeline.png)

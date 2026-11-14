@@ -379,7 +379,7 @@ function drawCost(svg) {
   let y = tiles(svg, [["$" + total.toFixed(2), "open sessions, list price", ""], ["$" + all[0].v.toFixed(2), "top: " + cut(sessName(all[0].a.n) || all[0].a.n, 20), modelOf(all[0].a.m)[1]],
     [Math.round((groups[0].v / total) * 100) + "%", "in " + cut(groups[0].n, 20), ""], [String(all.length), "sessions with a cost", ""]]);
   const widths = fit(groups.map((g) => g.v), W, 170);
-  groups.forEach((g, k) => { g.gw = widths[k]; const hs = fit(g.a.map((x) => x.v), H, 28); g.a.forEach((x, j) => { x.h = hs[j]; }); });
+  groups.forEach((g, k) => { g.gw = widths[k]; const hs = fit(g.a.map((x) => x.v), Math.min(H, Math.max(28 * g.a.length, (g.v / total) * W * H / g.gw)), 28); g.a.forEach((x, j) => { x.h = hs[j]; }); });
   // The map. A box takes the tint of its model; the text keeps the page's ink, so it reads in light and dark.
   let x0 = 0;
   for (const g of groups) {
@@ -430,7 +430,7 @@ function drawCost(svg) {
   size(svg, W, y + 4);
   const seen = new Set(all.map((x) => modelOf(x.a.m)));
   legendItems = MODELS.filter((m) => seen.has(m) && m[0] !== "mythos").map((m) => [m[1], m[2]]);
-  return "One column per workspace; the area of a box follows the cost of its session (a small box is enlarged to stay readable). Costs are estimates at list price. Click a box or a line to go to its tab.";
+  return "One column per workspace; the area of a box follows the cost of its session (a box under the readable size is enlarged). Costs are estimates at list price. Click a box or a line to go to its tab.";
 }
 
 // ---- Limits: one card per limit window: the readings, and where the line goes ----
@@ -480,7 +480,7 @@ function drawLimits(svg) {
     if (c.acct) head.appendChild(el("tspan", { fill: acctColor(c.acct), style: "font-weight:600" }, "  " + c.acct));
     svg.appendChild(head);
     svg.appendChild(el("text", { x: left + 18, y: top + 62, style: "font-size:30px;font-weight:700;fill:" + color }, last[3] + "%"));
-    svg.appendChild(el("text", { class: "sub", x: left + 18, y: top + 78, style: "font-size:11px" }, "used · resets in " + dur(c.reset - now)));
+    svg.appendChild(el("text", { class: "sub", x: left + 18, y: top + 78, style: "font-size:11px" }, "used · resets in " + dur(c.reset - now) + (now - last[5] > 600 ? " · last reading " + dayTime(last[5]) : "")));
     const verdict = hot ? "100% " + dayTime(hit) : rate > 0 ? "about " + atReset + "% at the reset" : "no growth";
     const note = hot ? dur(c.reset - hit) + " before the reset" : (measured ? "pace of the last readings" : "average pace of this window");
     const vw = Math.max(verdict.length * 7.4 + 28, 150), vc = hot ? "#FF6B61" : "#34C759";
@@ -563,7 +563,7 @@ function drawQueue(svg) {
 
 // ---- Context: one gauge per session ----
 function drawContext(svg) {
-  const rows = agents().filter((a) => a.x != null).sort((p, q) => q.x - p.x);
+  const rows = agents().filter((a) => a.x != null || a.m).sort((p, q) => (q.x ?? -1) - (p.x ?? -1));
   if (rows.length === 0) {
     empty(svg, ["No context figures yet.", "A Claude Code session reports its context share through the status line of this kit."]);
     return "Context: no data.";
@@ -580,15 +580,15 @@ function drawContext(svg) {
     const g = el("g", go ? { class: "go", tabindex: 0, role: "link" } : {});
     g.appendChild(el("rect", { class: "box", x: cx - CW / 2 + 5, y: cy - 56, width: CW - 10, height: CH - 8, rx: 9, style: "stroke-opacity:.5" }));
     g.appendChild(el("path", { d: arc(cx, cy, 1), style: "stroke-width:9;stroke-linecap:round;opacity:.55" }));
-    g.appendChild(el("path", { d: arc(cx, cy, a.x / 100), style: "stroke-width:9;stroke-linecap:round;stroke:" + ctxColor(a.x) }));
-    g.appendChild(el("text", { class: "big", x: cx, y: cy + 7, "text-anchor": "middle" }, a.x + "%"));
+    if (a.x != null) g.appendChild(el("path", { d: arc(cx, cy, a.x / 100), style: "stroke-width:9;stroke-linecap:round;stroke:" + ctxColor(a.x) }));
+    g.appendChild(el("text", { class: "big", x: cx, y: cy + 7, "text-anchor": "middle", style: a.x != null ? "" : "opacity:.45" }, a.x != null ? a.x + "%" : "–"));
     g.appendChild(el("text", { class: "sub", x: cx, y: cy + 24, "text-anchor": "middle", style: a.q >= 10 ? "fill:#FFD60A" : "" }, a.q ? "⟳ " + a.q : ""));
     g.appendChild(el("text", { x: cx, y: cy + 60, "text-anchor": "middle", style: "font-weight:600" }, cut("[" + (sessName(a.n) || a.k) + "]", 20)));
     g.appendChild(el("text", { class: "sub", x: cx, y: cy + 75, "text-anchor": "middle" }, cut([a.wn, a.m].filter(Boolean).join(" · "), 26)));
     if (go) jump(g, go);
     svg.appendChild(g);
   });
-  legendItems = [["#34C759", "under 50%"], ["#FFD60A", "50% and more"], ["#FF6B61", "80% and more: compact or start a new session"], ["#98989d", "⟳ = times the context was compacted"]];
+  legendItems = [["#34C759", "under 50%"], ["#FFD60A", "50% and more"], ["#FF6B61", "80% and more: compact or start a new session"], ["#98989d", "⟳ = times the context was compacted"], ["#98989d", "– = not known until the next message"]];
   return "Share of the context window in use, fullest first. Click a gauge to go to its tab.";
 }
 
@@ -707,8 +707,12 @@ function show() {
 
 // label-tabs.py writes hive-data.js and history-data.js, each as one call of a function of this page. A live
 // file older than a minute means that the watcher stopped: the picture then stays as it is.
-let fresh = false;
+let fresh = false, build = null;
 window.hiveLive = (raw) => {
+  if (raw && Number.isFinite(raw.h) && raw.h > 0) {
+    if (build === null) build = raw.h;
+    else if (raw.h !== build) { location.reload(); return; }
+  }
   const age = Math.abs(Date.now() / 1000 - (raw && Number.isFinite(raw.t) ? raw.t : 0));
   fresh = age < 60 && merge(pic, raw);
 };

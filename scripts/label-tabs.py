@@ -410,6 +410,9 @@ def write_hive(tree, live, titles):
             "ws": [{"w": space, "n": name, "f": selected} for space, (name, selected) in spaces.items()], "a": agents,
             "tabs": sorted(tabs)}
     folder = os.path.dirname(os.path.abspath(__file__))
+    # The change time of the page file: an open page reloads itself when this value changes (after an install).
+    page = os.path.join(folder, "hive.html")
+    data["h"] = int(os.path.getmtime(page)) if os.path.exists(page) else 0
     try:
         handle, path = tempfile.mkstemp(dir=folder, prefix=".hive-data.")  # mkstemp makes the file with mode 600
         with os.fdopen(handle, "w") as fh:
