@@ -233,11 +233,11 @@ def model_of(session, prs):
     path = os.path.expanduser(f"~/.cache/cmux-agents/{sid}")
     try:
         with open(path) as fh:
-            parts = fh.read(240).split("\t")
+            parts = fh.read(300).split("\t")
         at = os.path.getmtime(path)
     except OSError:
         return subagents_of(sid)
-    parts += [""] * (6 - len(parts))
+    parts += [""] * (9 - len(parts))
     model = re.sub(r"[^\w .-]", "", parts[0]).strip()
     fields = [model] if model else []
     if re.fullmatch(r"\d{1,3}", parts[1]):
@@ -251,7 +251,7 @@ def model_of(session, prs):
     if re.fullmatch(r"\d{1,9}", parts[4]):
         fields.append(f"cold {short(int(parts[4]))}")
     if re.fullmatch(r"\d{1,3}(\.\d+)?", parts[5]) and at > WEEK.get("at", 0):
-        WEEK.update(at=at, used=str(round(float(parts[5]))))
+        WEEK.update(at=at, used=str(round(float(parts[5]))), five=parts[6], five_reset=parts[7], week_reset=parts[8])
     return fields + subagents_of(sid)
 
 
@@ -268,7 +268,90 @@ def general_marks():
         found.append("@home: " + os.path.expanduser("~"))
     if WEEK.get("used"):
         found.append(f"@week: {WEEK['used']}%")
+    limits = all_limits()
+    if limits:
+        found.append("@limits: " + ";".join(limits))
     return found
+
+
+def limit_item(tool, window, used, reset, seen):
+    """One limit window for the Limits view of the panel: "claude,5h,42,14:10,1794650000" =
+    tool, window, share used in %, local reset time ("ended" when it passed, "" when unknown), time seen (epoch).
+    None when the share is not a number."""
+    try:
+        used = round(float(used))
+    except (TypeError, ValueError):
+        return None
+    if not 0 <= used <= 999:
+        return None
+    text = ""
+    try:
+        reset = float(reset)
+        if reset <= time.time():
+            text = "ended"
+        else:
+            text = time.strftime("%H:%M" if reset - time.time() < 86400 else "%a %H:%M", time.localtime(reset))
+    except (TypeError, ValueError, OverflowError, OSError):
+        text = ""
+    return f"{tool},{window},{used},{text},{int(seen)}"
+
+
+def codex_limits():
+    """The limit windows in the newest Codex session file that holds any: Codex writes "rate_limits" into
+    its session records. Reads the file tail only, and keeps the windows, not the plan or the credits."""
+    files = glob.glob(os.path.expanduser("~/.codex/sessions/*/*/*/rollout-*.jsonl"))
+    try:
+        files.sort(key=os.path.getmtime, reverse=True)
+    except OSError:
+        return []
+    for path in files[:5]:
+        try:
+            seen = os.path.getmtime(path)
+            with open(path, "rb") as fh:
+                fh.seek(max(0, os.path.getsize(path) - 400000))
+                lines = fh.read().decode("utf-8", "replace").splitlines()
+        except OSError as error:
+            print(f"label-tabs: codex limits: cannot read a session file: {error}", file=sys.stderr)
+            continue
+        for line in reversed(lines):
+            at = line.rfind('"rate_limits":{')
+            if at < 0:
+                continue
+            try:
+                record, _ = json.JSONDecoder().raw_decode(line[at + len('"rate_limits":'):])
+            except ValueError:
+                continue
+            found = []
+            for key in ("primary", "secondary"):
+                window = record.get(key)
+                if not isinstance(window, dict):
+                    continue
+                minutes = window.get("window_minutes")
+                name = {300: "5h", 10080: "week"}.get(minutes, f"{minutes}m" if isinstance(minutes, int) else "")
+                item = limit_item("codex", name[:8], window.get("used_percent"), window.get("resets_at"), seen)
+                if item:
+                    found.append(item)
+            if found:
+                return found
+    return []
+
+
+def all_limits():
+    """Limit windows of the agent tools on this Mac, from local files only. A tool whose data folder exists
+    but that leaves no limit data gets an empty item, and the panel says so."""
+    found = []
+    if WEEK.get("used"):
+        found.append(limit_item("claude", "5h", WEEK.get("five"), WEEK.get("five_reset"), WEEK["at"]))
+        found.append(limit_item("claude", "week", WEEK["used"], WEEK.get("week_reset"), WEEK["at"]))
+    codex = codex_limits()
+    if codex:
+        found += codex
+    elif os.path.isdir(os.path.expanduser("~/.codex")):
+        found.append("codex,,,,0")
+    for tool, folder in (("opencode", "~/.local/share/opencode"), ("grok", "~/.grok"), ("agy", "~/.antigravity")):
+        if os.path.isdir(os.path.expanduser(folder)):
+            found.append(f"{tool},,,,0")
+    return [item for item in found if item]
 
 
 def strip_segments(board_runs):

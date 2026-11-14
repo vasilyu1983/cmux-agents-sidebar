@@ -8,6 +8,7 @@
 //   cmux right-sidebar set custom panel-subagents
 
 const [query, setQuery] = signal("");
+const [showLimits, setShowLimits] = signal(false);
 // The view (chip, sort, scope, ended rows, folded groups) survives a panel reload. A panel has no storage of its
 // own, so each change goes into a workspace description as one part: "@view: t=<epoch>,c=<chip|all>,a=0,s=1,e=0,f=0".
 // label-tabs.py rebuilds the description and keeps that part. A signal here holds null until a click; before
@@ -350,11 +351,44 @@ const view = computed(() => {
   if (waiting.length === 0) return { rows: out, chips };
   return { chips, rows: [{ key: "h:needs-you", kind: "header", needsYou: true, wsTitle: "NEEDS YOU", wsColor: "#FF9F0A", count: waiting.length, wsSelected: true, dots: [] }, ...waiting, ...out] };
 });
-const entries = computed(() => view().rows);
+const entries = computed(() => (showLimits() ? [] : view().rows));
 
 // The project strip: the "@train", "@queue" and "@unpushed" parts that label-tabs.py puts in a workspace description.
 // Read from every workspace, also when the list shows one workspace only.
 const STRIP = { train: ["train", "secondary"], week: ["week", "secondary"], queue: ["run", "#FF9F0A"], unpushed: ["unpushed", "#FF9F0A"] };
+// The Limits view: "@limits: claude,5h,42,14:10,1794650000;codex,week,4,Sat 09:39,1794600000;grok,,,,0".
+// label-tabs.py reads the limit windows that each tool leaves in local files. An item with no window is a tool
+// that is installed and leaves no limit data.
+const TOOLS = { claude: "Claude", codex: "Codex", opencode: "OpenCode", grok: "Grok", agy: "Antigravity" };
+const limits = computed(() => {
+  const epoch = data.clock()?.epoch ?? 0;
+  let newest = null;
+  for (const w of data.workspaces() ?? []) {
+    const part = String(w.description ?? "").split(" | ").find((p) => p.startsWith("@limits: "));
+    if (part && (!newest || part.length > newest.text.length)) newest = { text: part.slice(9), wsId: w.id };
+  }
+  const out = [];
+  for (const item of newest ? newest.text.split(";") : []) {
+    const m = /^([a-z]{1,12}),([\w]{0,8}),(\d{0,3}),([\w: ]{0,12}),(\d{1,12})$/.exec(item);
+    if (!m || !TOOLS[m[1]]) continue;
+    const seen = Number(m[5]);
+    const age = seen && epoch >= seen ? " · seen " + fmtAgo(epoch - seen) + " ago" : "";
+    let value = "no limit data on this Mac";
+    let color = "tertiary";
+    if (m[3] !== "") {
+      const used = Number(m[3]);
+      if (m[4] === "ended") value = (m[2] || "limit") + " window ended · last value " + used + "%" + age;
+      else {
+        value = (m[2] || "limit") + " " + used + "%" + (m[4] ? " · resets " + m[4] : "") + age;
+        color = used >= 80 ? "#FF453A" : "secondary";
+      }
+    }
+    out.push({ key: "limit" + out.length + m[1] + m[2], label: TOOLS[m[1]], value, color, copy: TOOLS[m[1]] + " " + value, wsId: newest.wsId });
+  }
+  if (out.length === 0) out.push({ key: "limit-none", label: "limits", value: "no data yet: the watcher writes it within 15 seconds", color: "tertiary", copy: "", wsId: data.selectedId() });
+  return out;
+});
+
 const strip = computed(() => {
   const out = [];
   for (const w of data.workspaces() ?? []) {
@@ -734,8 +768,9 @@ sidebar(() =>
     ]).paddingHorizontal(10),
 
     HStack({ spacing: 4 }, [
-      toggleButton("Here", () => !scopeAll(), () => setView({ s: false })),
-      toggleButton("All", () => scopeAll(), () => setView({ s: true })),
+      toggleButton("Here", () => !scopeAll() && !showLimits(), () => { setShowLimits(false); setView({ s: false }); }),
+      toggleButton("All", () => scopeAll() && !showLimits(), () => { setShowLimits(false); setView({ s: true }); }),
+      toggleButton("Limits", () => showLimits(), () => setShowLimits(!showLimits())),
       Spacer(),
       // No text: this view reads the tab titles, so it runs again when one changes, and serves the hive page's jumps.
       Text(() => hiveGo()).font(1),
@@ -771,6 +806,8 @@ sidebar(() =>
     }).font(10).color("tertiary").lineLimit(1).paddingHorizontal(12),
 
     VStack({ spacing: 3 }, [ForEach({ items: strip, key: (s) => s.key }, (s) => stripRow(s))]),
+    // The Limits view takes the place of the session list.
+    VStack({ spacing: 5 }, [ForEach({ items: () => (showLimits() ? limits() : []), key: (s) => s.key }, (s) => stripRow(s))]),
 
     TextField("", {
       placeholder: "Search agents",
