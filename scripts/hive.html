@@ -18,6 +18,9 @@
   svg text.sub { fill: var(--dim); font-size: 10px; }
   svg path { fill: none; stroke: var(--line); stroke-width: 1.2; }
   svg rect.box { fill: var(--card); stroke: var(--line); }
+  svg g.go { cursor: pointer; }
+  svg g.go:hover rect.box, svg g.go:focus rect.box { stroke: #0A84FF; stroke-width: 1.6; }
+  svg g.go:focus { outline: none; }
   .legend span { display: inline-block; margin-right: 14px; color: var(--dim); }
   .legend i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; }
 </style>
@@ -67,7 +70,7 @@ function draw(data) {
   const root = { title: "hive", sub: data.ws.length + " workspaces", color: "#8E8E93", kids: data.ws.map((w) => ({
     title: cut(w.n, 26), sub: (w.a || []).length + " session(s)", color: /^#[0-9a-fA-F]{6,8}$/.test(w.c) ? w.c : "#8E8E93",
     kids: (w.a || []).map((a) => ({
-      title: cut(a.n, 40),
+      title: cut(a.n, 40), go: /^[0-9A-Fa-f-]{1,40}$/.test(a.i || "") && /^[0-9A-Fa-f-]{1,40}$/.test(a.w || "") ? a.w + ":" + a.i : "",
       sub: cut([a.k, a.m, a.x != null ? "ctx " + a.x + "%" : "", a.c, a.p].filter(Boolean).join(" · "), 52),
       color: (STATUS[a.s] || ["#8E8E93"])[0], hot: a.s === "needs_input" || a.x >= 80,
       kids: (a.ch || []).map((c) => ({ title: cut(c.n, 28), sub: c.r ? "running" : "done", color: c.r ? "#0A84FF" : "#8E8E93" })),
@@ -82,10 +85,22 @@ function draw(data) {
   }
   for (const n of nodes) {
     const x = X[n.depth], w = W[n.depth];
-    svg.appendChild(el("rect", { class: "box", x, y: n.y - 15, width: w, height: 30, rx: 7, style: n.hot ? "stroke:#FF9F0A;stroke-width:1.6" : "" }));
-    svg.appendChild(el("circle", { cx: x + 11, cy: n.y - 4, r: 4, fill: n.color }));
-    svg.appendChild(el("text", { x: x + 21, y: n.y }, n.title));
-    svg.appendChild(el("text", { class: "sub", x: x + 21, y: n.y + 11 }, n.sub));
+    const g = el("g", n.go ? { class: "go", tabindex: 0, role: "link" } : {});
+    g.appendChild(el("rect", { class: "box", x, y: n.y - 15, width: w, height: 30, rx: 7, style: n.hot ? "stroke:#FF9F0A;stroke-width:1.6" : "" }));
+    g.appendChild(el("circle", { cx: x + 11, cy: n.y - 4, r: 4, fill: n.color }));
+    g.appendChild(el("text", { x: x + 21, y: n.y }, n.title));
+    g.appendChild(el("text", { class: "sub", x: x + 21, y: n.y + 11 }, n.sub));
+    if (n.go) {
+      // The page cannot call cmux. It puts the request in its title; the Agents panel reads tab titles and
+      // focuses the tab. The title returns after 5 seconds.
+      const ask = () => {
+        document.title = "go:" + n.go + ":" + Math.floor(Date.now() / 1000);
+        setTimeout(() => { document.title = "Agent hive"; }, 5000);
+      };
+      g.addEventListener("click", ask);
+      g.addEventListener("keydown", (e) => { if (e.key === "Enter") ask(); });
+    }
+    svg.appendChild(g);
   }
 }
 
@@ -94,7 +109,7 @@ const when = document.getElementById("when");
 if (!data) when.textContent = "No data in the link. Open this page from the \"hive\" link of the Agents panel in cmux.";
 else {
   when.textContent = "Picture taken " + (data.t ? new Date(data.t * 1000).toLocaleTimeString() : "now")
-    + ". It does not update: click \"hive\" in the panel again for a new one. Subagents show only for tools that report them.";
+    + ". Click a session to go to its tab (the Agents panel must be open). The picture does not update: click \"hive\" in the panel again for a new one.";
   draw(data);
   const legend = document.getElementById("legend");
   for (const [color, label] of Object.values(STATUS)) {

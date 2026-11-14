@@ -17,7 +17,7 @@ It is made for people who run many agent sessions at the same time: Claude Code,
 | Subagents | `▸ 2 sub` on a row opens the subagent rows, for tools that report them |
 | Details | `›` on a row opens state, tool, folder, branch, ports, first and last request |
 | Right-click menu | Go to session, copy name, copy folder, copy PR number, fast commands |
-| `hive ↗` | A graph page: workspace → session → subagent, in a cmux browser tab |
+| `hive ↗` | A graph page: workspace → session → subagent, in a cmux browser tab. A click on a session goes to its tab |
 | Search | Filters rows by title, tool, workspace or folder |
 
 With the optional Claude Code status line, each Claude Code row also shows the model and effort, the context share (red from 80%), the session cost estimate, a `cold` mark when the prompt cache went cold, and the count line shows the summed cost.
@@ -151,6 +151,7 @@ Facts that follow from this design:
 - The cost is the Claude Code estimate at list price for one session. It is not your bill.
 - The `?` mark is a hint. A long silent command also leaves the transcript quiet.
 - The hive page gets its data in the link, after `#`. It loads nothing from the network and stores nothing.
+- A click on a session in the hive page goes to its tab. A web page cannot call cmux, so the page puts the request in its tab title for 5 seconds (`go:<workspace id>:<tab id>:<time>`), and the panel, which gets tab titles from cmux, focuses that tab. The panel must be open. It accepts only ids of tabs that it knows and a request younger than 20 seconds, and a request can do nothing but change the focus.
 - The hive page shows subagents under their session. It uses what cmux reports; when cmux reports none, it uses the Claude Code records: the running ones by name, the finished ones as a count. A subagent counts as running while its record is not finished and its transcript got a line in the last 15 minutes.
 
 ### Optional project strip
@@ -186,6 +187,7 @@ Tab labels stay until you rename the tabs or close them.
 - Tested on one Mac with cmux 0.65.2. A newer cmux can change the panel API.
 - The tool names that cmux reports for Codex, OpenCode, Grok Build and Antigravity were not observed; only `claude` was. The fast-command match is on a part of the name.
 - Fold states reset when the panel reloads.
+- The jump from the hive page is new. In tests with a scripted title change it worked in 2 of 3 runs within 3 seconds; cmux can pass a title change late.
 - Old files in `~/.cache/cmux-agents` are not cleaned.
 
 ## License

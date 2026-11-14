@@ -356,7 +356,7 @@ function hiveUrl() {
       const sess = models[sessionName(tab?.title)] ?? {};
       agents.push({
         n: rowTitle(tab?.title ?? "") || a.title || a.name || "session", k: a.kind ?? "", s: a.status,
-        m: sess.model ?? "", x: sess.ctx ?? null, c: sess.cost ?? "", p: sess.pr ?? "", l: sess.lane ?? "",
+        i: tab?.id ?? "", w: w.id, m: sess.model ?? "", x: sess.ctx ?? null, c: sess.cost ?? "", p: sess.pr ?? "", l: sess.lane ?? "",
         // Subagents: what cmux reports for the agent; when it reports none, what label-tabs.py found on disk.
         ch: (a.children ?? []).length > 0
           ? a.children.map((c) => ({ n: c.label || "subagent", r: Boolean(c.running) }))
@@ -367,6 +367,28 @@ function hiveUrl() {
   }
   if (!home) return "";
   return "file://" + home + "/.config/cmux/scripts/hive.html#" + encodeURIComponent(JSON.stringify({ t: data.clock()?.epoch ?? 0, ws }));
+}
+
+// A click on a session in the hive page asks for a jump. A web page cannot call cmux, so the page puts the
+// request in its tab title: "go:<workspace id>:<tab id>:<epoch seconds>". The panel gets tab titles from cmux,
+// and it focuses the tab when the two ids name a tab that it knows and the request is fresh. A page can ask
+// for nothing but a focus change. Each request runs once.
+let lastGo = "";
+function hiveGo() {
+  const now = data.clock()?.epoch ?? 0;
+  for (const w of data.workspaces() ?? []) {
+    for (const t of w.tabs ?? []) {
+      const m = /^go:([0-9A-Fa-f-]{1,40}):([0-9A-Fa-f-]{1,40}):(\d{1,12})$/.exec(String(t.title ?? ""));
+      if (!m || m[0] === lastGo) continue;
+      lastGo = m[0];
+      if (Math.abs(now - Number(m[3])) > 20) continue;
+      const target = (data.workspaces() ?? []).find((x) => x.id === m[1]);
+      if (target && (target.tabs ?? []).some((x) => x.id === m[2])) {
+        cmux("surface.focus", { surface_id: m[2], workspace_id: m[1] });
+      }
+    }
+  }
+  return "";
 }
 
 function jump(row) {
@@ -640,6 +662,8 @@ sidebar(() =>
       toggleButton("Here", () => !scopeAll(), () => setScopeAll(false)),
       toggleButton("All", () => scopeAll(), () => setScopeAll(true)),
       Spacer(),
+      // No text: this view reads the tab titles, so it runs again when one changes, and serves the hive page's jumps.
+      Text(() => hiveGo()).font(1),
       // Opens the hive graph in the browser: workspaces, sessions and subagents as a tree.
       Text("hive ↗").font(11).weight("semibold").color("#0A84FF").paddingHorizontal(6).paddingVertical(3)
         .hoverBackground("#7f7f7f3d").cornerRadius(6)
