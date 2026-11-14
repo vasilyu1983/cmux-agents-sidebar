@@ -40,6 +40,8 @@ const scopeAll = () => scopeAllS() ?? saved().s;
 const showEnded = () => showEndedS() ?? saved().e;
 const showLimits = () => showLimitsS() ?? saved().l;
 const collapsed = () => ({ ...saved().folds, ...collapsedS() });
+// Rows grouped by state (needs you, running, finished, recent, idle) in place of by workspace. Not saved.
+const [byState, setByState] = signal(false);
 const [openKids, setOpenKids] = signal({});
 const [openInfo, setOpenInfo] = signal({});
 // The account filter: "" = every account. Not saved; it lasts until the panel reloads.
@@ -253,6 +255,34 @@ const dirTail = (d) => {
   return parts.length ? parts[parts.length - 1] : "";
 };
 
+const PR_ALERT = /needs grant|refused|blocked/;
+// The pills of a row: small coloured tags under the name. A one-line row leaves out the tool (unless it has an
+// account or is not the usual one) and the folder; the view by state adds the workspace.
+function pillsOf(a, sess, w, compact) {
+  const out = [];
+  const add = (id, text, color) => { if (text) out.push({ id, text: String(text), color }); };
+  const wsName = dirTail(String(w.description ?? "").split(" | ")[0]) || dirTail(w.directory) || w.title;
+  if (byState()) add("ws", wsName, w.color || "#8E8E93");
+  const kind = String(a.kind ?? "");
+  if (!compact || sess.acct || kind !== "claude") add("tool", kind + (sess.acct ? " · " + sess.acct : ""), sess.acct ? acctColor(sess.acct) : "#8E8E93");
+  add("wrong", sess.wrong ? "≠ " + sess.wrong : "", "#FF9F0A");
+  const tail = dirTail(a.directory).replace(/^lane-/, "");
+  if (!compact && tail !== wsName) add("dir", tail, "#8E8E93");
+  add("pr", sess.pr, PR_ALERT.test(sess.pr ?? "") ? "#FF9F0A" : "#BF5AF2");
+  if (sess.look !== "working" && yours(sess.next)) add("you", "→ you", "#0A84FF");
+  add("dup", sess.dup ? "dup" : "", "#FF9F0A");
+  add("ahead", sess.ahead > 0 ? "↑" + sess.ahead : "", "#FF9F0A");
+  add("comp", sess.comp >= 3 ? "⟳" + sess.comp : "", "#FF9F0A");
+  add("cold", sess.look === "idle" ? String(sess.cold ?? "").replace(/^cold /, "❄") : "", "#64D2FF");
+  add("ctx", sess.ctx >= 80 ? sess.ctx + "%" : "", "#FF453A");
+  return out;
+}
+const pill = (p) =>
+  Text(() => p().text).font(9).weight("medium").monospaced().lineLimit(1).fixedSize()
+    .color(() => p().color).paddingHorizontal(5).paddingVertical(1)
+    .background(() => p().color + "26").cornerRadius(4);
+const pillRow = (entry) => ForEach({ items: () => entry().pills, key: (p) => p.id }, pill);
+
 // One flat entry list: workspace headers + agent rows, so a single keyed
 // ForEach owns the whole roster (kind is encoded in the key, so templates
 // stay stable across live updates).
@@ -264,7 +294,27 @@ const view = computed(() => {
   // Rows per account, counted before the filters: the number on each account chip.
   const accts = {};
   const out = [];
+  const flat = [];  // every row of every workspace, for the view by state
   const waiting = [];
+  // A row, then its detail lines and its subagent rows when the owner opened them.
+  const expand = (r, into) => {
+    into.push(r);
+    if (openInfo()[r.rowId]) {
+      r.info.forEach((l, i) => into.push({
+        key: "d:" + r.key + ":" + l[0], kind: "detail", wsId: r.wsId, wsColor: r.wsColor, surfaceId: r.surfaceId,
+        label: l[0], value: l[1], last: i === r.info.length - 1,
+      }));
+    }
+    if (!openKids()[r.rowId]) return;
+    // Records from disk carry a name and a state, no times and no id: the position is the key.
+    const children = r.subs
+      ? hiveSubs(r.subs).map((c, k) => ({ id: "s" + k, label: c.n, running: c.r, noTime: true }))
+      : [...(r.agent.children ?? [])];
+    children.sort((x, y) => (x.running === y.running ? (x.startedEpoch ?? 0) - (y.startedEpoch ?? 0) : x.running ? -1 : 1));
+    for (const c of children) {
+      into.push({ key: "c:" + r.key + ":" + c.id, kind: "child", wsId: r.wsId, surfaceId: r.surfaceId, wsColor: r.wsColor, agent: r.agent, child: c });
+    }
+  };
   // Rows per chip, counted before the chip filter: the number on each chip.
   const chips = Object.fromEntries(FILTERS.map((f) => [f[0], 0]));
   for (const w of scoped) {
@@ -324,14 +374,13 @@ const view = computed(() => {
         acct: sess.acct ?? "",
         wrong: sess.wrong ?? "",
         // Work marks, in orange: a duplicate session, commits that no remote holds, 3 or more compactions.
-        // Short forms, so the marks fit beside the name: "⟳14" is 14 compactions.
-        work: [sess.dup ? "dup" : "", sess.ahead > 0 ? "↑" + sess.ahead : "", sess.comp >= 3 ? "⟳" + sess.comp : ""].filter(Boolean).join(" "),
-        yours: sess.look !== "working" && yours(sess.next) ? "→ you" : "",
+        // The request the session works on: what label-tabs.py read from the transcript, else what cmux reports.
+        prompt: String(sess.prompt || tab?.latestPrompt || "").replace(/\s+/g, " ").trim().slice(0, 120),
+        pills: pillsOf(a, sess, w, compact),
         cold: sess.look === "idle" ? String(sess.cold ?? "").replace(/^cold /, "❄") : "",
         folder: String(a.directory ?? ""),
         // Why the session waits, and its context share when that is 80% or more (the row shows it in red).
         wait: a.status === "needs_input" ? sess.wait ?? "" : "",
-        ctxHigh: sess.ctx >= 80 ? sess.ctx + "%" : "",
         key: "a:" + w.id + ":" + a.id + (compact ? ":c" : ""),
         kind: "agent",
         compact,
@@ -402,38 +451,31 @@ const view = computed(() => {
     });
     // A folded group still reports its waiting sessions to the top block.
     for (const r of rows) if (r.look === "needs_input") waiting.push({ ...r, key: "n:" + r.key });
+    for (const r of rows) flat.push({ ...r, age: epoch - (r.agent.lastActivityAt ?? epoch) });
     if (collapsed()[w.id]) continue;
-    // Each agent expands into its row plus one indented row per child
-    // (Claude Task spawns / Codex subagent runs), running children first.
-    for (const r of rows) {
-      out.push(r);
-      if (openInfo()[r.rowId]) {
-        r.info.forEach((l, i) => out.push({
-          key: "d:" + r.key + ":" + l[0], kind: "detail", wsId: w.id, wsColor: r.wsColor, surfaceId: r.surfaceId,
-          label: l[0], value: l[1], last: i === r.info.length - 1,
-        }));
-      }
-      if (!openKids()[r.rowId]) continue;
-      // Records from disk carry a name and a state, no times and no id: the position is the key.
-      const children = r.subs
-        ? hiveSubs(r.subs).map((c, k) => ({ id: "s" + k, label: c.n, running: c.r, noTime: true }))
-        : [...(r.agent.children ?? [])];
-      children.sort((x, y) => (x.running === y.running ? (x.startedEpoch ?? 0) - (y.startedEpoch ?? 0) : x.running ? -1 : 1));
-      for (const c of children) {
-        out.push({
-          key: "c:" + r.key + ":" + c.id,
-          kind: "child",
-          wsId: w.id,
-          surfaceId: r.surfaceId,
-          wsColor: r.wsColor,
-          agent: r.agent,
-          child: c,
-        });
-      }
-    }
+    for (const r of rows) expand(r, out);
   }
   // "Needs you": every waiting session of every workspace, longest wait first, above the groups.
   waiting.sort((x, y) => (x.agent.sinceEpoch ?? 0) - (y.agent.sinceEpoch ?? 0));
+  if (byState()) {
+    // Sections in the order in which they need the owner; inside a section, the most recent activity first.
+    const SECTIONS = [
+      ["NEEDS YOU", "#FF9F0A", (r) => r.look === "needs_input"],
+      ["FINISHED · NOT SEEN", "#BF5AF2", (r) => r.done],
+      ["RUNNING", "#0A84FF", (r) => r.look === "working"],
+      ["RECENT", "#34C759", (r) => r.look === "idle" && !r.done && r.age <= 3600],
+      ["IDLE", "#8E8E93", (r) => r.look === "idle" && !r.done && r.age > 3600],
+      ["ENDED", "#8E8E93", (r) => r.look === "ended"],
+    ];
+    const list = [];
+    for (const [title, color, test] of SECTIONS) {
+      const rows = flat.filter(test).sort((x, y) => x.age - y.age);
+      if (rows.length === 0) continue;
+      list.push({ key: "h:state:" + title, kind: "header", needsYou: true, wsTitle: title, wsColor: color, count: rows.length, wsSelected: false, dots: [] });
+      for (const r of rows) expand(r, list);
+    }
+    return { rows: list, chips, accts };
+  }
   if (waiting.length === 0) return { rows: out, chips, accts };
   return { chips, accts, rows: [{ key: "h:needs-you", kind: "header", needsYou: true, wsTitle: "NEEDS YOU", wsColor: "#FF9F0A", count: waiting.length, wsSelected: true, dots: [] }, ...waiting, ...out] };
 });
@@ -663,7 +705,7 @@ function headerRow(entry) {
       RoundedRectangle({ cornerRadius: 2 }).fill(() => entry().wsColor).frame({ width: 4, height: 16 }),
       Text(() => entry().wsTitle || "untitled")
         .font(13).weight("bold").lineLimit(1).truncation("tail")
-        .color(() => (entry().needsYou ? "#FF9F0A" : "primary")),
+        .color(() => (entry().needsYou ? entry().wsColor : "primary")),
       Text(() => (entry().count ? String(entry().count) : "")).font(10).monospaced().color("tertiary"),
       // The summed cost estimate of the workspace's sessions (Claude Code only).
       Text(() => (entry().cost >= 1 ? "$" + Math.round(entry().cost) : "")).font(10).monospaced().color("tertiary"),
@@ -697,20 +739,6 @@ const rowTitle = (t) => {
   return m && m[1].replace(/ [!?]$/, "") === m[2] ? "[" + m[1] + "]" : t;
 };
 
-// The tool of the session as a small tag after the name: "claude", "codex", or what cmux reports for another tool.
-// With an account in the data, the tag also names it: "claude · work".
-// The account has its own colour. "≠ work" in orange: the folder rule names another account than the session's.
-const toolTag = (entry) => HStack({ spacing: 0 }, [
-  Text(() => entry().agent.kind ?? "").font(9).monospaced().color("tertiary").lineLimit(1),
-  Text(() => (entry().acct ? " · " + entry().acct : "")).font(9).monospaced().color(() => acctColor(entry().acct)).lineLimit(1),
-  Text(() => (entry().wrong ? " ≠ " + entry().wrong : "")).font(9).weight("semibold").monospaced().color("#FF9F0A").lineLimit(1),
-]);
-const workBadge = (entry) => HStack({ spacing: 4 }, [
-  Text(() => entry().yours).font(9).weight("semibold").monospaced().color("#0A84FF").lineLimit(1).fixedSize(),
-  Text(() => entry().work).font(9).weight("semibold").monospaced().color("#FF9F0A").lineLimit(1).fixedSize(),
-]);
-const ctxBadge = (entry) =>
-  Text(() => entry().ctxHigh).font(9).weight("semibold").monospaced().color("#FF453A").lineLimit(1).fixedSize();
 // One line of the project strip: a dim label and its text. A click opens the workspace that carries it.
 function stripRow(entry, width = 58) {
   return HStack({ spacing: 8 }, [
@@ -724,8 +752,6 @@ function stripRow(entry, width = 58) {
     .contextMenu([Button("Copy the text", () => clipboard.write(entry().copy))]);
 }
 
-// "#644 needs grant" in orange when the PR waits for the owner; "cold 198K" on an idle session whose prompt cache
-// went cold (the next message rewrites that many tokens at the higher price).
 // A line of the Limits view: the strip line, with a bar for the used share of a live window.
 // Green below 50%, orange from 50%, red from 80%.
 const BAR = 44;
@@ -746,11 +772,6 @@ function limitRow(entry, width) {
     .contextMenu([Button("Copy the text", () => clipboard.write(entry().copy))]);
 }
 
-const prBadge = (entry) =>
-  Text(() => entry().prText).font(9).monospaced().lineLimit(1)
-    .color(() => (/needs grant|refused|blocked/.test(entry().prText) ? "#FF9F0A" : "tertiary"));
-const coldBadge = (entry) =>
-  Text(() => entry().cold).font(9).monospaced().color("#64D2FF").lineLimit(1).fixedSize();
 
 // Right-click menu of a session row. The command items type into the session's tab, and only while it is idle.
 function rowMenu(entry) {
@@ -805,88 +826,60 @@ function detailRow(entry) {
     .onTap(() => jump(entry()));
 }
 
-const rowBackground = (entry) => () => (entry().focused ? "#7f7f7f38" : null);
-
-// One-line row for an idle or ended session: dot, name, time.
-function compactRow(entry) {
+// A card: tinted orange when the session asks, purple when it finished and was not seen.
+const rowBackground = (entry) => () =>
+  (entry().focused ? "#7f7f7f40" : entry().look === "needs_input" ? "#FF9F0A26" : entry().done ? "#BF5AF226" : "#7f7f7f14");
+// The first line of a row: dot, name, unread mark, then subagents, time and the detail mark.
+const titleLine = (entry, weight) => {
   const a = () => entry().agent;
-  return HStack({ spacing: 8 }, [
-    guide(entry, 18),
-    HStack({ spacing: 6 }, [
-      Circle({ size: 6 }).fill(() => dotColor(entry())),
-      Text(() => rowTitle(entry().tabTitle) || a().title || a().name)
-        .font(12).lineLimit(1).truncation("tail")
-        .color(() => (a().status === "ended" ? "tertiary" : "primary")),
-      toolTag(entry),
-      unreadBadge(entry),
-      Spacer(),
-      prBadge(entry),
-      coldBadge(entry),
-      workBadge(entry),
-      ctxBadge(entry),
-      kidsBadge(entry),
-      Text(() => timeText(a(), data.clock()?.epoch ?? 0))
-        .font(10).monospaced().color("tertiary").lineLimit(1).fixedSize(),
-      infoMark(entry),
-    ]),
-  ])
-    .paddingLeading(9).paddingTrailing(10).paddingVertical(2)
-    .background(rowBackground(entry))
-    .cornerRadius(8)
-    .hoverBackground("#7f7f7f24")
-    .opacity(() => (entry().old ? 0.5 : 1))
-    .frame({ maxWidth: "infinity" })
-    .onTap(() => jump(entry()))
-    .contextMenu(rowMenu(entry));
+  return HStack({ spacing: 6 }, [
+    Circle({ size: 7 }).fill(() => dotColor(entry())),
+    Text(() => rowTitle(entry().tabTitle) || a().title || a().name)
+      .font(12).weight(weight).lineLimit(1).truncation("tail")
+      .color(() => (a().status === "ended" ? "tertiary" : "primary")),
+    unreadBadge(entry),
+    Spacer(),
+    kidsBadge(entry),
+    Text(() => timeText(a(), data.clock()?.epoch ?? 0))
+      .font(10).monospaced().color("tertiary").lineLimit(1).fixedSize(),
+    infoMark(entry),
+  ]);
+};
+const card = (entry, row) => row
+  .paddingLeading(9).paddingTrailing(8)
+  .background(rowBackground(entry))
+  .cornerRadius(8)
+  .hoverBackground("#7f7f7f2e")
+  .frame({ maxWidth: "infinity" })
+  .onTap(() => jump(entry()))
+  .contextMenu(rowMenu(entry));
+
+// A settled session (idle, ended): the name line, then its pills when it has any.
+function compactRow(entry) {
+  return card(entry, HStack({ spacing: 8 }, [guide(entry, 16), VStack({ spacing: 3 }, [
+    titleLine(entry, "regular"),
+    ForEach({ items: () => (entry().pills.length ? [{ id: "pills" }] : []), key: (x) => x.id },
+      () => HStack({ spacing: 4 }, [pillRow(entry), Spacer()]).paddingLeading(13)),
+  ])]).paddingVertical(4)).opacity(() => (entry().old ? 0.55 : 1));
 }
 
-// Agent row, t3code-style: dot + identity + time column on the first line,
-// status/activity on the second, kind + directory metadata on the third.
+// A session that works, asks or finished unseen: the name line, the state with the pills, then the request.
 function agentRow(entry) {
-  const a = () => entry().agent;
-  return HStack({ spacing: 8 }, [guide(entry, 30), VStack({ spacing: 2 }, [
-    HStack({ spacing: 6 }, [
-      Circle({ size: 6 }).fill(() => dotColor(entry())),
-      Text(() => rowTitle(entry().tabTitle) || a().title || a().name)
-        .font(12).weight("medium").lineLimit(1).truncation("tail")
-        .color(() => (a().status === "ended" ? "tertiary" : "primary")),
-      unreadBadge(entry),
-      Spacer(),
-      // Only an idle row has a cold mark: here, a finished one that the owner has not seen.
-      coldBadge(entry),
-      workBadge(entry),
-      ctxBadge(entry),
-      kidsBadge(entry),
-      Text(() => timeText(a(), data.clock()?.epoch ?? 0))
-        .font(10).monospaced().color("tertiary").lineLimit(1).fixedSize(),
-      infoMark(entry),
-    ]),
-    HStack({ spacing: 6 }, [
+  return card(entry, HStack({ spacing: 8 }, [guide(entry, 34), VStack({ spacing: 4 }, [
+    titleLine(entry, "semibold"),
+    HStack({ spacing: 4 }, [
       Text(() => entry().state + (entry().wait ? " · " + entry().wait : "") + (entry().stalled ? " · quiet 20m+" : ""))
-        .font(10)
-        .color(() => (entry().look === "needs_input" || entry().stalled ? "#FF9F0A" : entry().done ? "#0A84FF" : "tertiary")),
-      Text(() => {
-        // The tool is the tag on the first line. A lane folder loses its common prefix.
-        const meta = [];
-        const tail = dirTail(a().directory).replace(/^lane-/, "");
-        if (tail && tail !== entry().wsName) meta.push(tail);
-        const pr = entry().pr;
-        if (entry().prText) meta.push(entry().prText);
-        else if (pr) meta.push("#" + pr.number + " " + pr.status);
-        return meta.join(" · ");
-      })
-        .font(10).monospaced().color("tertiary").lineLimit(1).truncation("middle"),
-      toolTag(entry),
+        .font(10).weight("medium").lineLimit(1).fixedSize()
+        .color(() => (entry().look === "needs_input" || entry().stalled ? "#FF9F0A" : entry().done ? "#BF5AF2" : "secondary")),
+      pillRow(entry),
       Spacer(),
-    ]).paddingLeading(12),
-  ])])
-    .paddingLeading(9).paddingTrailing(10).paddingVertical(2)
-    .background(rowBackground(entry))
-    .cornerRadius(8)
-    .hoverBackground("#7f7f7f24")
-    .frame({ maxWidth: "infinity" })
-    .onTap(() => jump(entry()))
-    .contextMenu(rowMenu(entry));
+    ]).paddingLeading(13),
+    ForEach({ items: () => (entry().prompt ? [{ id: "prompt" }] : []), key: (x) => x.id },
+      () => HStack({ spacing: 0 }, [
+        Text(() => entry().prompt).font(10).color("tertiary").lineLimit(2).truncation("tail"),
+        Spacer(),
+      ]).paddingLeading(13)),
+  ])]).paddingVertical(6));
 }
 
 // Child (subagent) row: indented under its parent with a tree tick. Running
@@ -974,6 +967,8 @@ sidebar(() =>
       // Back to the default view: no chip, tab order, all workspaces, no ended rows. The search text stays.
       toggleButton("✕", () => false, () => { setAcctFilter(""); setView({ c: "", a: false, s: true, e: false, l: false }); }),
       toggleButton("↑", () => attention(), () => setView({ a: !attention() })),
+      // Groups the rows by state in place of by workspace.
+      toggleButton("state", () => byState(), () => setByState(!byState())),
     ]).paddingHorizontal(10),
     // One chip per account, shown when the sessions run on two accounts or more. A second click shows all again.
     HStack({ spacing: 3 }, [

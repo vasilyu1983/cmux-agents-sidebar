@@ -36,6 +36,9 @@ A drawing of a cmux window with the panel, with sample names.
 | Last prompt | The start of your last request to a Claude Code session, in the row details and in the search |
 | State from the screen | Codex, OpenCode, Grok and Antigravity tabs publish no state. The row says `working · from screen` or `asked · from screen`, read from the last 30 lines of the tab |
 | Compact layout | The name of a session keeps the room: marks are short (`❄190K` cold cache, `83%` context, `▸2/11` subagents running of total) and never cut. Chips with no matching row are left out. The panel head counts states as coloured dots: orange needs you, blue working, green idle |
+| Cards and pills | Each session is a rounded card: orange tint when it asks, purple when it finished and you did not look. Its marks are small coloured pills under the name: tool and account, folder, PR, `→ you`, `dup`, `↑2`, `⟳3`, `❄190K`, `83%` |
+| Request on the row | A session that works, asks or finished unseen shows the request it works on, up to two lines |
+| `state` | Next to `↑`: groups the rows by state in place of by workspace: `NEEDS YOU`, `FINISHED · NOT SEEN`, `RUNNING`, `RECENT` (idle under 1 hour), `IDLE`. Each row then carries its workspace as a pill. Not saved across reloads |
 | Limit bars | Each live limit window has a bar: green, orange from 50%, red from 80% |
 | Work marks | In orange on a row: `dup` when two live sessions work in one folder on one work branch, `↑2` for 2 commits that no remote holds, `⟳3` from the third context compaction |
 | Cost per account | In `Limits`, under the limit lines: the summed cost estimate of the open Claude Code sessions per account |

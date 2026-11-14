@@ -244,6 +244,22 @@ check("the sub badge opens the subagent rows, from cmux data and from the descri
   mustContain(after, "Explore repo");
   mustContain(after, "Review diff");
 });
+check("the state button groups the rows into sections by state, and a second click restores the workspaces", () => {
+  const btn = () => withText((t) => t === "state")[0];
+  must(btn(), "state button not found");
+  tap(btn());
+  const grouped = textOf();
+  mustContain(grouped, "NEEDS YOU");
+  mustContain(grouped, "RUNNING");
+  tap(btn());
+  must(!textOf().includes("RUNNING"), "the sections stayed after the second click");
+});
+check("a row carries its marks as pills: account, your-turn mark and compaction count", () => {
+  const all = textOf();
+  mustContain(all, "claude · work");
+  mustContain(all, "→ you");
+  mustContain(all, "⟳3");
+});
 check("the Copy name menu item writes the session name to the clipboard", () => {
   const item = withText((t) => t === "Copy name: lead-1")[0];
   must(item, "menu item not found");
