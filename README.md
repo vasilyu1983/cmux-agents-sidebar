@@ -14,7 +14,7 @@ A drawing of a cmux window with the panel, with sample names.
 | Part | What it shows |
 |------|---------------|
 | One band per workspace | Project folder, colour bar, agent count, summed session cost, unread count. A click opens the workspace |
-| One row per session | Status dot, tab title, tool tag, time since the last activity. A click goes to the tab. With an accounts file the tag names the account (`claude · work`), and search matches it |
+| One row per session | Status dot, `[name]`, title, time since the last activity; under them the marks, the next step or your request, then model, context share and cost. A click goes to the tab. With an accounts file a pill names the account (`work`) in its colour, and search matches it |
 | `NEEDS YOU` block | All sessions that wait for your input, at the top, with the reason when it is known |
 | Filter chips | `80%` context nearly full, `PR` has a pull request, `1h+` idle for an hour, `you` the next step is yours, `push` commits that no remote holds. Each chip shows its count and names its filter on hover |
 | Head counts | `1 need you` and `2 working` at the top filter the list to those sessions; a second tap shows all. The `idle` count has no tap, because the `1h+` chip counts only sessions idle for an hour |
@@ -43,10 +43,10 @@ A drawing of a cmux window with the panel, with sample names.
 | Limits | One line per tool and account that has data: bar, percent, window and reset time; the age shows on hover. Tools with no data share one `no data` line. The strip of the session list shows one limit line per tool that reports a live window (`claude`, `codex`, …): the highest window of that tool over all its accounts, with the account, the window and the reset time |
 | Focus and hover | The session of the focused tab has a fill and a thin outline. A row under the pointer has a faint fill only |
 | Request | The last request that you typed, with `…` when it is cut, on the second line of a session that works. A notice that the tool added (a text that starts with `<`) is never shown as a request |
-| Cards and pills | Each session is a rounded card: orange tint when it asks, purple when it finished and you did not look. Its marks are small coloured pills under the name: tool and account, folder, PR, `→ you`, `dup`, `↑2`, `⟳3`, `❄190K`, `83%` |
+| Cards and pills | Each session is a rounded card: orange tint when it asks, purple when it finished and you did not look. Its marks are small coloured pills under the name, by priority: the wrong-account mark `≠ work`, a PR that needs you, `83%`, `→ you`, `↑2`, `dup`, `⟳3`, `❄190K`, PR, account, folder. A row shows the first 2; `+N` names the rest on hover, and the row details list all of them. The tool has no pill: the model column names it |
 | Stalled | A session with no output for 20 minutes shows `quiet 20m+` in orange on its second line |
 | `state` | Next to `↑`: groups the rows by state in place of by workspace: `NEEDS YOU`, `FINISHED · NOT SEEN`, `RUNNING`, `RECENT` (idle under 1 hour), `IDLE`. Each row then carries its workspace as a pill. Not saved across reloads |
-| Limit bars | Each live limit window has a bar and its percent in fixed columns: green, orange from 50%, red from 80%. The `week` line of the strip has a small bar too. The `train` line leaves out clauses such as `refused none` |
+| Limit bars | Each live limit window has a bar and its percent in fixed columns: green, orange from 50%, red from 80%. Each limit line of the strip has a small bar too. The `train` line leaves out clauses such as `refused none` |
 | Empty list | `No sessions yet` when no session runs. `Nothing matches` when a chip, an account, `Here` or the search hides every session; `Clear filters` resets the view and the search |
 | Work marks | In orange on a row: `dup` when two live sessions work in one folder on one work branch, `↑2` for 2 commits that no remote holds, `⟳3` from the third context compaction |
 | Cost per account | In `Limits`, under the limit lines: the summed cost estimate of the open Claude Code sessions per account |
@@ -278,7 +278,7 @@ A tool that saves a linked file by replacing it turns the link into a real file 
 Where you see the account:
 
 - The status line of a Claude Code session starts with the account name when the session runs on an extra account. A session on the default account shows no name.
-- A panel row names the account after the tool (`claude · work`, `codex · work`). For Codex the watcher reads one variable, `CODEX_HOME`, from the process of that tab.
+- A panel row names the account in a pill (`work`), in the colour of the account. For Codex the watcher reads one variable, `CODEX_HOME`, from the process of that tab.
 - The detail lines of a row hold `account`; a session on the default account reads `personal (primary)`, with the name from your `default` line.
 - `Limits` names the default account on the lines of the normal folder.
 - The account name has one fixed colour on the row tag, on the hive page and in the status line. The status line takes the name from the folder (`~/.claude-work` gives `work`), so the colours match when the folder follows that pattern.
@@ -330,7 +330,7 @@ The top of the panel can show a few lines of project state, for example a merge 
 - Set `AGENTS_STRIP_WORKSPACE` to a workspace ref (for example `workspace:3`) and `AGENTS_STRIP_TEXT` to one line of text when you run `label-tabs.py`. The text shows as the `train` line.
 - A PR badge on a row needs two files in `$TMPDIR/agents-board/`: `prs.json` (output of `gh pr list --json number,headRefName`) and `status.txt` (your merge tool's state lines). Without them the badge stays off.
 
-Without a watcher the strip shows only the `week` line.
+Without a watcher of your own the strip shows only the limit lines, one per tool.
 
 ## Privacy and safety
 
