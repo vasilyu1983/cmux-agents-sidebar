@@ -982,6 +982,11 @@ const unreadBadge = (entry) =>
 // "▸ 2 sub running": the subagents of a session as a count. A click opens or closes their rows.
 // The subagent count: blue while one runs, else a calm teal, so it reads apart from the grey time.
 const KIDS = "#6AC4DC";
+// One soft hue per kind of figure at the end of a row, so model, context and cost read apart at a glance.
+// The saturated colours stay for states: blue works, orange waits for you, yellow and red warn.
+const MODEL_INK = "#BDB2E8";  // lavender
+const CTX_INK = "#A9C0D4";    // slate blue
+const COST_INK = "#D8BE8C";   // sand
 const kidsBadge = (entry) =>
   Text(() => {
     const e = entry();
@@ -1061,7 +1066,8 @@ const titleLine = (entry) => {
     kidsBadge(entry),
     cell(Text(() => timeText(a(), data.clock()?.epoch ?? 0))
       .font(11).monospaced().lineLimit(1)
-      .color(() => (entry().look === "needs_input" ? ORANGE : META)), 36, "trailing"),
+      // Grey reads 4.36:1 on the fill of the focused row, so the time is lighter there.
+      .color(() => (entry().look === "needs_input" ? ORANGE : entry().focused ? TEXT2 : META)), 36, "trailing"),
     infoMark(entry),
   ]);
 };
@@ -1092,10 +1098,10 @@ function agentRow(entry) {
         .color(() => (hot() ? ORANGE : entry().done ? PURPLE_TEXT : META)),
       Spacer(),
       // Three columns with fixed widths, so model, context and cost line up down the list.
-      cell(Text(() => entry().model).font(11).weight("medium").lineLimit(1).color(META), 46, "trailing"),
+      cell(Text(() => entry().model).font(11).weight("medium").lineLimit(1).color(MODEL_INK), 46, "trailing"),
       cell(Text(() => entry().ctxText).font(11).monospaced().lineLimit(1)
-        .color(() => (entry().ctxWarm ? "#FFD60A" : META)), 30, "trailing"),
-      cell(Text(() => entry().costText).font(11).monospaced().lineLimit(1).color(TEXT2), 54, "trailing"),
+        .color(() => (entry().ctxWarm ? "#FFD60A" : CTX_INK)), 30, "trailing"),
+      cell(Text(() => entry().costText).font(11).monospaced().lineLimit(1).color(COST_INK), 54, "trailing"),
     ]).paddingLeading(UNDER_TITLE).frame({ minHeight: 16 }),
   ])]).paddingVertical(4));
 }

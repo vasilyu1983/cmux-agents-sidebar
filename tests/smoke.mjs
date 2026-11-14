@@ -289,9 +289,9 @@ check("a tab with no title of its own shows the title of its session; the reques
   must(withText((t) => t === "Release notes").some((n) => n.props.font === 13 && n.props.color === META && n.props.layoutPriority === 2), "old-5 does not show its session title beside the name");
   must(withText((t) => t === "close the release notes").some((n) => n.props.font === 12 && n.props.color === META), "old-5 does not show its last request on the second line");
   // The end of the second line is three columns of fixed width, so the values line up down the list.
-  must(withText((t) => t === "sonnet").some((n) => n.props.font === 11 && n.props.weight === "medium" && n.props.color === META), "old-5 has no model column");
-  must(withText((t) => t === "12%").some((n) => n.props.font === 11 && n.props.color === META), "old-5 has no context column");
-  must(withText((t) => t === "$1.20").some((n) => n.props.font === 11 && n.props.color === "#D1D1D6"), "lead-1 has no cost column in the lighter colour");
+  must(withText((t) => t === "sonnet").some((n) => n.props.font === 11 && n.props.weight === "medium" && n.props.color === "#BDB2E8"), "old-5 has no lavender model column");
+  must(withText((t) => t === "12%").some((n) => n.props.font === 11 && n.props.color === "#A9C0D4"), "old-5 has no slate context column");
+  must(withText((t) => t === "$1.20").some((n) => n.props.font === 11 && n.props.color === "#D8BE8C"), "lead-1 has no sand cost column");
   // worker-2 does not work and has a next step: a bare "next" label stands before the text of its second line.
   must(withText((t) => t === "next").some((n) => n.props.background === "clear" && n.props.color === "#D1D1D6"), "no bare next label on worker-2");
   must(withText((t) => t.endsWith("the lead merges")).length >= 1, "worker-2 does not show its next step");
