@@ -417,6 +417,81 @@ def write_hive(tree, live, titles):
         print(f"label-tabs: hive data not written: {err}", file=sys.stderr)
 
 
+HISTORY_SECONDS = 7 * 86400  # the views page shows one week at most
+HISTORY_GAP = 60  # a longer silence of the watcher (sleep, a stopped watcher) ends a block of the timeline
+HISTORY_BLOCKS = 20000
+HISTORY_STATES = ("working", "needs_input", "idle")
+
+
+def history_step(old, rows, readings, now):
+    """The history for the views page after one pass of the watcher.
+    old: the history before (any value; a broken one counts as empty).
+    rows: (session id, name, workspace name, state, model, context %, cost, account) per live Claude Code session.
+    readings: LIMIT_READINGS of this pass.
+    Result: {"t": now, "s": {session id: {n, w, m, x, c, u}}, "b": [[session id, state, start, end], ...],
+    "l": [[tool, window, account, used, reset, seen], ...]}. A block grows while its session keeps its state and
+    the watcher keeps running. It holds names, states, times, costs and limit figures: no request and no reply text."""
+    old = old if isinstance(old, dict) else {}
+    blocks = [b for b in old.get("b", []) if isinstance(b, list) and len(b) == 4 and isinstance(b[2], (int, float))
+              and isinstance(b[3], (int, float)) and b[3] >= now - HISTORY_SECONDS]
+    last = {}  # session id -> its newest block
+    for block in blocks:
+        if block[0] not in last or block[3] >= last[block[0]][3]:
+            last[block[0]] = block
+    sessions = {sid: info for sid, info in (old.get("s") or {}).items() if sid in last and isinstance(info, dict)}
+    for sid, name, space, state, model, ctx, cost, account in rows:
+        if state not in HISTORY_STATES or not re.fullmatch(SESSION_ID, str(sid)):
+            continue
+        block = last.get(sid)
+        if block and block[1] == state and now - block[3] <= HISTORY_GAP:
+            block[3] = now
+        else:
+            # The new block starts where the previous one ended, when the watcher ran through the change.
+            start = block[3] if block and now - block[3] <= HISTORY_GAP else now
+            block = [sid, state, start, now]
+            blocks.append(block)
+            last[sid] = block
+        sessions[sid] = {"n": str(name)[:60], "w": str(space)[:60], "m": str(model)[:40], "x": ctx, "c": str(cost)[:16],
+                         "u": str(account)[:16]}
+    seen = set()
+    limits = []
+    for item in list(old.get("l", [])) + [list(r) for r in readings]:
+        if not (isinstance(item, list) and len(item) == 6 and isinstance(item[5], (int, float))):
+            continue
+        key = (item[0], item[1], item[2], item[5])  # one reading per figure, however often the watcher saw it
+        if key in seen or item[5] < now - HISTORY_SECONDS - 86400:
+            continue
+        seen.add(key)
+        limits.append(item)
+    return {"t": int(now), "s": sessions, "b": blocks[-HISTORY_BLOCKS:], "l": limits[-5000:]}
+
+
+def write_history(rows):
+    """Keeps history-data.js next to this script: the file that the Timeline, Limits and Rhythm views draw.
+    Readable by the owner only. A failure here must never stop the tab labels."""
+    folder = os.path.dirname(os.path.abspath(__file__))
+    target = os.path.join(folder, "history-data.js")
+    head, tail = "window.hiveHistory && window.hiveHistory(", ");\n"
+    old = {}
+    try:
+        with open(target) as fh:
+            text = fh.read()
+        if text.startswith(head) and text.endswith(tail):
+            old = json.loads(text[len(head):-len(tail)])
+    except FileNotFoundError:
+        pass
+    except (OSError, ValueError) as err:
+        print(f"label-tabs: history not read, a new one starts: {err}", file=sys.stderr)
+    try:
+        data = history_step(old, rows, LIMIT_READINGS, int(time.time()))
+        handle, path = tempfile.mkstemp(dir=folder, prefix=".history-data.")  # mkstemp makes the file with mode 600
+        with os.fdopen(handle, "w") as fh:
+            fh.write(head + json.dumps(data, separators=(",", ":")).replace("<", "\\u003c") + tail)
+        os.replace(path, target)
+    except (OSError, ValueError, TypeError) as err:
+        print(f"label-tabs: history not written: {err}", file=sys.stderr)
+
+
 WEEKS = {}  # account name ("" = not listed) -> its newest hand-over file with the week limit: {"at": mtime, "used": "36"}
 
 
@@ -538,6 +613,9 @@ def general_marks():
     return found
 
 
+LIMIT_READINGS = []  # [tool, window, account, share used in %, reset time (epoch, 0 = unknown), time seen] of one pass
+
+
 def limit_item(tool, window, used, reset, seen, account=""):
     """One limit window for the Limits view of the panel: "claude,5h,42,14:10,1794650000" =
     tool, window, share used in %, local reset time ("ended" when it passed, "" when unknown), time seen (epoch).
@@ -558,6 +636,11 @@ def limit_item(tool, window, used, reset, seen, account=""):
             text = time.strftime("%H:%M" if reset - time.time() < 86400 else "%a %H:%M", time.localtime(reset))
     except (TypeError, ValueError, OverflowError, OSError):
         text = ""
+    try:
+        ends = int(float(reset))
+    except (TypeError, ValueError, OverflowError):
+        ends = 0
+    LIMIT_READINGS.append([tool, window, account, used, ends, int(seen)])
     return f"{tool},{window},{used},{text},{int(seen)}" + (f",{account}" if account else "")
 
 
@@ -771,6 +854,7 @@ def main():
     labels = {}  # surface id -> label
     waiting = {}  # workspace ref -> ["api-3f permission prompt", ...]
     models = {}  # workspace ref -> ["api-3f: Fable 5.2 high", ...]
+    past = []  # (surface id, session id, name, state, fields) per live Claude Code session, for the history
     board_runs = False
     screen_keys = set()  # surface ids of tabs that run a tool of SCREEN_TOOLS
     for line in run(["ps", "eww", "-ax", "-o", "pid=,tty=,command="]).stdout.splitlines():
@@ -792,8 +876,9 @@ def main():
                 if tool == "codex" and folder == place:
                     TAB_ACCOUNTS[key] = account
         if pid in names and "claude" in command.split(" ", 1)[0]:
-            name, waits, stalled, model, status, since, _sid = names[pid]
+            name, waits, stalled, model, status, since, sid = names[pid]
             live.append((key, name, waits, stalled, model, status, since))
+            past.append((key, sid, name, status, model))
             fields = model + ([f"waits {clean(waits, 40)}"] if waits else [])
             if fields and key in by_id:
                 models.setdefault(by_id[key][2], []).append(f"{name}: " + " · ".join(fields))
@@ -828,6 +913,13 @@ def main():
         else:
             print(f"label-tabs: rename failed for {ref}: {done.stderr.strip()}", file=sys.stderr)
     write_hive(tree, live, titles)
+    tabs, spaces = hive_places(tree)
+    rows = []
+    for key, sid, name, status, model in past:
+        agent = hive_agent(model)
+        space = spaces.get(tabs[key][0], ("", False))[0] if key in tabs else ""
+        rows.append((sid, name, space, status, agent.get("m", ""), agent.get("x"), agent.get("c", ""), agent.get("u", "")))
+    write_history(rows)
     clean_cache({sid for *_rest, sid in names.values()})
 
 

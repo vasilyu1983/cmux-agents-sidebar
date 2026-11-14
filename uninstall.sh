@@ -5,7 +5,7 @@
 # It never touches: your accounts file, your account folders, any login, the Claude Code settings, backup files.
 set -eu
 files=("$HOME/.config/cmux/sidebars/agents.js")
-for f in label-tabs.py hive.html hive-data.js agents-watch.sh next-waiting.sh agent-run.sh agents-account-add.sh agents-shell.sh; do
+for f in label-tabs.py hive.html hive-data.js history-data.js agents-watch.sh next-waiting.sh agent-run.sh agents-account-add.sh agents-shell.sh; do
   files+=("$HOME/.config/cmux/scripts/$f")
 done
 cache="$HOME/.cache/cmux-agents"

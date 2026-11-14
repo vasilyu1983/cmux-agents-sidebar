@@ -1,3 +1,5 @@
 __pycache__/
 *.bak
 .DS_Store
+scripts/hive-data.js
+scripts/history-data.js
