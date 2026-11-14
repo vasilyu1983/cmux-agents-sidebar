@@ -177,6 +177,8 @@ The other tools only copy, because their waiting state in cmux is not confirmed 
 
 ## Several accounts
 
+The full guide, with setup, maintenance and a fault table, is [ACCOUNTS.md](ACCOUNTS.md).
+
 You can keep a personal account and a work account of the same tool logged in at once, and let the folder decide which one a session uses. Each account is a separate data folder of the tool; a launcher sets one variable before the tool starts.
 
 | Tool | Variable that the launcher sets | Status |
