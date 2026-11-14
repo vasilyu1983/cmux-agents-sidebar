@@ -1,0 +1,683 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Agents panel for the cmux right sidebar. Started from a panel template that ships with cmux (GPL-3.0-or-later).
+// panel-subagents: right-sidebar demo. Every coding-agent session cmux is
+// tracking (Claude Code, Codex, ...), grouped by workspace: status dot,
+// first-prompt title, live elapsed time, kind + directory metadata, and a
+// working/needs-input/idle summary. Click a row to jump to the workspace and
+// focus the terminal the agent runs in.
+//   cmux right-sidebar set custom panel-subagents
+
+const [query, setQuery] = signal("");
+const [scopeAll, setScopeAll] = signal(true);
+const [showEnded, setShowEnded] = signal(false);
+// Groups the owner folded (workspace id -> true) and sessions whose subagent rows are open (row id -> true).
+const [collapsed, setCollapsed] = signal({});
+const [openKids, setOpenKids] = signal({});
+const [openInfo, setOpenInfo] = signal({});
+const flip = (get, set, id) => set({ ...get(), [id]: !get()[id] });
+// One filter chip at a time ("" = all rows), and the row order: tab order, or the sessions that need attention first.
+const [filter, setFilter] = signal("");
+const [attention, setAttention] = signal(false);
+// Each chip is a short mark, so the row fits a narrow panel; the full name shows under the chips while a filter is on.
+const FILTERS = [["needs", "!", "needs you"], ["working", "▶", "working"], ["ctx", "80%", "context 80% or more"], ["pr", "PR", "has a PR"], ["idle", "1h+", "idle for 1 hour or more"]];
+
+// Fast commands, per tool. Each name was read in that tool's own documentation on 2026-11-14; a tool that is not
+// listed here gets no command item. Antigravity (agy) compacts by itself and has no compact command.
+// The match is on the tool name that cmux reports, in lower case.
+const COMMANDS = [
+  { match: "claude", compact: "/compact", usage: "/context", send: true },
+  { match: "codex", compact: "/compact", usage: "/status" },
+  { match: "opencode", compact: "/compact" },
+  { match: "grok", compact: "/compact", usage: "/context" },
+  { match: "agy", usage: "/context" },
+  { match: "antigravity", usage: "/context" },
+];
+const commandsOf = (a) => {
+  const tool = (String(a?.kind ?? "") + " " + String(a?.name ?? "")).toLowerCase();
+  return COMMANDS.find((c) => tool.includes(c.match)) ?? {};
+};
+// Types a command into the tab of an idle session and submits it (a line end submits; measured 2026-11-14).
+// A session that works or waits is left alone: there the text could answer a prompt.
+// Only tools with "send: true" get this: for them cmux was seen to report a waiting session as "needs_input".
+// For the other tools the menu copies the command, and the owner pastes it.
+function sendCommand(row, text) {
+  if (!text || !row.surfaceId || row.agent.status !== "idle") return;
+  cmux("surface.send_text", { surface_id: row.surfaceId, workspace_id: row.wsId, text: text + "\n" });
+}
+
+// label-tabs.py leaves "<folder> | api-3f: Fable 5.2 high · ctx 42% · $12.34 · lane lane/x · pr #644 needs grant ·
+// cold 198K · waits permission prompt | ..." in the description. Returns session name -> its fields.
+// "@" parts belong to the strip.
+function sessionsOf(w) {
+  const models = {};
+  for (const part of String(w.description ?? "").split(" | ").slice(1)) {
+    const at = part.indexOf(": ");
+    if (at <= 0 || part.startsWith("@")) continue;
+    const s = {};
+    for (const f of part.slice(at + 2).split(" · ")) {
+      if (f.startsWith("ctx ")) s.ctx = parseInt(f.slice(4), 10);
+      else if (f.startsWith("$")) s.cost = f;
+      else if (f.startsWith("waits ")) s.wait = f.slice(6);
+      else if (f.startsWith("lane ")) s.lane = f.slice(5);
+      else if (f.startsWith("pr ")) s.pr = f.slice(3);
+      else if (f.startsWith("cold ")) s.cold = f;
+      else s.model = f;
+    }
+    models[part.slice(0, at)] = s;
+  }
+  return models;
+}
+const sessionName = (tabTitle) => (/^\[(.+?)(?: [!?])?\]/.exec(tabTitle ?? "") ?? [])[1];
+
+// Status vocabulary (workspaces[i].agents[j].status). In-flight states get a
+// strong dot; settled states are muted, matching how a roster reads at a
+// glance: color answers "does anything need me?", text answers "what is it?".
+const STATUS = {
+  needs_input: { color: "#FF9F0A", label: "Needs input", rank: 0 },
+  working: { color: "#0A84FF", label: "Working", rank: 1 },
+  idle: { color: "#34C759", label: "Idle", rank: 2 },
+  ended: { color: "#7f7f7f66", label: "Ended", rank: 3 },
+};
+const statusOf = (a) => STATUS[a.status] ?? { color: "#7f7f7f66", label: a.status, rank: 9 };
+
+// Ended sessions stay visible briefly (a just-finished agent is still news),
+// then hide behind the Ended toggle.
+const ENDED_VISIBLE_SECS = 15 * 60;
+
+const matches = (text) => {
+  const q = query().trim().toLowerCase();
+  if (!q) return true;
+  return String(text ?? "").toLowerCase().includes(q);
+};
+
+function fmtElapsed(secs) {
+  const s = Math.max(0, Math.floor(secs));
+  if (s < 60) return s + "s";
+  const m = Math.floor(s / 60);
+  if (m < 60) return m + "m " + String(s % 60).padStart(2, "0") + "s";
+  return Math.floor(m / 60) + "h " + String(m % 60).padStart(2, "0") + "m";
+}
+
+function fmtAgo(secs) {
+  const s = Math.max(0, Math.floor(secs));
+  if (s < 60) return s + "s";
+  const m = Math.floor(s / 60);
+  if (m < 60) return m + "m";
+  const h = Math.floor(m / 60);
+  if (h < 24) return h + "h";
+  return Math.floor(h / 24) + "d";
+}
+
+// Right-aligned time column: live elapsed for in-flight states (ticks with
+// the 1s clock), "ago" for settled ones.
+function timeText(a, epoch) {
+  if ((a.status === "working" || a.status === "needs_input") && a.sinceEpoch) {
+    return fmtElapsed(epoch - a.sinceEpoch);
+  }
+  if (a.lastActivityAt) return fmtAgo(epoch - a.lastActivityAt) + " ago";
+  return "";
+}
+
+const dirTail = (d) => {
+  const parts = String(d ?? "").split("/").filter((p) => p.length > 0);
+  return parts.length ? parts[parts.length - 1] : "";
+};
+
+// One flat entry list: workspace headers + agent rows, so a single keyed
+// ForEach owns the whole roster (kind is encoded in the key, so templates
+// stay stable across live updates).
+const entries = computed(() => {
+  const epoch = data.clock()?.epoch ?? 0;
+  const all = data.workspaces() ?? [];
+  const scoped = scopeAll() ? all : all.filter((w) => w.selected);
+  const out = [];
+  const waiting = [];
+  for (const w of scoped) {
+    const rows = [];
+    const models = sessionsOf(w);
+    for (const a of w.agents ?? []) {
+      // The title of the tab that hosts the agent. label-tabs.py puts the session name there ("[api-3f] title"),
+      // so the row shows which session it is, not only "Claude".
+      const tab = (w.tabs ?? []).find((t) => t.id === a.panelId || (a.surfaceId && t.surfaceId === a.surfaceId));
+      const tabTitle = tab?.title ?? "";
+      // One row per tab: cmux can keep an older live record for the same tab. The record that waits or works wins, then the newest. Ended shows them all.
+      const tabKey = tab?.id ?? a.panelId;
+      if (a.status !== "ended" && tabKey && !showEnded()) {
+        const score = (b) => [statusOf(b).rank, -(b.lastActivityAt ?? 0)];
+        const mine = score(a);
+        const beaten = (w.agents ?? []).some((b) => {
+          if (b === a || b.status === "ended") return false;
+          const other = (w.tabs ?? []).find((t) => t.id === b.panelId || (b.surfaceId && t.surfaceId === b.surfaceId));
+          if ((other?.id ?? b.panelId) !== tabKey) return false;
+          const theirs = score(b);
+          return theirs[0] < mine[0] || (theirs[0] === mine[0] && (theirs[1] < mine[1]
+            || (theirs[1] === mine[1] && (w.agents ?? []).indexOf(b) < (w.agents ?? []).indexOf(a))));
+        });
+        if (beaten) continue;
+      }
+      // An ended session in a tab that still hosts a live one is a helper run or an earlier session of that tab
+      //. It shows only with the Ended toggle.
+      const liveInTab = (w.agents ?? []).some((b) => b !== a && b.status !== "ended" && b.panelId === a.panelId);
+      if (a.status === "ended" && !showEnded()
+          && (liveInTab || epoch - (a.lastActivityAt ?? 0) > ENDED_VISIBLE_SECS)) continue;
+      if (!matches(tabTitle) && !matches(a.title) && !matches(a.name) && !matches(a.kind)
+          && !matches(w.title) && !matches(a.directory)) continue;
+      // A settled session takes one line; a working or waiting one keeps two, so it stands out by size.
+      // The key carries the form, because a row's template is fixed per key.
+      const compact = a.status === "idle" || a.status === "ended";
+      const sess = models[sessionName(tabTitle)] ?? {};
+      const stalled = /^\[[^\]]* \?\]/.test(tabTitle);
+      const f = filter();
+      if (f === "needs" && a.status !== "needs_input") continue;
+      if (f === "working" && a.status !== "working") continue;
+      if (f === "ctx" && !(sess.ctx >= 80)) continue;
+      if (f === "pr" && !sess.pr) continue;
+      if (f === "idle" && !(a.status === "idle" && epoch - (a.lastActivityAt ?? epoch) > 3600)) continue;
+      rows.push({
+        // Order for the attention sort: waiting, stalled, context nearly full, working, idle, ended.
+        rank: a.status === "needs_input" ? 0 : stalled ? 1 : sess.ctx >= 80 ? 2 : a.status === "working" ? 3 : a.status === "idle" ? 4 : 5,
+        sessName: sessionName(tabTitle) ?? "",
+        // The PR of the lane branch where the session works, with the state from your merge tool: "#644 needs grant".
+        prText: sess.pr ?? "",
+        cold: a.status === "idle" ? sess.cold ?? "" : "",
+        folder: String(a.directory ?? ""),
+        // Why the session waits, and its context share when that is 80% or more (the row shows it in red).
+        wait: a.status === "needs_input" ? sess.wait ?? "" : "",
+        ctxHigh: sess.ctx >= 80 ? "ctx " + sess.ctx + "%" : "",
+        key: "a:" + w.id + ":" + a.id + (compact ? ":c" : ""),
+        kind: "agent",
+        compact,
+        focused: Boolean(w.selected && tab?.focused),
+        unread: Boolean(tab?.hasUnread),
+        rowId: w.id + ":" + a.id,
+        // Detail lines, shown when the owner opens the row with the "›" mark. Empty values are left out.
+        info: [
+          ["state", statusOf(a).label + (a.sinceEpoch && a.status !== "idle" ? " for " + fmtElapsed(epoch - a.sinceEpoch) : "")],
+          ["lane", sess.lane ?? (/\/lane-([^/]+)/.exec(String(a.directory ?? "")) ?? [])[1] ?? ""],
+          ["pr", sess.pr ?? ""],
+          ["cache", sess.cold ? sess.cold + " tokens to rewrite on the next message" : ""],
+          ["waits", a.status === "needs_input" ? sess.wait ?? "" : ""],
+          ["tool", a.name],
+          ["model", sess.model ?? ""],
+          ["context", sess.ctx >= 0 ? sess.ctx + "%" : ""],
+          ["cost", sess.cost ?? ""],
+          ["folder", String(a.directory ?? "").replace(/^\/Users\/[^/]+/, "~")],
+          ["branch", tab?.branch ? tab.branch + (tab.dirty ? " (changed files)" : "") : ""],
+          ["ports", (tab?.ports ?? []).join(", ")],
+          ["first ask", a.title ?? ""],
+          ["last ask", tab?.latestPrompt ?? ""],
+        ].filter((l) => l[1]),
+        kids: (a.children ?? []).length,
+        kidsRunning: (a.children ?? []).filter((c) => c.running).length,
+        // Dim a session with no activity for over an hour.
+        old: compact && epoch - (a.lastActivityAt ?? epoch) > 3600,
+        wsId: w.id,
+        wsSelected: w.selected,
+        tabTitle,
+        wsColor: w.color || "#8E8E93",
+        tabIndex: tab ? w.tabs.indexOf(tab) : 9999,
+        // label-tabs.py marks a busy session with no transcript write for 20 minutes as "[name ?]".
+        stalled,
+        pr: (w.prs ?? []).find((p) => p.branch && p.branch === tab?.branch),
+        // The agent's own surfaceId is not the ID of its tab here. The tab found through panelId carries the ID that focus accepts.
+        surfaceId: tab?.surfaceId || a.panelId || a.surfaceId,
+        agent: a,
+      });
+    }
+    // A workspace with no agent still gets its band, so the panel can stand in for the left list. Not during a search.
+    if (rows.length === 0 && (query().trim() || filter())) continue;
+    // Same order as the tabs of the workspace; waiting sessions also show in the top block.
+    // The "attention" toggle puts the sessions that need the owner first, and keeps tab order inside each rank.
+    rows.sort((x, y) => (attention() ? x.rank - y.rank : 0) || x.tabIndex - y.tabIndex);
+    out.push({
+      key: "h:" + w.id,
+      kind: "header",
+      wsId: w.id,
+      // The project folder names the group. w.title is the title of the focused tab, which reads like one more session.
+      // The description starts with the project folder; w.directory follows the focused tab (it read "app" for one project).
+      wsTitle: dirTail(String(w.description ?? "").split(" | ")[0]) || dirTail(w.directory) || w.title,
+      wsColor: w.color || "#8E8E93",
+      count: rows.length,
+      unread: w.unread ?? 0,
+      folded: Boolean(collapsed()[w.id]),
+      wsSelected: w.selected,
+      dots: rows.map((r) => statusOf(r.agent).color),
+    });
+    // A folded group still reports its waiting sessions to the top block.
+    for (const r of rows) if (r.agent.status === "needs_input") waiting.push({ ...r, key: "n:" + r.key });
+    if (collapsed()[w.id]) continue;
+    // Each agent expands into its row plus one indented row per child
+    // (Claude Task spawns / Codex subagent runs), running children first.
+    for (const r of rows) {
+      out.push(r);
+      if (openInfo()[r.rowId]) {
+        r.info.forEach((l, i) => out.push({
+          key: "d:" + r.key + ":" + l[0], kind: "detail", wsId: w.id, wsColor: r.wsColor, surfaceId: r.surfaceId,
+          label: l[0], value: l[1], last: i === r.info.length - 1,
+        }));
+      }
+      if (!openKids()[r.rowId]) continue;
+      const children = [...(r.agent.children ?? [])];
+      children.sort((x, y) => (x.running === y.running ? (x.startedEpoch ?? 0) - (y.startedEpoch ?? 0) : x.running ? -1 : 1));
+      for (const c of children) {
+        out.push({
+          key: "c:" + r.key + ":" + c.id,
+          kind: "child",
+          wsId: w.id,
+          surfaceId: r.surfaceId,
+          wsColor: r.wsColor,
+          agent: r.agent,
+          child: c,
+        });
+      }
+    }
+  }
+  // "Needs you": every waiting session of every workspace, longest wait first, above the groups.
+  waiting.sort((x, y) => (x.agent.sinceEpoch ?? 0) - (y.agent.sinceEpoch ?? 0));
+  if (waiting.length === 0) return out;
+  return [{ key: "h:needs-you", kind: "header", needsYou: true, wsTitle: "NEEDS YOU", wsColor: "#FF9F0A", count: waiting.length, wsSelected: true, dots: [] }, ...waiting, ...out];
+});
+
+// The project strip: the "@train", "@queue" and "@unpushed" parts that label-tabs.py puts in a workspace description.
+// Read from every workspace, also when the list shows one workspace only.
+const STRIP = { train: ["train", "secondary"], week: ["week", "secondary"], queue: ["run", "#FF9F0A"], unpushed: ["unpushed", "#FF9F0A"] };
+const strip = computed(() => {
+  const out = [];
+  for (const w of data.workspaces() ?? []) {
+    for (const part of String(w.description ?? "").split(" | ").slice(1)) {
+      const at = part.indexOf(": ");
+      const kind = STRIP[part.slice(1, at)];
+      if (part.startsWith("@") && kind) {
+        const value = part.slice(at + 2);
+        const name = part.slice(1, at);
+        out.push({
+          key: w.id + part.slice(0, at), label: kind[0], value: name === "week" ? value + " of the 7-day limit used" : value, wsId: w.id,
+          color: name === "week" && parseInt(value, 10) >= 80 ? "#FF453A" : kind[1],
+          // The owner queue holds script names; the menu copies the commands. The owner runs them: nothing here does.
+          // Only a plain script name becomes a command; any other name is left out of the copied text.
+          copy: name === "queue"
+            ? value.split(", ").filter((n) => /^(grant|waive)-[A-Za-z0-9_-]{1,40}$/.test(n)).map((n) => "bash '/private/tmp/claude/" + n + ".sh'").join("\n")
+            : value,
+        });
+      }
+    }
+  }
+  return out;
+});
+
+const counts = computed(() => {
+  const all = data.workspaces() ?? [];
+  const c = { working: 0, needs_input: 0, idle: 0, ended: 0 };
+  for (const w of all) {
+    for (const a of w.agents ?? []) {
+      if (c[a.status] !== undefined) c[a.status] += 1;
+    }
+  }
+  return c;
+});
+
+// The summed cost of the sessions that report one (Claude Code only; the estimate at list price).
+const totalCost = computed(() => {
+  let sum = 0;
+  for (const w of data.workspaces() ?? []) {
+    for (const s of Object.values(sessionsOf(w))) sum += parseFloat(String(s.cost ?? "").slice(1)) || 0;
+  }
+  return sum;
+});
+
+// The hive graph is a page (scripts/hive.html) that draws what this panel knows: workspaces, their
+// sessions and the subagents of each session. The data travels in the link, after "#". The page reads no file.
+function hiveUrl() {
+  const all = data.workspaces() ?? [];
+  // The home folder comes from label-tabs.py ("@home: ..." in a description), not from a folder that an agent reports.
+  let home = "";
+  for (const w of all) {
+    const found = /(?:^| \| )@home: (\/Users\/[A-Za-z0-9._-]{1,64})(?: \| |$)/.exec(String(w.description ?? ""));
+    if (found) { home = found[1]; break; }
+  }
+  const ws = [];
+  for (const w of all) {
+    const models = sessionsOf(w);
+    const agents = [];
+    for (const a of w.agents ?? []) {
+      if (a.status === "ended") continue;
+      const tab = (w.tabs ?? []).find((t) => t.id === a.panelId || (a.surfaceId && t.surfaceId === a.surfaceId));
+      const sess = models[sessionName(tab?.title)] ?? {};
+      agents.push({
+        n: rowTitle(tab?.title ?? "") || a.title || a.name || "session", k: a.kind ?? "", s: a.status,
+        m: sess.model ?? "", x: sess.ctx ?? null, c: sess.cost ?? "", p: sess.pr ?? "", l: sess.lane ?? "",
+        ch: (a.children ?? []).map((c) => ({ n: c.label || "subagent", r: Boolean(c.running) })),
+      });
+    }
+    ws.push({ n: dirTail(String(w.description ?? "").split(" | ")[0]) || w.title, c: w.color || "#8E8E93", a: agents });
+  }
+  if (!home) return "";
+  return "file://" + home + "/.config/cmux/scripts/hive.html#" + encodeURIComponent(JSON.stringify({ t: data.clock()?.epoch ?? 0, ws }));
+}
+
+function jump(row) {
+  // One call only. surface.focus with workspace_id selects the workspace and the tab (checked with `cmux rpc`).
+  // The template sent workspace.select first; the two calls ran side by side, and inside one workspace the
+  // select could land last and put the focus back on the tab the workspace remembered.
+  if (row.surfaceId) cmux("surface.focus", { surface_id: row.surfaceId, workspace_id: row.wsId });
+  else cmux("workspace.select", { workspace_id: row.wsId });
+}
+
+function toggleButton(labelFn, activeFn, onTapFn) {
+  return Text(labelFn)
+    .font(11).weight("semibold").lineLimit(1).fixedSize()
+    .paddingHorizontal(8).paddingVertical(3)
+    .cornerRadius(6)
+    .color(() => (activeFn() ? "primary" : "tertiary"))
+    .background(() => (activeFn() ? "#7f7f7f3d" : null))
+    .hoverBackground("#7f7f7f3d")
+    .onTap(onTapFn);
+}
+
+// Workspace header: title + one mini status dot per agent (the roster's shape
+// at a glance, like a phase rail).
+function headerRow(entry) {
+  return VStack({ spacing: 0 }, [
+    Rectangle().fill("clear").frame({ height: 8 }),
+    HStack({ spacing: 4 }, [
+      Text(() => (entry().needsYou || !entry().count ? "" : entry().folded ? "▸" : "▾"))
+        .font(11).color("secondary").paddingHorizontal(3).paddingVertical(2)
+        .onTap(() => { if (entry().wsId) flip(collapsed, setCollapsed, entry().wsId); }),
+      HStack({ spacing: 7 }, [
+      RoundedRectangle({ cornerRadius: 2 }).fill(() => entry().wsColor).frame({ width: 4, height: 16 }),
+      Text(() => entry().wsTitle || "untitled")
+        .font(13).weight("bold").lineLimit(1).truncation("tail")
+        .color(() => (entry().needsYou ? "#FF9F0A" : "primary")),
+      Text(() => (entry().count ? String(entry().count) : "")).font(10).monospaced().color("tertiary"),
+      Spacer(),
+      // Unread notifications of the workspace, as the left list shows them.
+      Text(() => (entry().unread ? entry().unread + " new" : "")).font(9).weight("semibold").color("#0A84FF"),
+      ForEach(
+        { items: () => entry().dots.map((c, i) => ({ id: String(i) + c, color: c })), key: (d) => d.id },
+        (d) => Circle({ size: 5 }).fill(() => d().color)
+      ),
+      ]).frame({ maxWidth: "infinity" })
+        .onTap(() => { if (entry().wsId) cmux("workspace.select", { workspace_id: entry().wsId }); }),
+    ])
+      .paddingHorizontal(8).paddingVertical(6)
+      .background(() => (entry().wsSelected ? "#7f7f7f33" : "#7f7f7f1a"))
+      .cornerRadius(7)
+      .frame({ maxWidth: "infinity" }),
+  ]).frame({ maxWidth: "infinity" });
+}
+
+// A thin line in the workspace colour on the left of each row: the rows read as the inside of their group.
+const guide = (entry, height) =>
+  Rectangle().fill(() => entry().wsColor).opacity(0.45).frame({ width: 2, height });
+
+// "[name] title" where the title only repeats the name (a session with a custom name): show it once.
+const rowTitle = (t) => {
+  const m = /^\[([^\]]+)\] (.*)$/.exec(t ?? "");
+  return m && m[1].replace(/ [!?]$/, "") === m[2] ? "[" + m[1] + "]" : t;
+};
+
+// The tool of the session as a small tag after the name: "claude", "codex", or what cmux reports for another tool.
+const toolTag = (entry) =>
+  Text(() => entry().agent.kind ?? "").font(9).monospaced().color("tertiary").lineLimit(1);
+const ctxBadge = (entry) =>
+  Text(() => entry().ctxHigh).font(9).weight("semibold").monospaced().color("#FF453A").lineLimit(1);
+// One line of the project strip: a dim label and its text. A click opens the workspace that carries it.
+function stripRow(entry) {
+  return HStack({ spacing: 8 }, [
+    Text(() => entry().label).font(10).monospaced().color("tertiary").frame({ width: 58, alignment: "leading" }),
+    Text(() => entry().value).font(10).color(() => entry().color).lineLimit(2).truncation("tail"),
+    Spacer(),
+  ])
+    .paddingHorizontal(10)
+    .frame({ maxWidth: "infinity" })
+    .onTap(() => cmux("workspace.select", { workspace_id: entry().wsId }))
+    .contextMenu([Button(() => (entry().label === "run" ? "Copy the commands to run" : "Copy"), () => clipboard.write(entry().copy))]);
+}
+
+// "#644 needs grant" in orange when the PR waits for the owner; "cold 198K" on an idle session whose prompt cache
+// went cold (the next message rewrites that many tokens at the higher price).
+const prBadge = (entry) =>
+  Text(() => entry().prText).font(9).monospaced().lineLimit(1)
+    .color(() => (/needs grant|refused|blocked/.test(entry().prText) ? "#FF9F0A" : "tertiary"));
+const coldBadge = (entry) =>
+  Text(() => entry().cold).font(9).monospaced().color("#64D2FF").lineLimit(1);
+
+// Right-click menu of a session row. The command items type into the session's tab, and only while it is idle.
+function rowMenu(entry) {
+  const cmd = commandsOf(entry().agent);
+  const items = [
+    Button("Go to session", () => jump(entry())),
+    Button(() => "Copy name" + (entry().sessName ? ": " + entry().sessName : ""), () => clipboard.write(entry().sessName || entry().tabTitle)),
+    Button("Copy folder", () => clipboard.write(entry().folder)),
+    Button(() => (entry().prText ? "Copy PR " + entry().prText.split(" ")[0] : "No PR for this session"),
+      () => { if (entry().prText) clipboard.write(entry().prText.split(" ")[0]); }),
+  ];
+  if (cmd.compact || cmd.usage) items.push(Divider());
+  for (const text of [cmd.compact, cmd.usage]) {
+    if (!text) continue;
+    if (cmd.send) {
+      items.push(Button(() => (entry().agent.status === "idle" ? "Send " + text : text + " (only when idle)"), () => sendCommand(entry(), text)));
+    } else {
+      items.push(Button("Copy " + text, () => clipboard.write(text)));
+    }
+  }
+  return items;
+}
+
+const unreadBadge = (entry) =>
+  Text(() => (entry().unread ? "new" : "")).font(9).weight("semibold").color("#0A84FF");
+// "▸ 2 sub running": the subagents of a session as a count. A click opens or closes their rows.
+const kidsBadge = (entry) =>
+  Text(() => {
+    const e = entry();
+    if (!e.kids) return "";
+    return (openKids()[e.rowId] ? "▾ " : "▸ ") + (e.kidsRunning ? e.kidsRunning + " sub running" : e.kids + " sub");
+  }).font(10).monospaced().lineLimit(1)
+    .color(() => (entry().kidsRunning ? "#0A84FF" : "tertiary"))
+    .onTap(() => flip(openKids, setOpenKids, entry().rowId));
+// "›" at the end of a row opens its detail lines; "⌄" closes them.
+const infoMark = (entry) =>
+  Text(() => (openInfo()[entry().rowId] ? "⌄" : "›"))
+    .font(12).color("secondary").paddingHorizontal(4)
+    .onTap(() => flip(openInfo, setOpenInfo, entry().rowId));
+
+// One detail line under an agent row: a dim label and its value.
+function detailRow(entry) {
+  return HStack({ spacing: 8 }, [
+    guide(entry, 16),
+    Text("").frame({ width: 12 }),
+    Text(() => entry().label).font(10).monospaced().color("tertiary").frame({ width: 58, alignment: "leading" }),
+    Text(() => entry().value).font(10).color("secondary").lineLimit(2).truncation("tail"),
+    Spacer(),
+  ])
+    .paddingLeading(9).paddingTrailing(10)
+    .frame({ maxWidth: "infinity" })
+    .onTap(() => jump(entry()));
+}
+
+const rowBackground = (entry) => () => (entry().focused ? "#7f7f7f38" : null);
+
+// One-line row for an idle or ended session: dot, name, time.
+function compactRow(entry) {
+  const a = () => entry().agent;
+  return HStack({ spacing: 8 }, [
+    guide(entry, 18),
+    HStack({ spacing: 6 }, [
+      Circle({ size: 6 }).fill(() => statusOf(a()).color),
+      Text(() => rowTitle(entry().tabTitle) || a().title || a().name)
+        .font(12).lineLimit(1).truncation("tail")
+        .color(() => (a().status === "ended" ? "tertiary" : "primary")),
+      toolTag(entry),
+      unreadBadge(entry),
+      Spacer(),
+      prBadge(entry),
+      coldBadge(entry),
+      ctxBadge(entry),
+      kidsBadge(entry),
+      Text(() => timeText(a(), data.clock()?.epoch ?? 0))
+        .font(10).monospaced().color("tertiary").lineLimit(1),
+      infoMark(entry),
+    ]),
+  ])
+    .paddingLeading(9).paddingTrailing(10).paddingVertical(2)
+    .background(rowBackground(entry))
+    .cornerRadius(8)
+    .hoverBackground("#7f7f7f24")
+    .opacity(() => (entry().old ? 0.5 : 1))
+    .frame({ maxWidth: "infinity" })
+    .onTap(() => jump(entry()))
+    .contextMenu(rowMenu(entry));
+}
+
+// Agent row, t3code-style: dot + identity + time column on the first line,
+// status/activity on the second, kind + directory metadata on the third.
+function agentRow(entry) {
+  const a = () => entry().agent;
+  return HStack({ spacing: 8 }, [guide(entry, 30), VStack({ spacing: 2 }, [
+    HStack({ spacing: 6 }, [
+      Circle({ size: 6 }).fill(() => statusOf(a()).color),
+      Text(() => rowTitle(entry().tabTitle) || a().title || a().name)
+        .font(12).weight("medium").lineLimit(1).truncation("tail")
+        .color(() => (a().status === "ended" ? "tertiary" : "primary")),
+      toolTag(entry),
+      unreadBadge(entry),
+      Spacer(),
+      ctxBadge(entry),
+      kidsBadge(entry),
+      Text(() => timeText(a(), data.clock()?.epoch ?? 0))
+        .font(10).monospaced().color("tertiary").lineLimit(1),
+      infoMark(entry),
+    ]),
+    HStack({ spacing: 6 }, [
+      Text(() => statusOf(a()).label + (entry().wait ? " · " + entry().wait : "") + (entry().stalled ? " · quiet 20m+" : ""))
+        .font(10)
+        .color(() => (a().status === "needs_input" || entry().stalled ? "#FF9F0A" : "tertiary")),
+      Text(() => {
+        // The tool is the tag on the first line. A lane folder loses its common prefix.
+        const meta = [];
+        const tail = dirTail(a().directory).replace(/^lane-/, "");
+        if (tail) meta.push(tail);
+        const pr = entry().pr;
+        if (entry().prText) meta.push(entry().prText);
+        else if (pr) meta.push("#" + pr.number + " " + pr.status);
+        return meta.join(" · ");
+      })
+        .font(10).monospaced().color("tertiary").lineLimit(1).truncation("middle"),
+      Spacer(),
+    ]).paddingLeading(12),
+  ])])
+    .paddingLeading(9).paddingTrailing(10).paddingVertical(2)
+    .background(rowBackground(entry))
+    .cornerRadius(8)
+    .hoverBackground("#7f7f7f24")
+    .frame({ maxWidth: "infinity" })
+    .onTap(() => jump(entry()))
+    .contextMenu(rowMenu(entry));
+}
+
+// Child (subagent) row: indented under its parent with a tree tick. Running
+// children tick a live elapsed; settled ones show their total, muted.
+function childRow(entry) {
+  const c = () => entry().child;
+  return HStack({ spacing: 6 }, [
+    guide(entry, 18),
+    Text("   └").font(10).monospaced().color("tertiary"),
+    Circle({ size: 5 })
+      .fill(() => (c().running ? "#0A84FF" : "#7f7f7f55")),
+    Text(() => c().label || "subagent")
+      .font(11).lineLimit(1).truncation("tail")
+      .color(() => (c().running ? "secondary" : "tertiary")),
+    Spacer(),
+    Text(() => {
+      const epoch = data.clock()?.epoch ?? 0;
+      const end = c().running ? epoch : (c().endedEpoch ?? epoch);
+      const s = Math.max(0, Math.floor(end - (c().startedEpoch ?? end)));
+      if (s < 60) return s + "s";
+      const m = Math.floor(s / 60);
+      return m < 60 ? m + "m " + String(s % 60).padStart(2, "0") + "s" : Math.floor(m / 60) + "h " + String(m % 60).padStart(2, "0") + "m";
+    })
+      .font(10).monospaced().color("tertiary"),
+  ])
+    .paddingLeading(9).paddingTrailing(10).paddingVertical(1)
+    .cornerRadius(7)
+    .hoverBackground("#7f7f7f1c")
+    .frame({ maxWidth: "infinity" })
+    .onTap(() => jump(entry()));
+}
+
+sidebar(() =>
+  VStack({ spacing: 8 }, [
+    HStack({ spacing: 6 }, [
+      Text("Agents").font(14).weight("semibold"),
+      Spacer(),
+      Text(() => {
+        const c = counts();
+        const bits = [];
+        if (c.needs_input > 0) bits.push(c.needs_input + " need you");
+        if (c.working > 0) bits.push("● " + c.working + " working");
+        if (c.idle > 0) bits.push(c.idle + " idle");
+        if (c.ended > 0 && showEnded()) bits.push(c.ended + " ended");
+        if (totalCost() >= 1) bits.push("$" + Math.round(totalCost()));
+        return bits.join(" · ");
+      }).font(10).monospaced().color("tertiary").lineLimit(1),
+    ]).paddingHorizontal(10),
+
+    HStack({ spacing: 4 }, [
+      toggleButton("Here", () => !scopeAll(), () => setScopeAll(false)),
+      toggleButton("All", () => scopeAll(), () => setScopeAll(true)),
+      Spacer(),
+      // Opens the hive graph in the browser: workspaces, sessions and subagents as a tree.
+      Text("hive ↗").font(11).weight("semibold").color("#0A84FF").paddingHorizontal(6).paddingVertical(3)
+        .hoverBackground("#7f7f7f3d").cornerRadius(6)
+        .onTap(() => {
+          // A browser tab inside cmux: it opens a local page and keeps the data after "#".
+          // openURL did not open this link.
+          const url = hiveUrl();
+          if (url) cmux("browser.open_split", { url, workspace_id: data.selectedId(), focus: true });
+          else log("hive: the description carries no home folder yet; the watcher writes it within 15 seconds");
+        }),
+      toggleButton("Ended", () => showEnded(), () => setShowEnded(!showEnded())),
+    ]).paddingHorizontal(10),
+
+    // Filter chips (a second click on the active chip shows all rows again) and the attention sort.
+    HStack({ spacing: 3 }, [
+      ForEach({ items: () => FILTERS.map((f) => ({ id: f[0], label: f[1] })), key: (f) => f.id },
+        (f) => toggleButton(() => f().label, () => filter() === f().id, () => setFilter(filter() === f().id ? "" : f().id))),
+      Spacer(),
+      toggleButton("↑", () => attention(), () => setAttention(!attention())),
+    ]).paddingHorizontal(10),
+    Text(() => {
+      const on = FILTERS.find((f) => f[0] === filter());
+      return [on ? "showing: " + on[2] : "", attention() ? "sorted: needs attention first" : ""].filter(Boolean).join(" · ");
+    }).font(10).color("tertiary").lineLimit(1).paddingHorizontal(12),
+
+    VStack({ spacing: 3 }, [ForEach({ items: strip, key: (s) => s.key }, (s) => stripRow(s))]),
+
+    TextField("", {
+      placeholder: "Search agents",
+      autofocus: false,
+      onEdit: (t) => setQuery(t ?? ""),
+      onSubmit: (t) => setQuery(t ?? ""),
+    }).paddingHorizontal(10),
+
+    VStack({ spacing: 3 }, [ForEach(
+      { items: entries, key: (e) => e.key },
+      (e) => {
+        const entry = e(); // kind is stable per key
+        if (entry.kind === "header") return headerRow(e);
+        if (entry.kind === "child") return childRow(e);
+        if (entry.kind === "detail") return detailRow(e);
+        return entry.compact ? compactRow(e) : agentRow(e);
+      }
+    )]),
+
+    Text(() => (entries().length === 0
+      ? (query().trim()
+        ? "No matches."
+        : "No agents yet. Sessions started in cmux terminals show up here with live status.")
+      : ""))
+      .font(11).color("tertiary").paddingHorizontal(10),
+    Spacer(),
+  ]).paddingHorizontal(6),
+  { surface: "glass" }
+)

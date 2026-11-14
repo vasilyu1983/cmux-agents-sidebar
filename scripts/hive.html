@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent hive</title>
+<!-- The hive graph of the cmux Agents panel. The panel opens this page with its data after "#" in the link:
+     workspaces, their sessions, and the subagents of each session. The page loads nothing and stores nothing.
+     Every text goes in with textContent, so a session title cannot add markup. -->
+<style>
+  :root { --bg: #f6f6f7; --fg: #1c1c1e; --dim: #6e6e73; --line: #c7c7cc; --card: #ffffff; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #1c1c1e; --fg: #f2f2f7; --dim: #98989d; --line: #48484a; --card: #2c2c2e; } }
+  body { margin: 0; padding: 16px; background: var(--bg); color: var(--fg); font: 13px -apple-system, system-ui, sans-serif; }
+  h1 { font-size: 15px; margin: 0 0 4px; }
+  p { margin: 0 0 12px; color: var(--dim); }
+  .wrap { overflow-x: auto; }
+  svg text { fill: var(--fg); font: 12px -apple-system, system-ui, sans-serif; }
+  svg text.sub { fill: var(--dim); font-size: 10px; }
+  svg path { fill: none; stroke: var(--line); stroke-width: 1.2; }
+  svg rect.box { fill: var(--card); stroke: var(--line); }
+  .legend span { display: inline-block; margin-right: 14px; color: var(--dim); }
+  .legend i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; }
+</style>
+</head>
+<body>
+<h1>Agent hive</h1>
+<p id="when"></p>
+<div class="wrap"><svg id="g" xmlns="http://www.w3.org/2000/svg"></svg></div>
+<p class="legend" id="legend"></p>
+<script>
+"use strict";
+const STATUS = { needs_input: ["#FF9F0A", "needs you"], working: ["#0A84FF", "working"], idle: ["#34C759", "idle"] };
+const NS = "http://www.w3.org/2000/svg";
+const el = (name, attrs, text) => {
+  const node = document.createElementNS(NS, name);
+  for (const [k, v] of Object.entries(attrs || {})) node.setAttribute(k, String(v));
+  if (text !== undefined) node.textContent = String(text);
+  return node;
+};
+const cut = (text, n) => { const s = String(text ?? ""); return s.length > n ? s.slice(0, n - 1) + "…" : s; };
+
+function read() {
+  try {
+    const data = JSON.parse(decodeURIComponent(location.hash.slice(1)));
+    return data && Array.isArray(data.ws) ? data : null;
+  } catch (err) {
+    console.error("hive: the link carries no readable data", err);
+    return null;
+  }
+}
+
+function draw(data) {
+  const svg = document.getElementById("g");
+  // A tree from left to right: hive, workspace, session, subagent. Each leaf takes one line of height.
+  const W = [90, 190, 300, 200], GAP = 44, ROW = 40;
+  const X = [0, W[0] + GAP, W[0] + W[1] + 2 * GAP, W[0] + W[1] + W[2] + 3 * GAP];
+  let line = 0;
+  const links = [], nodes = [];
+  const place = (node, depth) => {
+    const kids = node.kids || [];
+    if (kids.length === 0) node.y = line++ * ROW + ROW / 2;
+    else { for (const k of kids) place(k, depth + 1); node.y = (kids[0].y + kids[kids.length - 1].y) / 2; }
+    node.depth = depth;
+    nodes.push(node);
+    for (const k of kids) links.push([node, k]);
+  };
+  const root = { title: "hive", sub: data.ws.length + " workspaces", color: "#8E8E93", kids: data.ws.map((w) => ({
+    title: cut(w.n, 26), sub: (w.a || []).length + " session(s)", color: /^#[0-9a-fA-F]{6,8}$/.test(w.c) ? w.c : "#8E8E93",
+    kids: (w.a || []).map((a) => ({
+      title: cut(a.n, 40),
+      sub: cut([a.k, a.m, a.x != null ? "ctx " + a.x + "%" : "", a.c, a.p].filter(Boolean).join(" · "), 52),
+      color: (STATUS[a.s] || ["#8E8E93"])[0], hot: a.s === "needs_input" || a.x >= 80,
+      kids: (a.ch || []).map((c) => ({ title: cut(c.n, 28), sub: c.r ? "running" : "done", color: c.r ? "#0A84FF" : "#8E8E93" })),
+    })),
+  })) };
+  place(root, 0);
+  svg.setAttribute("width", X[3] + W[3] + 8);
+  svg.setAttribute("height", Math.max(line, 1) * ROW + 8);
+  for (const [a, b] of links) {
+    const x1 = X[a.depth] + W[a.depth], x2 = X[b.depth], mid = (x1 + x2) / 2;
+    svg.appendChild(el("path", { d: `M${x1},${a.y} C${mid},${a.y} ${mid},${b.y} ${x2},${b.y}` }));
+  }
+  for (const n of nodes) {
+    const x = X[n.depth], w = W[n.depth];
+    svg.appendChild(el("rect", { class: "box", x, y: n.y - 15, width: w, height: 30, rx: 7, style: n.hot ? "stroke:#FF9F0A;stroke-width:1.6" : "" }));
+    svg.appendChild(el("circle", { cx: x + 11, cy: n.y - 4, r: 4, fill: n.color }));
+    svg.appendChild(el("text", { x: x + 21, y: n.y }, n.title));
+    svg.appendChild(el("text", { class: "sub", x: x + 21, y: n.y + 11 }, n.sub));
+  }
+}
+
+const data = read();
+const when = document.getElementById("when");
+if (!data) when.textContent = "No data in the link. Open this page from the \"hive\" link of the Agents panel in cmux.";
+else {
+  when.textContent = "Picture taken " + (data.t ? new Date(data.t * 1000).toLocaleTimeString() : "now")
+    + ". It does not update: click \"hive\" in the panel again for a new one. Subagents show only for tools that report them.";
+  draw(data);
+  const legend = document.getElementById("legend");
+  for (const [color, label] of Object.values(STATUS)) {
+    const span = document.createElement("span"), dot = document.createElement("i");
+    dot.style.background = color; span.appendChild(dot); span.appendChild(document.createTextNode(label)); legend.appendChild(span);
+  }
+}
+</script>
+</body>
+</html>
