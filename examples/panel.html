@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Agents panel, sample names</title>
+<style>
+  html, body { margin: 0; background: #2b2b2b; }
+  body { width: 420px; padding: 16px 14px 20px; box-sizing: border-box; font: 13px -apple-system, "Helvetica Neue", Arial, sans-serif; color: #e4e4e4; }
+  .mono { font-family: ui-monospace, Menlo, monospace; }
+  .dim { color: #8a8a8a; }
+  .head { display: flex; align-items: baseline; justify-content: space-between; }
+  h1 { font-size: 15px; margin: 0; color: #f2f2f2; }
+  .bar { display: flex; align-items: center; gap: 4px; margin-top: 10px; font-weight: 600; font-size: 12px; color: #9a9a9a; }
+  .bar span { padding: 3px 8px; border-radius: 6px; }
+  .bar .on { background: #474747; color: #fff; }
+  .bar .sp { flex: 1; padding: 0; }
+  .bar .link { color: #3b8cff; }
+  .hint { font-size: 10.5px; color: #7a7a7a; margin: 6px 6px 0; }
+  .search { margin: 10px 4px; color: #8f8f8f; }
+  .band { display: flex; align-items: center; gap: 7px; background: #3a3a3a; border-radius: 7px; padding: 6px 8px; margin-top: 6px; font-weight: 700; }
+  .band i { width: 4px; height: 16px; border-radius: 2px; display: inline-block; }
+  .band small { font: 10px ui-monospace, Menlo, monospace; color: #8a8a8a; font-weight: 400; }
+  .band .sp { flex: 1; }
+  .row { display: flex; align-items: center; gap: 6px; padding: 4px 6px 0 12px; border-left: 2px solid; margin-left: 9px; }
+  .row b { font-weight: 600; white-space: nowrap; }
+  .row .sp { flex: 1; }
+  .row.on { background: #444; border-radius: 0 7px 7px 0; }
+  .dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; flex: none; }
+  .tag { font: 9.5px ui-monospace, Menlo, monospace; color: #8a8a8a; white-space: nowrap; }
+  .time { font: 10px ui-monospace, Menlo, monospace; color: #8a8a8a; white-space: nowrap; }
+  .line2 { padding: 1px 6px 4px 26px; border-left: 2px solid; margin-left: 9px; font-size: 11px; color: #a8a8a8; }
+  .or { color: #ff9f0a; } .red { color: #ff453a; }
+</style></head>
+<body>
+  <div class="head"><h1>Agents</h1><span class="mono dim" style="font-size:10.5px">1 need you · ● 2 working · 3 idle · $46</span></div>
+  <div class="bar"><span>Here</span><span class="on">All</span><span>Limits</span><span class="sp"></span><span class="link">hive ↗</span><span>Ended</span></div>
+  <div class="bar"><span>! 1</span><span>▶ 2</span><span>80% 1</span><span>PR 1</span><span style="opacity:.45">1h+ 0</span><span class="sp"></span><span>✕</span><span>↑</span></div>
+  <div class="bar"><span>client 1</span><span>personal 2</span><span>work 3</span><span class="sp"></span></div>
+  <div class="search">Search agents</div>
+
+  <div class="band or"><i style="background:#ff9f0a"></i>NEEDS YOU <small>1</small></div>
+  <div class="row" style="border-color:#30d15888"><span class="dot" style="background:#ff9f0a"></span><b>[api-7a !] Rate limit tests</b><span class="tag">claude<span style="color:#d7d75f"> · work</span></span><span class="sp"></span><span class="time">2m 07s</span><span class="dim">›</span></div>
+  <div class="line2" style="border-color:#30d15888"><span class="or">Needs input · permission prompt</span></div>
+
+  <div class="band"><i style="background:#30d158"></i>shop-api <small>3</small><small>$24</small><span class="sp"></span><small style="color:#3b8cff;font-weight:600">1 new</small></div>
+  <div class="row" style="border-color:#30d15888"><span class="dot" style="background:#0a84ff"></span><b>[api-3f] Checkout retries</b><span class="tag">claude<span style="color:#d7d75f"> · work</span></span><span class="sp"></span><span class="time">48s</span><span class="dim">›</span></div>
+  <div class="line2" style="border-color:#30d15888">Working · Fable 5.2 high · ctx 42% · $12.34 · <span style="color:#3b8cff">▸ 2 sub running</span></div>
+  <div class="row on" style="border-color:#30d15888"><span class="dot" style="background:#ff9f0a"></span><b>[api-7a !] Rate limit tests</b><span class="tag">claude<span style="color:#d7d75f"> · work</span></span><span class="sp"></span><span class="time">2m 07s</span><span class="dim">›</span></div>
+  <div class="line2" style="border-color:#30d15888"><span class="or">Needs input · permission prompt</span></div>
+  <div class="row" style="border-color:#30d15888"><span class="dot" style="background:#30d158"></span><b>[api-b2] Schema migration</b><span class="tag">claude<span style="color:#5fd7ff"> · client</span><span class="or"> ≠ work</span></span><span class="sp"></span><span class="tag or">#12 needs grant</span><span class="tag red">ctx 84%</span><span class="time">9m ago</span><span class="dim">›</span></div>
+
+  <div class="band"><i style="background:#0a84ff"></i>web-app <small>2</small><small>$21</small><span class="sp"></span></div>
+  <div class="row" style="border-color:#0a84ff88"><span class="dot" style="background:#30d158"></span><b>[web-1c] Login form</b><span class="tag">claude</span><span class="sp"></span><span class="tag" style="color:#64d2ff">cold 198K</span><span class="time">31m ago</span><span class="dim">⌄</span></div>
+  <div class="line2 mono" style="border-color:#0a84ff88;font-size:10px"><span class="dim">account&nbsp;</span> personal (primary)<br><span class="dim">model&nbsp;&nbsp;&nbsp;</span> Opus 5.5 medium<br><span class="dim">context&nbsp;</span> 18%<br><span class="dim">cost&nbsp;&nbsp;&nbsp;&nbsp;</span> $21.40</div>
+  <div class="row" style="border-color:#0a84ff88"><span class="dot" style="background:#0a84ff"></span><b>Codex</b><span class="tag">codex<span style="color:#d7d75f"> · work</span></span><span class="sp"></span><span class="time">1m 12s</span><span class="dim">›</span></div>
+  <div class="line2" style="border-color:#0a84ff88">Working</div>
+
+  <div class="band"><i style="background:#ff9f0a"></i>docs-site<span class="sp"></span></div>
+</body></html>

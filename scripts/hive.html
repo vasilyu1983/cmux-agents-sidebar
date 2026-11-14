@@ -43,6 +43,13 @@ const el = (name, attrs, text) => {
   if (text !== undefined) node.textContent = String(text);
   return node;
 };
+// One fixed colour per account name: the same list and the same sum as the Agents panel and the status line.
+const ACCT_COLORS = ["#5fd7ff", "#af87ff", "#ff87d7", "#00d7af", "#d7d75f", "#5fafff"];
+const acctColor = (name) => {
+  let h = 0;
+  for (const ch of String(name)) h = (h * 31 + ch.charCodeAt(0)) % 1000003;
+  return ACCT_COLORS[h % ACCT_COLORS.length];
+};
 const cut = (text, n) => { const s = String(text ?? ""); return s.length > n ? s.slice(0, n - 1) + "…" : s; };
 
 // Only known keys with the expected type pass. The link and the live file both go through here.
@@ -135,6 +142,8 @@ function draw(data) {
     kids: (w.a || []).map((a) => ({
       title: cut(a.n, 40), go: /^[0-9A-Fa-f-]{1,40}$/.test(a.i || "") && /^[0-9A-Fa-f-]{1,40}$/.test(a.w || "") ? a.w + ":" + a.i : "",
       sub: cut([a.u ? a.k + " " + a.u : a.k, a.m, a.x != null ? "ctx " + a.x + "%" : "", a.c, a.p].filter(Boolean).join(" · "), 52),
+      // With an account, the same line in three parts, so the account name can carry its colour.
+      kind: a.k, acct: a.u, rest: cut([a.m, a.x != null ? "ctx " + a.x + "%" : "", a.c, a.p].filter(Boolean).join(" · "), Math.max(0, 50 - (a.k + a.u).length)),
       here: a.f === true, color: (STATUS[a.s] || ["#8E8E93"])[0], hot: a.s === "needs_input" || a.x >= 80,
       kids: (a.ch || []).map((c) => ({ title: cut(c.n, 28), sub: c.r ? "running" : "done", color: c.r ? "#0A84FF" : "#8E8E93" })),
     })),
@@ -152,7 +161,13 @@ function draw(data) {
     g.appendChild(el("rect", { class: "box", x, y: n.y - 15, width: w, height: 30, rx: 7, style: n.hot ? "stroke:#FF9F0A;stroke-width:1.6" : "" }));
     g.appendChild(el("circle", { cx: x + 11, cy: n.y - 4, r: 4, fill: n.color }));
     g.appendChild(el("text", { x: x + 21, y: n.y }, n.title));
-    g.appendChild(el("text", { class: "sub", x: x + 21, y: n.y + 11 }, n.sub));
+    const sub = el("text", { class: "sub", x: x + 21, y: n.y + 11 }, n.acct ? "" : n.sub);
+    if (n.acct) {
+      sub.appendChild(el("tspan", {}, n.kind + " "));
+      sub.appendChild(el("tspan", { fill: acctColor(n.acct) }, n.acct));
+      sub.appendChild(el("tspan", {}, n.rest ? " · " + n.rest : ""));
+    }
+    g.appendChild(sub);
     if (n.go) {
       // The page cannot call cmux. It puts the request in its title; the Agents panel reads tab titles and
       // focuses the tab. The title returns after 5 seconds.

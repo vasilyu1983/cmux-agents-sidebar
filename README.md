@@ -38,11 +38,11 @@ Status colours: orange = waits for you, blue = working, green = idle, grey = end
 
 ## Examples
 
-The pictures use sample names. The panel picture is a drawing of the layout; it does not show the chip counts and the cost per workspace. The hive picture is a render of `scripts/hive.html` with sample data. It was made before the page learned to update, so its top line still says that the picture does not update.
+The pictures use sample names. The panel picture is a drawing of the layout (`examples/panel.html`), with the account chips, the account colours and the wrong-account mark. The hive picture is a render of `scripts/hive.html` with sample data. It was opened without the watcher, so its top line says that the picture is fixed; with the watcher the page updates every 15 seconds.
 
-![Drawing of the Agents panel: counts and cost, filter chips, a NEEDS YOU block, and one band per workspace with its session rows](examples/panel.svg)
+![Drawing of the Agents panel: counts and cost, filter chips, account chips, a NEEDS YOU block, and one band per workspace with its session rows](examples/panel.png)
 
-![Render of the hive page: workspaces, their sessions, and subagents, with a blue box on the open tab](examples/hive.png)
+![Render of the hive page: workspaces, their sessions, and subagents, with a blue box on the open tab and the account name in its colour](examples/hive.png)
 
 The `Limits` view with several accounts: one line per tool and account, red from 80%. A drawing with sample names, made from `examples/limits.html`.
 
