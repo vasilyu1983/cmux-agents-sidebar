@@ -263,6 +263,13 @@ check("an empty workspace is a flat line in its own colour with a hover-only +",
   // A settled row is flat: only a focused, asking or unseen row has a fill, so the list is not a stack of boxes.
   const fills = reachable().filter((n) => n.props.cornerRadius === 10).map((n) => n.props.background);
   must(fills.includes("clear") && !fills.includes("#FFFFFF0F"), "a settled row has a card fill: " + JSON.stringify(fills));
+  // The focused row and a row under the pointer must not look alike: focus is a fill plus an outline, hover a faint fill.
+  const rows = reachable().filter((n) => n.props.cornerRadius === 10);
+  // The focused row of this data also asks, so its outline is the orange one; a focused row never has a clear outline.
+  const focusedRows = rows.filter((n) => n.props.background === "#FFFFFF24");
+  must(focusedRows.length >= 1 && focusedRows.every((n) => n.props.borderColor !== "clear"), "the focused row has no fill with an outline");
+  must(rows.every((n) => n.props.hoverBackground === "#FFFFFF0D"), "the hover fill of a row is not the faint one");
+  must(rows.some((n) => n.props.background === "clear" && n.props.borderColor === "clear"), "a settled row has an outline");
   must(withText((t) => t === "+").filter((n) => n.props.showOnHover === true).length === 1, "no hover-only + on the docs line");
 });
 check("the rows of a workspace sit inside its band; the top block and the view by state do not", () => {

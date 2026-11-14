@@ -1011,7 +1011,7 @@ function detailRow(entry) {
 // Only a row that says something has a fill: the focused one, one that asks, one that finished unseen.
 // Every other row is flat, so the list is not a stack of boxes; the band and the rail carry the group.
 const rowBackground = (entry) => () =>
-  (entry().focused ? "#FFFFFF1F" : entry().look === "needs_input" ? "#FF9F0A26" : entry().done ? "#BF5AF226" : "clear");
+  (entry().focused ? "#FFFFFF24" : entry().look === "needs_input" ? "#FF9F0A26" : entry().done ? "#BF5AF226" : "clear");
 // The status dot, with a halo for a row that works, asks or finished unseen. The 13 pt frame is always there,
 // so the titles line up.
 const haloDot = (entry) => {
@@ -1062,8 +1062,9 @@ const card = (entry, row) => row
   .background(rowBackground(entry))
   .cornerRadius(10)
   .borderWidth(1)
-  .borderColor(() => (entry().look === "needs_input" ? "#FF9F0A73" : "clear"))
-  .hoverBackground("#FFFFFF17")
+  // The focused row has a fill and an outline; a row under the pointer has a faint fill only, so the two differ.
+  .borderColor(() => (entry().look === "needs_input" ? "#FF9F0A73" : entry().focused ? "#FFFFFF47" : "clear"))
+  .hoverBackground("#FFFFFF0D")
   .frame({ maxWidth: "infinity" })
   .marginLeading(inset(entry))
   .onTap(() => jump(entry()))
