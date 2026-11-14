@@ -91,6 +91,30 @@ def open_prs():
     return {branch: f"#{number} {verdicts.get(number, 'open')}".strip() for branch, number in heads.items()}
 
 
+def subagents_of(sid):
+    """The subagents that Claude Code recorded for the session, as one field: "sub 2/7: Explore repo; Review diff".
+    2 run now, 7 in all; the names are those of the running ones. A subagent counts as running while its record
+    is not finished and its transcript got a line in the last 15 minutes (a killed session leaves it unfinished)."""
+    running, total = [], 0
+    for meta in glob.glob(os.path.expanduser(f"~/.claude/projects/*/{sid}/subagents/*.meta.json")):
+        try:
+            with open(meta) as fh:
+                record = json.load(fh)
+            fresh = time.time() - os.path.getmtime(meta[:-len(".meta.json")] + ".jsonl") < 900
+        except (OSError, ValueError):
+            continue
+        if not isinstance(record, dict):
+            continue
+        total += 1
+        if not record.get("finished") and fresh:
+            name = re.sub(r"[^\w .,-]", "", str(record.get("description") or record.get("agentType") or "subagent"))
+            running.append(name.strip()[:28] or "subagent")
+    if not total:
+        return []
+    names = "; ".join(sorted(running)[:5])
+    return [f"sub {len(running)}/{total}" + (f": {names}" if names else "")]
+
+
 def model_of(session, prs):
     """What the status line script left for the session, as description fields:
     ["Fable 5.2 high", "ctx 42%", "$12.34", "lane lane/x", "pr #644 needs grant", "cold 198K"].
@@ -104,7 +128,7 @@ def model_of(session, prs):
             parts = fh.read(240).split("\t")
         at = os.path.getmtime(path)
     except OSError:
-        return []
+        return subagents_of(sid)
     parts += [""] * (6 - len(parts))
     model = re.sub(r"[^\w .-]", "", parts[0]).strip()
     fields = [model] if model else []
@@ -120,7 +144,7 @@ def model_of(session, prs):
         fields.append(f"cold {short(int(parts[4]))}")
     if re.fullmatch(r"\d{1,3}(\.\d+)?", parts[5]) and at > WEEK.get("at", 0):
         WEEK.update(at=at, used=str(round(float(parts[5]))))
-    return fields
+    return fields + subagents_of(sid)
 
 
 def clean(text, limit):

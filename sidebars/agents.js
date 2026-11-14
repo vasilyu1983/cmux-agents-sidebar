@@ -61,6 +61,11 @@ function sessionsOf(w) {
       else if (f.startsWith("lane ")) s.lane = f.slice(5);
       else if (f.startsWith("pr ")) s.pr = f.slice(3);
       else if (f.startsWith("cold ")) s.cold = f;
+      else if (/^sub \d+\/\d+/.test(f)) {
+        // "sub 2/7: Explore repo; Review diff": subagents from the Claude Code records, running ones by name.
+        const m = /^sub (\d+)\/(\d+)(?:: (.*))?$/.exec(f);
+        s.subs = { run: Number(m[1]), total: Number(m[2]), names: m[3] ? m[3].split("; ") : [] };
+      }
       else s.model = f;
     }
     models[part.slice(0, at)] = s;
@@ -293,11 +298,8 @@ const strip = computed(() => {
         out.push({
           key: w.id + part.slice(0, at), label: kind[0], value: name === "week" ? value + " of the 7-day limit used" : value, wsId: w.id,
           color: name === "week" && parseInt(value, 10) >= 80 ? "#FF453A" : kind[1],
-          // The owner queue holds script names; the menu copies the commands. The owner runs them: nothing here does.
-          // Only a plain script name becomes a command; any other name is left out of the copied text.
-          copy: name === "queue"
-            ? value.split(", ").filter((n) => /^(grant|waive)-[A-Za-z0-9_-]{1,40}$/.test(n)).map((n) => "bash '/private/tmp/claude/" + n + ".sh'").join("\n")
-            : value,
+          // The menu copies the text as it is. Nothing here builds or runs a command.
+          copy: value,
         });
       }
     }
@@ -327,6 +329,14 @@ const totalCost = computed(() => {
 
 // The hive graph is a page (scripts/hive.html) that draws what this panel knows: workspaces, their
 // sessions and the subagents of each session. The data travels in the link, after "#". The page reads no file.
+function hiveSubs(subs) {
+  if (!subs) return [];
+  const out = subs.names.map((n) => ({ n, r: true }));
+  if (subs.run > subs.names.length) out.push({ n: "+" + (subs.run - subs.names.length) + " more running", r: true });
+  if (subs.total > subs.run) out.push({ n: (subs.total - subs.run) + " finished", r: false });
+  return out;
+}
+
 function hiveUrl() {
   const all = data.workspaces() ?? [];
   // The home folder comes from label-tabs.py ("@home: ..." in a description), not from a folder that an agent reports.
@@ -346,7 +356,10 @@ function hiveUrl() {
       agents.push({
         n: rowTitle(tab?.title ?? "") || a.title || a.name || "session", k: a.kind ?? "", s: a.status,
         m: sess.model ?? "", x: sess.ctx ?? null, c: sess.cost ?? "", p: sess.pr ?? "", l: sess.lane ?? "",
-        ch: (a.children ?? []).map((c) => ({ n: c.label || "subagent", r: Boolean(c.running) })),
+        // Subagents: what cmux reports for the agent; when it reports none, what label-tabs.py found on disk.
+        ch: (a.children ?? []).length > 0
+          ? a.children.map((c) => ({ n: c.label || "subagent", r: Boolean(c.running) }))
+          : hiveSubs(sess.subs),
       });
     }
     ws.push({ n: dirTail(String(w.description ?? "").split(" | ")[0]) || w.title, c: w.color || "#8E8E93", a: agents });

@@ -141,6 +141,7 @@ A cmux panel gets workspaces, tabs and agents from cmux. It cannot read a file, 
 1. The status line script runs inside each Claude Code session. It writes one small file per session to `~/.cache/cmux-agents/<session id>`: model, context share, cost, lane branch, cold-cache tokens and the 7-day limit, separated by tabs.
 2. `label-tabs.py` reads the Claude Code session registry (`~/.claude/sessions/`) and those files. It renames each tab to `[session name] title`, with `!` for a waiting session and `?` for a busy session whose transcript was quiet for 20 minutes.
 3. `label-tabs.py` writes the session data into the workspace description: `<folder> | @week: 36% | api-3f: Fable 5.2 high · ctx 42% · $12.34`.
+   For each Claude Code session it also adds the subagents that Claude Code recorded on disk: `sub 2/7: Explore repo; Review diff` means 2 run now, 7 in all.
 4. The panel reads the description and joins it with the rows.
 
 Facts that follow from this design:
@@ -150,6 +151,7 @@ Facts that follow from this design:
 - The cost is the Claude Code estimate at list price for one session. It is not your bill.
 - The `?` mark is a hint. A long silent command also leaves the transcript quiet.
 - The hive page gets its data in the link, after `#`. It loads nothing from the network and stores nothing.
+- The hive page shows subagents under their session. It uses what cmux reports; when cmux reports none, it uses the Claude Code records: the running ones by name, the finished ones as a count. A subagent counts as running while its record is not finished and its transcript got a line in the last 15 minutes.
 
 ### Optional project strip
 
@@ -166,7 +168,7 @@ Without a watcher the strip shows only the `week` line.
 - `label-tabs.py` reads the environment of your own agent processes to find one value, `CMUX_SURFACE_ID`. It keeps nothing else from it.
 - `~/.cache/cmux-agents` is created with mode 700.
 - The panel writes to the clipboard only from a menu item that you click.
-- The copied queue commands are built only from names with plain characters.
+- The panel builds no shell command. A strip menu copies the text of its line and nothing else.
 
 ## Remove
 
