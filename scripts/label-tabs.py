@@ -12,6 +12,8 @@ It writes hive-data.js next to itself: the hive page reads that file to stay cur
 It deletes hand-over files of ended sessions in ~/.cache/cmux-agents that are older than 14 days.
 
 A process is matched to its tab by the CMUX_SURFACE_ID in its environment (the tty in the cmux tree can be stale).
+A tab of a tool that publishes no session state (Codex, OpenCode) gets "screen working", "screen asks" or
+"screen idle" from the last lines on its screen; only that word is kept.
 Run it inside cmux (it needs the cmux socket).
 
 With ~/.config/cmux/agents-accounts it also reads the sessions of the account folders listed there
@@ -46,6 +48,16 @@ CODEX_ENV = re.compile(r" CODEX_HOME=([^ ]{1,300})(?: |$)")
 SHARED_BRANCHES = {"main", "master", "dev", "develop", "trunk"}  # two sessions on one of these are not a duplicate
 NEXT_LINE = re.compile(r"^[\s*_`>-]{0,6}Next:[\s*_`]{0,4}(.+)$", re.M)
 GIT_MARKS = {}  # folder -> (branch, commits that no remote holds), for one pass
+# Tools that publish no session state: their tab gets "screen working|asks|idle" from the last lines on screen.
+# The name is matched against the file name of the process's program ("codex", "codex-..."); the names are not
+# checked against a live process list.
+SCREEN_TOOLS = ("codex", "opencode", "grok", "agy")
+SCREEN_LINES = 30
+# Fixed interface lines only; no screen text is kept or shown. Codex prints "• Working (12s • esc to interrupt)".
+SCREEN_WORKING = re.compile(r"\besc to interrupt\b", re.I)
+# A permission or option menu: a first option line ("› 1. Yes, proceed") and a line that offers to allow.
+SCREEN_MENU = re.compile(r"^\s*(❯|›|>)?\s*1\.\s")
+SCREEN_ALLOW = re.compile(r"\b(yes|allow|approve)\b", re.I)
 
 
 def run(args):
@@ -123,25 +135,29 @@ def wrong_account(session, account):
 
 
 def transcript_marks(sid, home):
-    """["comp 3", "next you push both repos"] from the transcript of a Claude Code session: how often its context
-    was compacted, and the last "Next: ..." line of its last reply. Only the part of the file that is new since
-    the last pass is read; the position, the count and the line are kept in ~/.cache/cmux-agents/<sid>.seen
-    (mode 600). A new request from the user, or a reply without such a line, clears the line."""
+    """["comp 3", "next you push both repos", "prompt fix the login test"] from the transcript of a Claude Code
+    session: how often its context was compacted, the last "Next: ..." line of its last reply, and the start of the
+    last request that the user typed. Only the part of the file that is new since the last pass is read; the
+    position, the count, the line and the request are kept in ~/.cache/cmux-agents/<sid>.seen (mode 600; an older
+    file without the request is read as one with an empty request). A new request from the user, or a reply
+    without such a line, clears the line. A text block that starts with "<" (a system reminder, a command wrapper)
+    is not a request; a tool result has no text block."""
     found = glob.glob(os.path.join(home, "projects", "*", f"{sid}.jsonl"))
     if not found:
         return []
     seen = os.path.expanduser(f"~/.cache/cmux-agents/{sid}.seen")
-    offset, count, step = 0, 0, ""
+    offset, count, step, prompt = 0, 0, "", ""
     try:
         with open(seen) as fh:
             parts = fh.read(400).rstrip("\n").split("\t")
         offset, count, step = int(parts[0]), int(parts[1]), parts[2] if len(parts) > 2 else ""
+        prompt = parts[3] if len(parts) > 3 else ""
     except (OSError, ValueError, IndexError):
         pass  # no state yet, or a damaged one: the file is read from its start
     try:
         size = os.path.getsize(found[0])
         if size < offset:
-            offset, count, step = 0, 0, ""
+            offset, count, step, prompt = 0, 0, "", ""
         if size > offset:
             with open(found[0], "rb") as fh:
                 fh.seek(offset)
@@ -170,14 +186,48 @@ def transcript_marks(sid, home):
                     lines = NEXT_LINE.findall(text)
                     step = clean(re.sub(r"[`*_]", "", lines[-1]), 70) if lines else ""
                 elif record.get("type") == "user":
-                    step = ""
+                    asked = " ".join(str(b.get("text") or "") for b in blocks if isinstance(b, dict)
+                                     and b.get("type") == "text" and not str(b.get("text") or "").lstrip().startswith("<"))
+                    # Runs of spaces, tabs and line breaks become one space, so no tab or line break reaches the file.
+                    if asked.strip():
+                        step = ""  # only a typed request clears the line, not a reminder that the system adds
+                        prompt = clean(" ".join(asked.split()), 60)
             offset += len(data)
             fd = os.open(seen, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
             with os.fdopen(fd, "w") as fh:
-                fh.write(f"{offset}\t{count}\t{step}\n")
+                fh.write(f"{offset}\t{count}\t{step}\t{prompt}\n")
     except OSError as err:
         print(f"label-tabs: transcript of {sid}: {err}", file=sys.stderr)
-    return ([f"comp {count}"] if count else []) + ([f"next {step}"] if step else [])
+    return (([f"comp {count}"] if count else []) + ([f"next {step}"] if step else [])
+            + ([f"prompt {prompt}"] if prompt else []))
+
+
+def screen_state(text):
+    """"working", "asks" or "idle" for the text of a tab, from the fixed lines of the tool's interface in its last
+    SCREEN_LINES lines. A line that says how to interrupt wins over a menu. The text itself is not kept."""
+    lines = text.splitlines()[-SCREEN_LINES:]
+    if any(SCREEN_WORKING.search(line) for line in lines):
+        return "working"
+    if any(SCREEN_MENU.match(line) for line in lines) and any(SCREEN_ALLOW.search(line) for line in lines):
+        return "asks"
+    return "idle"
+
+
+def screen_marks(keys, by_id, models):
+    """Adds "<tab id>: screen working" (or asks, idle) to `models` for each tab id in `keys`: one read-screen call
+    per tab. A failed call skips its tab and names only the tab ref; after a call that cannot run or times out,
+    no other tab is read in this pass."""
+    for key in sorted(keys):
+        ref, _title, workspace = by_id[key]
+        try:
+            shown = run(["cmux", "read-screen", "--surface", ref, "--lines", str(SCREEN_LINES)])
+        except (OSError, subprocess.TimeoutExpired) as err:
+            print(f"label-tabs: screen not read for {ref}: {err}", file=sys.stderr)
+            return
+        if shown.returncode != 0:
+            print(f"label-tabs: screen not read for {ref}: exit {shown.returncode}", file=sys.stderr)
+            continue
+        models.setdefault(workspace, []).append(f"{key}: screen {screen_state(shown.stdout)}")
 
 
 def git_marks(folder):
@@ -322,7 +372,7 @@ def hive_agent(fields):
             agent["l"] = field[5:]
         elif field.startswith("acct "):
             agent["u"] = field[5:]
-        elif not field.startswith(("cold ", "waits ", "comp ", "next ", "ahead ", "wrong ")) and field != "dup" and "m" not in agent:
+        elif not field.startswith(("cold ", "waits ", "comp ", "next ", "ahead ", "wrong ", "prompt ", "screen ")) and field != "dup" and "m" not in agent:
             agent["m"] = field
     return agent
 
@@ -706,6 +756,7 @@ def main():
     waiting = {}  # workspace ref -> ["api-3f permission prompt", ...]
     models = {}  # workspace ref -> ["api-3f: Fable 5.2 high", ...]
     board_runs = False
+    screen_keys = set()  # surface ids of tabs that run a tool of SCREEN_TOOLS
     for line in run(["ps", "eww", "-ax", "-o", "pid=,tty=,command="]).stdout.splitlines():
         board_runs = board_runs or "cmux/scripts/dock-open-prs.sh" in line
         surface = SURFACE_ENV.search(line)
@@ -713,6 +764,10 @@ def main():
         if not surface or len(parts) < 3 or not parts[0].isdigit():
             continue
         key, pid, command = surface.group(1).upper(), int(parts[0]), parts[2]
+        # The tool is the program, or the script that an interpreter runs ("node /opt/bin/opencode").
+        programs = [os.path.basename(word) for word in command.split(" ", 2)[:2]]
+        if any(program == tool or program.startswith(tool + "-") for program in programs for tool in SCREEN_TOOLS):
+            screen_keys.add(key)
         codex_home = CODEX_ENV.search(line) if ACCOUNTS else None
         if codex_home and "codex" in command.split(" ", 1)[0]:
             # Only this one variable is read from the environment of the process.
@@ -735,6 +790,8 @@ def main():
         if asked:
             print(tabs[asked[0][1]][0], asked[0][1])
         return
+    # A tab with a Claude Code session has the session's state; a tab outside a workspace has no description.
+    screen_marks({key for key in screen_keys - set(labels) if key in by_id and by_id[key][2]}, by_id, models)
     set_models(tree, models, strip_segments(board_runs))
     set_needs_you({workspace: ", ".join(sorted(items))[:120] for workspace, items in waiting.items()})
 

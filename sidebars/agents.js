@@ -57,16 +57,18 @@ const flip = (get, set, id) => set({ ...get(), [id]: !get()[id] });
 const filter = () => { const c = filterS() ?? saved().c; return FILTERS.some((f) => f[0] === c) ? c : ""; };
 const attention = () => attentionS() ?? saved().a;
 // Each chip is a short mark, so the row fits a narrow panel; the full name shows under the chips while a filter is on.
-const FILTERS = [["needs", "!", "needs you"], ["working", "▶", "working"], ["ctx", "80%", "context 80% or more"], ["pr", "PR", "has a PR"], ["idle", "1h+", "idle for 1 hour or more"], ["you", "you", "the next step is yours"], ["push", "push", "commits that no remote holds"]];
+const FILTERS = [["needs", "!", "needs you"], ["done", "✓", "finished, not seen"], ["working", "▶", "working"], ["ctx", "80%", "context 80% or more"], ["pr", "PR", "has a PR"], ["idle", "1h+", "idle for 1 hour or more"], ["you", "you", "the next step is yours"], ["push", "push", "commits that no remote holds"]];
 // "Next: you push both repos": the next step is the reader's when the line starts with "you" or "owner".
 const yours = (next) => /^(you|owner)\b/i.test(next ?? "");
+// sess.look is the state the row shows (lookOf); sess.done marks "finished, not seen". Without them, the cmux status counts.
 const chipHit = (id, a, sess, epoch) =>
-  id === "needs" ? a.status === "needs_input"
-    : id === "working" ? a.status === "working"
+  id === "needs" ? (sess.look ?? a.status) === "needs_input"
+    : id === "done" ? Boolean(sess.done)
+    : id === "working" ? (sess.look ?? a.status) === "working"
     : id === "ctx" ? sess.ctx >= 80
     : id === "pr" ? Boolean(sess.pr)
-    : id === "idle" ? a.status === "idle" && epoch - (a.lastActivityAt ?? epoch) > 3600
-    : id === "you" ? a.status !== "working" && yours(sess.next)
+    : id === "idle" ? (sess.look ?? a.status) === "idle" && epoch - (a.lastActivityAt ?? epoch) > 3600
+    : id === "you" ? (sess.look ?? a.status) !== "working" && yours(sess.next)
     : id === "push" ? sess.ahead > 0
     : false;
 
@@ -131,8 +133,9 @@ const commandsOf = (a) => {
 // A session that works or waits is left alone: there the text could answer a prompt.
 // Only tools with "send: true" get this: for them cmux was seen to report a waiting session as "needs_input".
 // For the other tools the menu copies the command, and the owner pastes it.
+// A row that the terminal screen shows as working or asking (row.look) is left alone too.
 function sendCommand(row, text) {
-  if (!text || !row.surfaceId || row.agent.status !== "idle") return;
+  if (!text || !row.surfaceId || row.agent.status !== "idle" || row.look !== "idle") return;
   cmux("surface.send_text", { surface_id: row.surfaceId, workspace_id: row.wsId, text: text + "\n" });
 }
 
@@ -158,6 +161,14 @@ function sessionsOf(w) {
       else if (/^comp \d{1,4}$/.test(f)) s.comp = Number(f.slice(5));
       else if (/^ahead \d{1,3}$/.test(f)) s.ahead = Number(f.slice(6));
       else if (f === "dup") s.dup = true;
+      // "prompt fix the login test": the owner's last request to the session, cut to 60 characters here.
+      else if (f.startsWith("prompt ")) s.prompt = f.slice(7, 67);
+      else if (f.startsWith("screen ")) {
+        // "screen asks": the state read from the terminal screen, for a tool that publishes no state.
+        // Only "working", "asks" and "idle" count; another form is left out.
+        const m = /^screen (working|asks|idle)$/.exec(f);
+        if (m) s.screen = m[1];
+      }
       else if (f.startsWith("acct ")) {
         // "acct work": the account of the session, a short name from your account list. Another form is left out.
         const m = /^acct ([a-z0-9-]{1,16})$/.exec(f);
@@ -192,6 +203,12 @@ const STATUS = {
   ended: { color: "#7f7f7f66", label: "Ended", rank: 3 },
 };
 const statusOf = (a) => STATUS[a.status] ?? { color: "#7f7f7f66", label: a.status, rank: 9 };
+// The state a row shows. A cmux "working" or "needs_input" always wins, and an ended record stays ended (older
+// records of a tab share its session fields). Otherwise "screen asks" / "screen working" from the watcher counts.
+const lookOf = (a, sess) =>
+  a.status === "working" || a.status === "needs_input" || a.status === "ended" ? a.status
+    : sess.screen === "asks" ? "needs_input" : sess.screen === "working" ? "working" : a.status;
+const dotColor = (row) => (STATUS[row.look] ?? statusOf(row.agent)).color;
 
 // Ended sessions stay visible briefly (a just-finished agent is still news),
 // then hide behind the Ended toggle.
@@ -267,12 +284,17 @@ const view = computed(() => {
       if (a.status === "ended" && !showEnded()
           && (liveInTab || epoch - (a.lastActivityAt ?? 0) > ENDED_VISIBLE_SECS)) continue;
       if (!matches(tabTitle) && !matches(a.title) && !matches(a.name) && !matches(a.kind)
-          && !matches(w.title) && !matches(a.directory) && !matches(models[sessionName(tabTitle)]?.acct) && !matches(accountMarks().tabs[String(tab?.id ?? "").toUpperCase()])) continue;
-      // A settled session takes one line; a working or waiting one keeps two, so it stands out by size.
-      // The key carries the form, because a row's template is fixed per key.
-      const compact = a.status === "idle" || a.status === "ended";
-      const sess = { ...(models[sessionName(tabTitle)] ?? {}) };
+          && !matches(w.title) && !matches(a.directory) && !matches(models[sessionName(tabTitle)]?.acct) && !matches(accountMarks().tabs[String(tab?.id ?? "").toUpperCase()])
+          && !matches(models[sessionName(tabTitle)]?.prompt)) continue;
+      // Fields come by session name; the screen state of a tool without a session name comes by tab id.
+      const sess = { ...(models[sessionName(tabTitle)] ?? {}), ...(models[String(tab?.id ?? "").toUpperCase()] ?? {}) };
       if (!sess.acct) sess.acct = accountMarks().tabs[String(tab?.id ?? "").toUpperCase()] ?? "";
+      sess.look = lookOf(a, sess);
+      // "Finished, not seen": the turn ended and the tab has output that the owner has not looked at.
+      sess.done = sess.look === "idle" && Boolean(tab?.hasUnread);
+      // A settled session takes one line; a working, waiting or finished-not-seen one keeps two, so it stands out by size.
+      // The key carries the form, because a row's template is fixed per key.
+      const compact = (sess.look === "idle" && !sess.done) || sess.look === "ended";
       const stalled = /^\[[^\]]* \?\]/.test(tabTitle);
       // The account of the row: a listed one, or the primary for a tool that can have several.
       const who = sess.acct || (/claude|codex/.test(String(a.kind ?? "")) ? accountMarks().primary : "");
@@ -283,8 +305,17 @@ const view = computed(() => {
       // Subagents: what cmux reports; when it reports none, what label-tabs.py found in the Claude Code records.
       const subs = (a.children ?? []).length > 0 ? null : sess.subs;
       rows.push({
-        // Order for the attention sort: waiting, stalled, context nearly full, working, idle, ended.
-        rank: a.status === "needs_input" ? 0 : stalled ? 1 : sess.ctx >= 80 ? 2 : a.status === "working" ? 3 : a.status === "idle" ? 4 : 5,
+        // Order for the attention sort: asked, finished not seen, stalled, context nearly full, working, idle, ended.
+        rank: sess.look === "needs_input" ? 0 : sess.done ? 1 : stalled ? 2 : sess.ctx >= 80 ? 3 : sess.look === "working" ? 4 : sess.look === "idle" ? 5 : 6,
+        look: sess.look,
+        done: sess.done,
+        // The second line: "asked" when the agent asks a question or waits for a permission, "finished · not seen"
+        // when its turn ended and the tab is unread. "from screen": the state comes from the terminal screen.
+        state: a.status === "needs_input" ? "asked"
+          : sess.look === "needs_input" ? "asked · from screen"
+          : sess.look === "working" && a.status !== "working" ? "working · from screen"
+          : sess.done ? "finished · not seen"
+          : statusOf(a).label,
         sessName: sessionName(tabTitle) ?? "",
         // The PR of the lane branch where the session works, with the state from your merge tool: "#644 needs grant".
         prText: sess.pr ?? "",
@@ -292,8 +323,8 @@ const view = computed(() => {
         wrong: sess.wrong ?? "",
         // Work marks, in orange: a duplicate session, commits that no remote holds, 3 or more compactions.
         work: [sess.dup ? "dup" : "", sess.ahead > 0 ? "↑" + sess.ahead : "", sess.comp >= 3 ? sess.comp + "× comp" : ""].filter(Boolean).join(" "),
-        yours: a.status !== "working" && yours(sess.next) ? "→ you" : "",
-        cold: a.status === "idle" ? sess.cold ?? "" : "",
+        yours: sess.look !== "working" && yours(sess.next) ? "→ you" : "",
+        cold: sess.look === "idle" ? sess.cold ?? "" : "",
         folder: String(a.directory ?? ""),
         // Why the session waits, and its context share when that is 80% or more (the row shows it in red).
         wait: a.status === "needs_input" ? sess.wait ?? "" : "",
@@ -326,6 +357,7 @@ const view = computed(() => {
           ["ports", (tab?.ports ?? []).join(", ")],
           ["first ask", a.title ?? ""],
           ["last ask", tab?.latestPrompt ?? ""],
+          ["last prompt", sess.prompt ?? ""],
         ].filter((l) => l[1]),
         kids: subs ? subs.total : (a.children ?? []).length,
         kidsRunning: subs ? subs.run : (a.children ?? []).filter((c) => c.running).length,
@@ -363,10 +395,10 @@ const view = computed(() => {
       unread: w.unread ?? 0,
       folded: Boolean(collapsed()[w.id]),
       wsSelected: w.selected,
-      dots: rows.map((r) => statusOf(r.agent).color),
+      dots: rows.map(dotColor),
     });
     // A folded group still reports its waiting sessions to the top block.
-    for (const r of rows) if (r.agent.status === "needs_input") waiting.push({ ...r, key: "n:" + r.key });
+    for (const r of rows) if (r.look === "needs_input") waiting.push({ ...r, key: "n:" + r.key });
     if (collapsed()[w.id]) continue;
     // Each agent expands into its row plus one indented row per child
     // (Claude Task spawns / Codex subagent runs), running children first.
@@ -594,6 +626,12 @@ function jump(row) {
   else cmux("workspace.select", { workspace_id: row.wsId });
 }
 
+// Opens a new terminal tab in a workspace and focuses it. "surface.create" with these parameters comes from another
+// published panel and is not checked here yet. Nothing is typed into the tab: the panel does not reliably learn its id.
+function newTab(wsId) {
+  if (wsId) cmux("surface.create", { workspace_id: wsId, focus: true });
+}
+
 function toggleButton(labelFn, activeFn, onTapFn) {
   return Text(labelFn)
     .font(11).weight("semibold").lineLimit(1).fixedSize()
@@ -608,9 +646,11 @@ function toggleButton(labelFn, activeFn, onTapFn) {
 // Workspace header: title + one mini status dot per agent (the roster's shape
 // at a glance, like a phase rail).
 function headerRow(entry) {
+  // Right-click on a workspace band: "New tab here". The "NEEDS YOU" band has no workspace, so it gets no menu.
+  const menu = (band) => (entry().wsId ? band.contextMenu([Button("New tab here", () => newTab(entry().wsId))]) : band);
   return VStack({ spacing: 0 }, [
     Rectangle().fill("clear").frame({ height: 8 }),
-    HStack({ spacing: 4 }, [
+    menu(HStack({ spacing: 4 }, [
       Text(() => (entry().needsYou || !entry().count ? "" : entry().folded ? "▸" : "▾"))
         .font(11).color("secondary").paddingHorizontal(3).paddingVertical(2)
         .onTap(() => { if (entry().wsId) toggleFold(entry().wsId); }),
@@ -631,11 +671,14 @@ function headerRow(entry) {
       ),
       ]).frame({ maxWidth: "infinity" })
         .onTap(() => { if (entry().wsId) cmux("workspace.select", { workspace_id: entry().wsId }); }),
+      // "+" opens a new tab in the workspace, as the right-click menu does.
+      Text(() => (entry().wsId ? "+" : "")).font(12).color("secondary").paddingHorizontal(3)
+        .onTap(() => newTab(entry().wsId)),
     ])
       .paddingHorizontal(8).paddingVertical(6)
       .background(() => (entry().wsSelected ? "#7f7f7f33" : "#7f7f7f1a"))
       .cornerRadius(7)
-      .frame({ maxWidth: "infinity" }),
+      .frame({ maxWidth: "infinity" })),
   ]).frame({ maxWidth: "infinity" });
 }
 
@@ -698,7 +741,7 @@ function rowMenu(entry) {
   for (const text of [cmd.compact, cmd.usage]) {
     if (!text) continue;
     if (cmd.send) {
-      items.push(Button(() => (entry().agent.status === "idle" ? "Send " + text : text + " (only when idle)"), () => sendCommand(entry(), text)));
+      items.push(Button(() => (entry().agent.status === "idle" && entry().look === "idle" ? "Send " + text : text + " (only when idle)"), () => sendCommand(entry(), text)));
     } else {
       items.push(Button("Copy " + text, () => clipboard.write(text)));
     }
@@ -745,7 +788,7 @@ function compactRow(entry) {
   return HStack({ spacing: 8 }, [
     guide(entry, 18),
     HStack({ spacing: 6 }, [
-      Circle({ size: 6 }).fill(() => statusOf(a()).color),
+      Circle({ size: 6 }).fill(() => dotColor(entry())),
       Text(() => rowTitle(entry().tabTitle) || a().title || a().name)
         .font(12).lineLimit(1).truncation("tail")
         .color(() => (a().status === "ended" ? "tertiary" : "primary")),
@@ -778,13 +821,15 @@ function agentRow(entry) {
   const a = () => entry().agent;
   return HStack({ spacing: 8 }, [guide(entry, 30), VStack({ spacing: 2 }, [
     HStack({ spacing: 6 }, [
-      Circle({ size: 6 }).fill(() => statusOf(a()).color),
+      Circle({ size: 6 }).fill(() => dotColor(entry())),
       Text(() => rowTitle(entry().tabTitle) || a().title || a().name)
         .font(12).weight("medium").lineLimit(1).truncation("tail")
         .color(() => (a().status === "ended" ? "tertiary" : "primary")),
       toolTag(entry),
       unreadBadge(entry),
       Spacer(),
+      // Only an idle row has a cold mark: here, a finished one that the owner has not seen.
+      coldBadge(entry),
       workBadge(entry),
       ctxBadge(entry),
       kidsBadge(entry),
@@ -793,9 +838,9 @@ function agentRow(entry) {
       infoMark(entry),
     ]),
     HStack({ spacing: 6 }, [
-      Text(() => statusOf(a()).label + (entry().wait ? " · " + entry().wait : "") + (entry().stalled ? " · quiet 20m+" : ""))
+      Text(() => entry().state + (entry().wait ? " · " + entry().wait : "") + (entry().stalled ? " · quiet 20m+" : ""))
         .font(10)
-        .color(() => (a().status === "needs_input" || entry().stalled ? "#FF9F0A" : "tertiary")),
+        .color(() => (entry().look === "needs_input" || entry().stalled ? "#FF9F0A" : entry().done ? "#0A84FF" : "tertiary")),
       Text(() => {
         // The tool is the tag on the first line. A lane folder loses its common prefix.
         const meta = [];
@@ -850,6 +895,12 @@ function childRow(entry) {
     .onTap(() => jump(entry()));
 }
 
+// The filter chips FILTERS[from..to). Each shows the number of rows that it would show; a chip with none is dim.
+const chipItems = (from, to) => () => FILTERS.slice(from, to).map((f) => ({ id: f[0], label: f[1] }));
+const filterChip = (f) =>
+  toggleButton(() => f().label + " " + (view().chips[f().id] ?? 0), () => filter() === f().id, () => setView({ c: filter() === f().id ? "" : f().id }))
+    .opacity(() => ((view().chips[f().id] ?? 0) === 0 && filter() !== f().id ? 0.45 : 1));
+
 sidebar(() =>
   VStack({ spacing: 8 }, [
     HStack({ spacing: 6 }, [
@@ -888,16 +939,20 @@ sidebar(() =>
     ]).paddingHorizontal(10),
 
     // Filter chips (a second click on the active chip shows all rows again) and the attention sort.
-    HStack({ spacing: 3 }, [
-      ForEach({ items: () => FILTERS.map((f) => ({ id: f[0], label: f[1] })), key: (f) => f.id },
-        // The number of rows that the chip would show. A chip with none is dim.
-        (f) => toggleButton(() => f().label + " " + (view().chips[f().id] ?? 0), () => filter() === f().id, () => setView({ c: filter() === f().id ? "" : f().id }))
-          .opacity(() => ((view().chips[f().id] ?? 0) === 0 && filter() !== f().id ? 0.45 : 1))),
-      Spacer(),
-      // Back to the default view: no chip, tab order, all workspaces, no ended rows. The search text stays.
-      toggleButton("✕", () => false, () => { setAcctFilter(""); setView({ c: "", a: false, s: true, e: false, l: false }); }),
-      toggleButton("↑", () => attention(), () => setView({ a: !attention() })),
-    ]).paddingHorizontal(10),
+    // Two rows of chips: one row of eight chips is wider than a narrow panel.
+    VStack({ spacing: 3 }, [
+      HStack({ spacing: 3 }, [
+        ForEach({ items: chipItems(0, 5), key: (f) => f.id }, filterChip),
+        Spacer(),
+      ]).paddingHorizontal(10),
+      HStack({ spacing: 3 }, [
+        ForEach({ items: chipItems(5), key: (f) => f.id }, filterChip),
+        Spacer(),
+        // Back to the default view: no chip, tab order, all workspaces, no ended rows. The search text stays.
+        toggleButton("✕", () => false, () => { setAcctFilter(""); setView({ c: "", a: false, s: true, e: false, l: false }); }),
+        toggleButton("↑", () => attention(), () => setView({ a: !attention() })),
+      ]).paddingHorizontal(10),
+    ]),
     // One chip per account, shown when the sessions run on two accounts or more. A second click shows all again.
     HStack({ spacing: 3 }, [
       ForEach({ items: () => { const all = Object.entries(view().accts); return all.length > 1 || acctFilter() ? all.sort().map(([id, n]) => ({ id, n })) : []; }, key: (a) => a.id },

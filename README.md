@@ -31,6 +31,10 @@ A drawing of a cmux window with the panel, with sample names.
 | Wrong-account mark | `≠ work` in orange on a row: the folder rules name `work` for that folder, and the session runs on another account. Needs `rule` lines |
 | Limit warning | One cmux notification when a limit window of any account passes 80% |
 | Next step | If the last reply of a Claude Code session ends with a line `Next: ...`, the row details show it. `→ you` in blue on the row when that line starts with `you` or `owner` |
+| New tab | Right-click a workspace header, or click its `+`: `New tab here` opens a tab in that workspace |
+| Asked or finished | The second line of a row says `asked` when the agent waits for an answer, and `finished · not seen` in blue when it ended its turn and you have not opened the tab. The `✓` chip filters the finished ones |
+| Last prompt | The start of your last request to a Claude Code session, in the row details and in the search |
+| State from the screen | Codex, OpenCode, Grok and Antigravity tabs publish no state. The row says `working · from screen` or `asked · from screen`, read from the last 30 lines of the tab |
 | Work marks | In orange on a row: `dup` when two live sessions work in one folder on one work branch, `↑2` for 2 commits that no remote holds, `3× comp` from the third context compaction |
 | Cost per account | In `Limits`, under the limit lines: the summed cost estimate of the open Claude Code sessions per account |
 
@@ -321,6 +325,8 @@ Without a watcher the strip shows only the `week` line.
 - `label-tabs.py` reads the environment of your own agent processes to find two values, `CMUX_SURFACE_ID` and `CODEX_HOME`. It keeps nothing else from it.
 - The only message that the kit sends is a local cmux notification for a limit warning.
 - `label-tabs.py` reads the transcripts of your live Claude Code sessions on disk. One line of the last reply, the `Next:` line, goes into the workspace description and the hive data file; nothing else leaves the transcript.
+- The start of your last request (60 characters) also goes into the workspace description.
+- For a tab that runs Codex, OpenCode, Grok or Antigravity, `label-tabs.py` asks cmux for the last 30 lines on screen (`cmux read-screen`). It tests them for two fixed interface lines and keeps one word: `working`, `asks` or `idle`. No screen text is stored or shown.
 - `~/.cache/cmux-agents` is created with mode 700.
 - The panel writes to the clipboard only from a menu item that you click.
 - The panel builds no shell command. A strip menu copies the text of its line and nothing else.
@@ -351,7 +357,8 @@ Tab labels stay until you rename the tabs or close them.
 - The wrong-account mark, the limit warning and the Codex account tag were tested with sample data and stub commands, not on live sessions.
 - OpenCode, Grok Build and Antigravity leave no limit figure in their local files, as far as their table and key names show. OpenCode keeps a cost per session; the panel does not show it yet.
 - The next step, the compaction count and the marks `dup` and `↑` were tested with sample data; on one Mac the next step and the count showed in the data. The new chips `you` and `push` were not seen on screen, and the chip row can be too wide for a narrow sidebar.
-- The panel cannot start a new session. No documented cmux call for that was found.
+- `New tab here` opens a plain tab; it does not start an agent in it. The call was not tested against a running cmux.
+- The state from the screen was tested with sample screens only, not with a live Codex or OpenCode tab. A tool that changes its interface lines breaks it. No documented cmux call for that was found.
 
 ## License
 
@@ -359,3 +366,11 @@ GPL-3.0-or-later. See [LICENSE](LICENSE).
 The panel started from a panel template that ships with cmux, and cmux is licensed under GPL-3.0-or-later.
 
 This project is not affiliated with cmux or its authors.
+
+## Test
+
+```
+node tests/smoke.mjs
+```
+
+The test runs the panel inside the sidebar runtime of your installed cmux, with invented data and no socket. It prints `SKIP` when cmux is not installed.
