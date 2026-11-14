@@ -367,7 +367,10 @@ const view = computed(() => {
           && !matches(w.title) && !matches(a.directory) && !matches(models[sessionName(tabTitle)]?.acct) && !matches(accountMarks().tabs[String(tab?.id ?? "").toUpperCase()])
           && !matches(models[sessionName(tabTitle)]?.prompt)) continue;
       // Fields come by session name; the screen state of a tool without a session name comes by tab id.
-      const sess = { ...(models[sessionName(tabTitle)] ?? {}), ...(models[String(tab?.id ?? "").toUpperCase()] ?? {}) };
+      // An ended run in a tab that hosts a live session is an earlier run of that tab. The data of the tab (marks,
+      // model, cost, request, focus) belongs to the live session, so the earlier run shows none of it.
+      const earlier = a.status === "ended" && liveInTab;
+      const sess = earlier ? {} : { ...(models[sessionName(tabTitle)] ?? {}), ...(models[String(tab?.id ?? "").toUpperCase()] ?? {}) };
       if (!sess.acct) sess.acct = accountMarks().tabs[String(tab?.id ?? "").toUpperCase()] ?? "";
       sess.look = lookOf(a, sess);
       // "Finished, not seen": the turn ended and the tab has output that the owner has not looked at.
@@ -405,14 +408,14 @@ const view = computed(() => {
         // Work marks (pillsOf): a duplicate session, commits that no remote holds, 3 or more compactions.
         // The request the session works on: what label-tabs.py read from the transcript, else what cmux reports.
         // A text that starts with "<" or "[SYSTEM" is a notice that the tool added, not a request of the user.
-        prompt: [sess.prompt, tab?.latestPrompt].map((t) => String(t ?? "").replace(/\s+/g, " ").trim())
+        prompt: (earlier ? [] : [sess.prompt, tab?.latestPrompt]).map((t) => String(t ?? "").replace(/\s+/g, " ").trim())
           .find((t) => t && !/^(<|\[SYSTEM)/.test(t))?.slice(0, 120) ?? "",
         // After the pills, a bare "next" label when the text of the line is the next step and not the request.
         // A row with a "+N" pill has no room for the label.
         pills: ((shown) => [...shown,
           ...(shown.length <= 2 && a.status !== "needs_input" && sess.look !== "working" && sess.next ? [{ id: "nextl", text: "next", color: TEXT2, bg: "clear" }] : [])])(cappedPills(pillsOf(a, sess, w))),
         // The second line: why it waits; else what comes next for a session that does not work; else the request.
-        line2: (a.status === "needs_input" && sess.wait) || (sess.look !== "working" && sess.next) || "",
+        line2: earlier ? "earlier run in this tab" : (a.status === "needs_input" && sess.wait) || (sess.look !== "working" && sess.next) || "",
         // The end of the second line, in three columns: the model (the tool when no model is known), the context
         // share (yellow from 50%; from 80% it is a red pill, not a column value) and the cost.
         model: String(sess.model ?? "").split(" ")[0] || String(a.kind ?? ""),
@@ -426,8 +429,8 @@ const view = computed(() => {
         wait: a.status === "needs_input" ? sess.wait ?? "" : "",
         key: "a:" + w.id + ":" + a.id,
         kind: "agent",
-        focused: Boolean(w.selected && tab?.focused),
-        unread: Boolean(tab?.hasUnread),
+        focused: !earlier && Boolean(w.selected && tab?.focused),
+        unread: !earlier && Boolean(tab?.hasUnread),
         rowId: w.id + ":" + a.id,
         // Detail lines, shown when the owner opens the row with the "›" mark. Empty values are left out.
         info: [

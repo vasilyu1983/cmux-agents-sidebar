@@ -71,7 +71,7 @@ From top to bottom of the picture. "You do" says what the mark asks of you.
 | `Here` `All` `Limits` | `Here`: the sessions of the open workspace. `All`: every workspace. `Limits`: the rate limits per tool and account | Click one; the panel remembers it |
 | `↑` | Sort: sessions that need attention first | Click to turn on or off |
 | `state` | Groups the rows by state in place of by workspace | Click to turn on or off |
-| `Ended` | Also shows sessions that ended | Click to turn on or off |
+| `Ended` | Also shows sessions that ended. An ended run in a tab that hosts a live session shows as `earlier run in this tab`, with no marks, no cost and no focus: those belong to the live session | Click to turn on or off |
 | `hive ↗` | Opens the graph page: workspace, session, subagent | Click |
 | `you 2` chip | 2 sessions whose next step is yours | Click to see only those |
 | `train` line | One line of project state from a watcher of your own (optional) | Read |

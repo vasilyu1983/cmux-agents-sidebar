@@ -76,6 +76,7 @@ const workspaces = [
       agent("a1", T(1), "needs_input", "claude"),
       agent("a2", T(2), "idle", "claude", { lastActivityAt: EPOCH - 7200 }),
       agent("a5", T(5), "ended", "claude", { lastActivityAt: EPOCH - 60 }),
+      agent("a1old", T(1), "ended", "claude", { lastActivityAt: EPOCH - 600 }),  // an earlier run in the tab of lead-1
     ],
     prs: [{ branch: "lane/fix", number: 12, status: "open" }],
   },
@@ -206,7 +207,7 @@ check("render shows all four states", () => {
   must(!rendered.includes("Working"), "a plain working row shows a state word");
   must(reachable().some((n) => n.props.fill === "#0A84FF"), "no blue dot for the working session");
   // The panel head counts each state in words: one needs you, one working, two idle; one ended while Ended is on.
-  for (const t of ["1 need you", "2 working", "2 idle", "1 ended"]) {
+  for (const t of ["1 need you", "2 working", "2 idle", "2 ended"]) {
     must(withText((x) => x === t).length === 1, "no head count " + JSON.stringify(t));
   }
   must(withText((x) => x === "1 need you")[0].props.color === ORANGE, "the need-you count is not orange");
@@ -230,8 +231,16 @@ check("a row shows 2 pills by priority, then a +N pill that names the rest; a lo
   const pills = reachable().filter((n) => n.props.cornerRadius === 4 && typeof n.props.text === "string");
   must(pills.length > 0 && pills.every((n) => n.props.text.length <= 10), "a pill is longer than 10 characters: " + pills.map((n) => n.props.text).filter((t) => t.length > 10).join(", "));
 });
+check("an earlier ended run in a tab does not take the data or the focus of the live session of that tab", () => {
+  // Tab 1 hosts lead-1 (live, focused, $1.20, 83%) and an ended run. Only the live one may show that data.
+  must(withText((t) => t === "earlier run in this tab").length === 1, "the earlier run does not say what it is");
+  must(withText((t) => t === "$1.20").length === 2, "the cost of lead-1 shows on its earlier run too");
+  must(withText((t) => t === "83%").length === 2, "the context pill of lead-1 shows on its earlier run too");
+  must(withText((t) => t === "→ you").length === 2, "the your-turn pill of lead-1 shows on its earlier run too");
+});
 check("a waiting session shows in the top block and in its workspace, in the same two-line form", () => {
-  must(withText((t) => t === "[lead-1]").length === 2, "lead-1 is not shown twice");
+  // A third row with this name is the earlier run in the same tab; the Ended toggle is on.
+  must(withText((t) => t === "[lead-1]").length === 3, "lead-1 is not shown twice, plus its earlier run");
   // The second line: the state word, then why it waits, in orange.
   const why = withText((t) => t === "asked · permission");
   must(why.length === 2 && why.every((n) => n.props.color === ORANGE && n.props.font === 12), "no orange \"asked · permission\" on both rows");
@@ -254,7 +263,7 @@ check("workspace bands take the workspace colour; the selected one is stronger",
   must(reachable().some((n) => n.props.hoverBackground === "#667c9247"), "no hover tint for api");
   // The band name takes the workspace colour, and a bright colour stays as it is.
   must(withText((t) => t === "api").some((n) => n.props.color === "#9fadba" && n.props.weight === "bold"), "the api band name is not in its colour");
-  must(withText((t) => t === "3 · $1").length === 1, "no \"3 · $1\" count and cost on the api band");
+  must(withText((t) => t === "4 · $1").length === 1, "no \"4 · $1\" count and cost on the api band");
   must(reachable().some((n) => n.props.size === 6 && n.props.fill === "#BF5AF2"), "no unread dot on the api band");
   must(!reachable().some((n) => n.props.size === 5), "session dots show on an open band");
   must(reachable().some((n) => n.props.fill === "#7f7f7f40" && n.props.height === 1), "no hairline on the NEEDS YOU section");
