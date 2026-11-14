@@ -199,7 +199,8 @@ check("render shows workspace groups and the needs-you block", () => {
 check("render shows all four states", () => {
   // Settled rows are one line with a dot only, so idle and ended show in the summary line of the panel head.
   mustContain(rendered, "asked");  // a session that needs input reads "asked" on its second line
-  mustContain(rendered, "finished · not seen");
+  // A row that finished unseen is one line like the others: its purple fill and its unread mark say it.
+  must(reachable().some((n) => n.props.cornerRadius === 10 && n.props.background === "#BF5AF226"), "no purple fill on the row that finished unseen");
   // A plain working row shows no state word: its blue dot says it.
   must(!rendered.includes("Working"), "a plain working row shows a state word");
   must(reachable().some((n) => n.props.fill === "#0A84FF"), "no blue dot for the working session");
@@ -295,6 +296,13 @@ check("render shows the waiting reason, context share and your-turn mark", () =>
   mustContain(rendered, "permission");
   mustContain(rendered, "83%");
   mustContain(rendered, "→ you");
+});
+check("every row of the list has one height; only the waiting copy in the top block is taller", () => {
+  // A row must not change its height when its state changes, or the list jumps under the pointer.
+  const rows = reachable().filter((n) => n.props.cornerRadius === 10 && n.props.borderWidth === 1);
+  const tall = rows.filter((n) => n.props.paddingVertical === 6);
+  must(tall.length === 1 && tall[0].props.borderColor === "#FF9F0A73", "tall rows: " + tall.length + " (want only the waiting copy)");
+  must(rows.filter((n) => n.props.paddingVertical === 2).length === rows.length - 1, "a list row is not the one-line form");
 });
 check("render shows the cold-cache mark of the idle session", () => mustContain(rendered, "❄5m"));
 check("render shows the account of a session and of a tab named in @accts", () => {

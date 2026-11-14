@@ -302,7 +302,12 @@ function cappedPills(all) {
   return [...all.slice(0, 3), { id: "more", text: "+" + rest.length, color: META, bg: NEUTRAL, help: rest.map((p) => p.text).join(" · ") }];
 }
 // A one-line row shows 2 bare marks: no tool and no folder. The workspace counts, in the view by state.
-const marksOf = (all) => all.filter((p) => p.id !== "tool" && p.id !== "dir").slice(0, 2);
+// The marks of a one-line row: a stalled mark, at most 2 work marks, then the account when the session has one.
+const marksOf = (all, stalled, acct) => [
+  ...(stalled ? [{ id: "quiet", text: "quiet 20m+", color: ORANGE }] : []),
+  ...all.filter((p) => p.id !== "tool" && p.id !== "dir").slice(0, stalled ? 1 : 2),
+  ...(acct ? [{ id: "acct", text: "· " + acct, color: acctColor(acct) }] : []),
+];
 const pill = (p) =>
   Text(() => p().text).font(11).weight("medium").monospaced().lineLimit(1).fixedSize()
     .color(() => p().color).paddingHorizontal(5).paddingVertical(1)
@@ -371,9 +376,11 @@ const view = computed(() => {
       sess.look = lookOf(a, sess);
       // "Finished, not seen": the turn ended and the tab has output that the owner has not looked at.
       sess.done = sess.look === "idle" && Boolean(tab?.hasUnread);
-      // A settled session takes one line; a working, waiting or finished-not-seen one keeps two, so it stands out by size.
+      // Every row of the list takes one line, so a row keeps its height when its state changes and the list does
+      // not jump. Only a waiting session has a taller copy, in the block at the top, where it shows why it waits.
       // The key carries the form, because a row's template is fixed per key.
-      const compact = (sess.look === "idle" && !sess.done) || sess.look === "ended";
+      const compact = sess.look !== "needs_input";
+      const settled = (sess.look === "idle" && !sess.done) || sess.look === "ended";
       const stalled = /^\[[^\]]* \?\]/.test(tabTitle);
       // The account of the row: a listed one, or the primary for a tool that can have several.
       const who = sess.acct || (/claude|codex/.test(String(a.kind ?? "")) ? accountMarks().primary : "");
@@ -407,7 +414,7 @@ const view = computed(() => {
         prompt: [sess.prompt, tab?.latestPrompt].map((t) => String(t ?? "").replace(/\s+/g, " ").trim())
           .find((t) => t && !/^(<|\[SYSTEM)/.test(t))?.slice(0, 120) ?? "",
         pills: cappedPills(pillsOf(a, sess, w)),
-        marks: marksOf(pillsOf(a, sess, w)),
+        marks: marksOf(pillsOf(a, sess, w), stalled, sess.acct),
         cold: sess.look === "idle" ? String(sess.cold ?? "").replace(/^cold /, "❄") : "",
         folder: String(a.directory ?? ""),
         // Why the session waits, and its context share when that is 80% or more (the row shows it in red).
@@ -446,7 +453,7 @@ const view = computed(() => {
         kidsRunning: subs ? subs.run : (a.children ?? []).filter((c) => c.running).length,
         subs,
         // Dim a session with no activity for over an hour.
-        old: compact && epoch - (a.lastActivityAt ?? epoch) > 3600,
+        old: settled && epoch - (a.lastActivityAt ?? epoch) > 3600,
         wsId: w.id,
         wsSelected: w.selected,
         tabTitle,
