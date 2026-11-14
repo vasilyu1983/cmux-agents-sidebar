@@ -759,9 +759,9 @@ function toggleButton(labelFn, activeFn, onTapFn) {
 const segment = (label, activeFn, onTapFn) =>
   Text(label).font(12).weight("medium").lineLimit(1).fixedSize()
     .paddingHorizontal(10).paddingVertical(4).cornerRadius(6)
-    .color(() => (activeFn() ? "primary" : TEXT2))
-    .background(() => (activeFn() ? "#FFFFFF26" : "clear"))
-    .hoverBackground(() => (activeFn() ? null : "#FFFFFF14"))
+    .color(() => (activeFn() ? "primary" : META))
+    // No hover fill: a hover fill beside the selected one reads as two selections.
+    .background(() => (activeFn() ? "#FFFFFF2E" : "clear"))
     .onTap(onTapFn);
 // A capsule chip: a label and its count.
 const chip = (labelFn, countFn, activeFn, onTapFn) =>

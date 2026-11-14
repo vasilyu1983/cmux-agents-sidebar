@@ -330,10 +330,11 @@ check("the panel head, control row, chips and search field have their new form",
   const all = withText((t) => t === "All")[0];
   must(all.props.background === "#FFFFFF26" && all.props.color === "primary", "the selected segment is not primary on #FFFFFF26");
   const here = withText((t) => t === "Here")[0];
-  must(here.props.color === "#D1D1D6" && here.props.hoverBackground === "#FFFFFF14", "an unselected segment is not TEXT2 with a hover fill");
+  // An unselected segment is dim text with no fill at all, also on hover: one fill means one selection.
+  must(here.props.color === META && !here.props.hoverBackground, "an unselected segment has a fill or is not dim");
   const group = parentOf(all.id);
   // Only the selected segment has a fill: no box around the three, and no fill on the other two.
-  must(!group.props.background && here.props.background === "clear" && all.props.background === "#FFFFFF26", "a fill shows on more than the selected segment");
+  must(!group.props.background && here.props.background === "clear" && all.props.background === "#FFFFFF2E", "a fill shows on more than the selected segment");
   const hive = withText((t) => t === "hive ↗")[0];
   must(hive.props.color === META && hive.props.minHeight === 24 && hive.props.hoverBackground === "#FFFFFF14", "hive ↗ is not a META toggle at least 24 tall");
   // The needs and working chips left the row: the head counts filter them.
