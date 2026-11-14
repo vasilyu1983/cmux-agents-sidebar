@@ -350,20 +350,30 @@ function hiveUrl() {
   for (const w of all) {
     const models = sessionsOf(w);
     const agents = [];
+    // One box per tab, as in the panel: cmux can keep an older live record for the same tab.
+    // The record that waits or works wins, then the newest.
+    const best = new Map();
     for (const a of w.agents ?? []) {
       if (a.status === "ended") continue;
       const tab = (w.tabs ?? []).find((t) => t.id === a.panelId || (a.surfaceId && t.surfaceId === a.surfaceId));
+      const key = tab?.id ?? a.panelId ?? a;
+      const old = best.get(key);
+      const better = !old || statusOf(a).rank < statusOf(old.a).rank
+        || (statusOf(a).rank === statusOf(old.a).rank && (a.lastActivityAt ?? 0) > (old.a.lastActivityAt ?? 0));
+      if (better) best.set(key, { a, tab });
+    }
+    for (const { a, tab } of best.values()) {
       const sess = models[sessionName(tab?.title)] ?? {};
       agents.push({
         n: rowTitle(tab?.title ?? "") || a.title || a.name || "session", k: a.kind ?? "", s: a.status,
-        i: tab?.id ?? "", w: w.id, m: sess.model ?? "", x: sess.ctx ?? null, c: sess.cost ?? "", p: sess.pr ?? "", l: sess.lane ?? "",
+        i: tab?.id ?? "", w: w.id, f: Boolean(w.selected && tab?.focused), m: sess.model ?? "", x: sess.ctx ?? null, c: sess.cost ?? "", p: sess.pr ?? "", l: sess.lane ?? "",
         // Subagents: what cmux reports for the agent; when it reports none, what label-tabs.py found on disk.
         ch: (a.children ?? []).length > 0
           ? a.children.map((c) => ({ n: c.label || "subagent", r: Boolean(c.running) }))
           : hiveSubs(sess.subs),
       });
     }
-    ws.push({ n: dirTail(String(w.description ?? "").split(" | ")[0]) || w.title, c: w.color || "#8E8E93", a: agents });
+    ws.push({ n: dirTail(String(w.description ?? "").split(" | ")[0]) || w.title, c: w.color || "#8E8E93", f: Boolean(w.selected), a: agents });
   }
   if (!home) return "";
   return "file://" + home + "/.config/cmux/scripts/hive.html#" + encodeURIComponent(JSON.stringify({ t: data.clock()?.epoch ?? 0, ws }));

@@ -18,6 +18,7 @@
   svg text.sub { fill: var(--dim); font-size: 10px; }
   svg path { fill: none; stroke: var(--line); stroke-width: 1.2; }
   svg rect.box { fill: var(--card); stroke: var(--line); }
+  svg g.here rect.box { stroke: #0A84FF; stroke-width: 2.2; fill: color-mix(in srgb, #0A84FF 16%, var(--card)); }
   svg g.go { cursor: pointer; }
   svg g.go:hover rect.box, svg g.go:focus rect.box { stroke: #0A84FF; stroke-width: 1.6; }
   svg g.go:focus { outline: none; }
@@ -68,11 +69,11 @@ function draw(data) {
     for (const k of kids) links.push([node, k]);
   };
   const root = { title: "hive", sub: data.ws.length + " workspaces", color: "#8E8E93", kids: data.ws.map((w) => ({
-    title: cut(w.n, 26), sub: (w.a || []).length + " session(s)", color: /^#[0-9a-fA-F]{6,8}$/.test(w.c) ? w.c : "#8E8E93",
+    title: cut(w.n, 26), sub: (w.a || []).length + " session(s)" + (w.f ? " · current" : ""), here: w.f === true, color: /^#[0-9a-fA-F]{6,8}$/.test(w.c) ? w.c : "#8E8E93",
     kids: (w.a || []).map((a) => ({
       title: cut(a.n, 40), go: /^[0-9A-Fa-f-]{1,40}$/.test(a.i || "") && /^[0-9A-Fa-f-]{1,40}$/.test(a.w || "") ? a.w + ":" + a.i : "",
       sub: cut([a.k, a.m, a.x != null ? "ctx " + a.x + "%" : "", a.c, a.p].filter(Boolean).join(" · "), 52),
-      color: (STATUS[a.s] || ["#8E8E93"])[0], hot: a.s === "needs_input" || a.x >= 80,
+      here: a.f === true, color: (STATUS[a.s] || ["#8E8E93"])[0], hot: a.s === "needs_input" || a.x >= 80,
       kids: (a.ch || []).map((c) => ({ title: cut(c.n, 28), sub: c.r ? "running" : "done", color: c.r ? "#0A84FF" : "#8E8E93" })),
     })),
   })) };
@@ -85,7 +86,7 @@ function draw(data) {
   }
   for (const n of nodes) {
     const x = X[n.depth], w = W[n.depth];
-    const g = el("g", n.go ? { class: "go", tabindex: 0, role: "link" } : {});
+    const g = el("g", n.go ? { class: n.here ? "go here" : "go", tabindex: 0, role: "link" } : { class: n.here ? "here" : "" });
     g.appendChild(el("rect", { class: "box", x, y: n.y - 15, width: w, height: 30, rx: 7, style: n.hot ? "stroke:#FF9F0A;stroke-width:1.6" : "" }));
     g.appendChild(el("circle", { cx: x + 11, cy: n.y - 4, r: 4, fill: n.color }));
     g.appendChild(el("text", { x: x + 21, y: n.y }, n.title));
@@ -101,6 +102,7 @@ function draw(data) {
       g.addEventListener("keydown", (e) => { if (e.key === "Enter") ask(); });
     }
     svg.appendChild(g);
+    if (n.here && n.go) setTimeout(() => g.scrollIntoView({ block: "center", inline: "nearest" }), 0);
   }
 }
 
@@ -109,7 +111,7 @@ const when = document.getElementById("when");
 if (!data) when.textContent = "No data in the link. Open this page from the \"hive\" link of the Agents panel in cmux.";
 else {
   when.textContent = "Picture taken " + (data.t ? new Date(data.t * 1000).toLocaleTimeString() : "now")
-    + ". Click a session to go to its tab (the Agents panel must be open). The picture does not update: click \"hive\" in the panel again for a new one.";
+    + ". The blue box is the tab that was open. Click a session to go to its tab (the Agents panel must be open). The picture does not update: click \"hive\" in the panel again for a new one.";
   draw(data);
   const legend = document.getElementById("legend");
   for (const [color, label] of Object.values(STATUS)) {

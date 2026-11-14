@@ -17,7 +17,7 @@ It is made for people who run many agent sessions at the same time: Claude Code,
 | Subagents | `▸ 2 sub` on a row opens the subagent rows, for tools that report them |
 | Details | `›` on a row opens state, tool, folder, branch, ports, first and last request |
 | Right-click menu | Go to session, copy name, copy folder, copy PR number, fast commands |
-| `hive ↗` | A graph page: workspace → session → subagent, in a cmux browser tab. A click on a session goes to its tab |
+| `hive ↗` | A graph page: workspace → session → subagent, in a cmux browser tab. The tab that was open has a blue box. A click on a session goes to its tab |
 | Search | Filters rows by title, tool, workspace or folder |
 
 With the optional Claude Code status line, each Claude Code row also shows the model and effort, the context share (red from 80%), the session cost estimate, a `cold` mark when the prompt cache went cold, and the count line shows the summed cost.
