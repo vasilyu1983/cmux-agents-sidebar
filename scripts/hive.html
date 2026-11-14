@@ -454,9 +454,10 @@ function drawLimits(svg) {
     const start = c.reset - length;
     const x = (t) => left + L + (Math.min(Math.max(t, start), c.reset) - start) / length * plotW;
     const y = (v) => top + T + plotH - (Math.min(Math.max(v, 0), 100) / 100) * plotH;
-    // The pace: from the readings when they span 10 minutes or more, else the average since the window opened.
+    // The pace: from the readings when their span is long enough, else the average since the window opened.
     const first = c.pts.find((p) => last[5] - p[5] <= length / 4) || c.pts[0];
-    const measured = last[5] - first[5] >= 600;
+    // A share is a whole number, so a short span gives a wild pace: the span must be 2% of the window or more.
+    const measured = last[5] - first[5] >= Math.max(600, length / 50);
     const rate = measured ? (last[3] - first[3]) / (last[5] - first[5]) : (last[5] > start ? last[3] / (last[5] - start) : 0);
     const hit = rate > 0 ? last[5] + (100 - last[3]) / rate : Infinity, hot = hit < c.reset;
     if (hot) risky += 1;
