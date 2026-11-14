@@ -284,7 +284,8 @@ function pillsOf(a, sess, w) {
   if (sess.look !== "working" && yours(sess.next)) add("you", "→ you", ORANGE);
   plain("ahead", sess.ahead > 0 ? "↑" + sess.ahead : "");
   plain("dup", sess.dup ? "dup" : "");
-  plain("comp", sess.comp >= 3 ? "⟳" + sess.comp : "");
+  // 10 compactions or more: yellow, a fresh session with a hand-over costs less.
+  add("comp", sess.comp >= 3 ? "⟳" + sess.comp : "", sess.comp >= 10 ? "#FFD60A" : META, NEUTRAL);
   plain("cold", sess.look === "idle" ? String(sess.cold ?? "").replace(/^cold /, "❄") : "");
   if (!alert) plain("pr", sess.pr);
   const tool = String(a.kind ?? "") + (sess.acct ? " · " + sess.acct : "");
@@ -517,7 +518,7 @@ const entries = computed(() => (limitsShown() ? [] : view().rows));
 
 // The project strip: the "@train", "@queue" and "@unpushed" parts that label-tabs.py puts in a workspace description.
 // Read from every workspace, also when the list shows one workspace only.
-const STRIP = { train: ["train", "secondary"], week: ["week", "secondary"], queue: ["run", "#FF9F0A"], unpushed: ["unpushed", "#FF9F0A"] };
+const STRIP = { train: ["train", "secondary"], week: ["claude", "secondary"], queue: ["run", "#FF9F0A"], unpushed: ["unpushed", "#FF9F0A"] };
 // The Limits view: "@limits: claude,5h,42,14:10,1794650000;codex,week,4,Sat 09:39,1794600000;grok,,,,0".
 // label-tabs.py reads the limit windows that each tool leaves in local files. An item with no window is a tool
 // that is installed and leaves no limit data.
@@ -566,7 +567,7 @@ const limits = computed(() => {
         value = (m[2] || "limit") + " " + used + "%" + (m[4] ? " · resets " + m[4] : "") + age;
         bar = Math.min(100, used);
         pct = used + "%";
-        rest = (m[2] || "limit") + (m[4] ? " · resets " + m[4] : "") + age;
+        rest = (m[2] || "limit") + (m[4] ? " · resets " + m[4] : "");  // the age shows on hover
       }
     }
     const primary = (m[1] === "claude" || m[1] === "codex") ? accountMarks().primary : "";
@@ -576,6 +577,13 @@ const limits = computed(() => {
   }
   // Lines of one tool stay together, and inside a tool the lines of one account.
   out.sort((a, b) => a.tool - b.tool || (a.acct < b.acct ? -1 : a.acct > b.acct ? 1 : 0));
+  // The tools and accounts with no limit data share one dim line, in place of one line each.
+  const none = out.filter((x) => x.bar < 0 && x.value === "no limit data on this Mac");
+  if (none.length) {
+    for (const x of none) out.splice(out.indexOf(x), 1);
+    const names = none.map((x) => x.label).join(", ");
+    out.push({ key: "limit-nodata", label: "no data", value: names, color: META, copy: "no limit data on this Mac: " + names, bar: -1, wsId: newest.wsId, acct: "" });
+  }
   // The cost estimate per account, summed over the sessions that report one (Claude Code only).
   const sums = {};
   for (const w of accountMarks().primary ? data.workspaces() ?? [] : []) {
@@ -606,7 +614,8 @@ const strip = computed(() => {
     for (const part of String(w.description ?? "").split(" | ").slice(1)) {
       const at = part.indexOf(": ");
       const kind = STRIP[part.slice(1, at)];
-      if (part.startsWith("@") && kind) {
+      // The Limits view lists every tool and account, so the one-tool line of the strip leaves it.
+      if (part.startsWith("@") && kind && !(part.startsWith("@week") && limitsShown())) {
         const raw = part.slice(at + 2);
         const name = part.slice(1, at);
         const value = name === "week" ? raw + " of the 7-day limit used" : name === "train" ? dropNone(raw) : raw;
@@ -743,7 +752,7 @@ const segment = (label, activeFn, onTapFn) =>
   Text(label).font(12).weight("medium").lineLimit(1).fixedSize()
     .paddingHorizontal(10).paddingVertical(4).cornerRadius(6)
     .color(() => (activeFn() ? "primary" : TEXT2))
-    .background(() => (activeFn() ? "#FFFFFF26" : null))
+    .background(() => (activeFn() ? "#FFFFFF26" : "clear"))
     .hoverBackground(() => (activeFn() ? null : "#FFFFFF14"))
     .onTap(onTapFn);
 // A capsule chip: a label and its count.
@@ -811,10 +820,13 @@ function sectionRow(entry) {
   ]).frame({ maxWidth: "infinity" });
 }
 
-// A workspace with no session: one flat line in its own colour, at the left edge of the bands. No fill. A click selects the workspace.
+// A workspace with no session: one flat line in its own colour, at the left edge of the bands. No fill; a hairline above it
+// ends the group before it. A click selects the workspace.
 function emptyRow(entry) {
   return VStack({ spacing: 0 }, [
-    Rectangle().fill("clear").frame({ height: 6 }),
+    Rectangle().fill("clear").frame({ height: 7 }),
+    Rectangle().fill("#7f7f7f33").frame({ height: 1, maxWidth: "infinity" }),
+    Rectangle().fill("clear").frame({ height: 5 }),
     HStack({ spacing: 4 }, [
       HStack({ spacing: 7 }, [
         Capsule().fill(() => seen(entry().wsColor)).frame({ width: 4, height: 12 }),
@@ -911,9 +923,9 @@ function limitRow(entry, width) {
         .color(() => (entry().bar >= 80 ? "primary" : META)), 34, "trailing"),
       Text(() => entry().rest).font(11).color(META).lineLimit(1).truncation("tail").help(() => entry().value),
     ]
-    : [Text(() => entry().value).font(11).color(() => entry().color).lineLimit(1).truncation("tail").help(() => entry().value)];
-  return HStack({ spacing: 8 }, [
-    Text(() => entry().label).font(11).color(META).lineLimit(1).truncation("tail").frame({ width, alignment: "leading" }),
+    : [Text(() => entry().value).font(11).color(() => entry().color).lineLimit(3).truncation("tail").layoutPriority(1).help(() => entry().value)];
+  return HStack({ spacing: 8, alignment: "top" }, [
+    cell(Text(() => entry().label).font(11).color(TEXT2).lineLimit(1), width, "leading"),
     ...cells,
     Spacer(),
   ])
@@ -951,13 +963,15 @@ function rowMenu(entry) {
 const unreadBadge = (entry) =>
   Text(() => (entry().unread && !entry().done ? "new" : "")).font(11).weight("semibold").color(PURPLE_TEXT);
 // "▸ 2 sub running": the subagents of a session as a count. A click opens or closes their rows.
+// The subagent count: blue while one runs, else a calm teal, so it reads apart from the grey time.
+const KIDS = "#6AC4DC";
 const kidsBadge = (entry) =>
   Text(() => {
     const e = entry();
     if (!e.kids) return "";
     return (openKids()[e.rowId] ? "▾" : "▸") + (e.kidsRunning ? e.kidsRunning + "/" + e.kids : e.kids);
   }).font(11).monospaced().lineLimit(1).fixedSize()
-    .color(() => (entry().kidsRunning ? BLUE_TEXT : META))
+    .color(() => (entry().kidsRunning ? BLUE_TEXT : KIDS))
     .onTap(() => flip(openKids, setOpenKids, entry().rowId));
 // "›" at the end of a row opens its detail lines and shows on hover only; "⌄" closes them and stays in view.
 const infoMark = (entry) =>
@@ -1005,9 +1019,13 @@ const titleParts = (entry) => {
   const a = entry().agent;
   const t = rowTitle(entry().tabTitle) || a.title || a.name || "";
   const m = /^(\[[^\]]+\]) (.+)$/.exec(t);
+  // A one-line row with no title of its own shows the last request in its place; a taller row shows it below.
+  const ask = entry().compact ? entry().prompt ?? "" : "";
+  const bare = /^\[[^\]]+\]$/.exec(t);
+  if (bare) return { name: t, rest: ask };
   if (!m) return { name: t, rest: "" };
   const tool = [a.name, a.kind, "Claude Code"].some((x) => x && String(x).toLowerCase() === m[2].toLowerCase());
-  return { name: m[1], rest: tool ? "" : m[2] };
+  return { name: m[1], rest: tool ? ask : m[2] };
 };
 // The first line of a row: dot, name, the marks of a one-line row, unread mark, then subagents, time and the
 // detail mark. An old settled row shows its name dim.
@@ -1174,7 +1192,7 @@ sidebar(() =>
           segment("Here", () => !scopeAll() && !showLimits(), () => setView({ s: false, l: false })),
           segment("All", () => scopeAll() && !showLimits(), () => setView({ s: true, l: false })),
           segment("Limits", () => showLimits(), () => setView({ l: !showLimits() })),
-        ]).padding(2).background("#FFFFFF0F").cornerRadius(8),
+        ]),
         Spacer(),
         // The attention sort, then the view by state in place of by workspace.
         toggleButton("↑", () => attention(), () => setView({ a: !attention() })),

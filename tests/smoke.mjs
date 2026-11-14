@@ -69,7 +69,7 @@ const workspaces = [
     tabs: [
       tab(1, "[lead-1] fix the login test", { focused: true, branch: "lane/fix", dirty: true, latestPrompt: "fix the login test" }),
       tab(2, "[worker-2] tidy", { hasUnread: true }),
-      tab(5, "[old-5] done"),
+      tab(5, "[old-5] Claude Code", { latestPrompt: "close the release notes" }),  // no title of its own
     ],
     agents: [
       agent("a1", T(1), "needs_input", "claude"),
@@ -275,6 +275,11 @@ check("a tool name alone makes no second line, and a system notice is not a requ
   must(withText((t) => t === "opencode").length === 0, "a lone tool pill shows");
   must(!rendered.includes("<task-notification"), "a system notice shows as a request");
 });
+check("a one-line row with no title of its own shows its last request; the 7-day line of the strip names its tool", () => {
+  must(withText((t) => t === "close the release notes").some((n) => n.props.color === META && n.props.layoutPriority === 2), "old-5 does not show its last request beside the name");
+  must(withText((t) => t === "claude").some((n) => n.props.fixedSize === true && n.props.font === 11), "the strip line of the 7-day limit is not labelled claude");
+  must(withText((t) => t === "week").length === 0, "the strip still has a line labelled week");
+});
 check("the two parts of a title sit directly in the row and rank above the gap", () => {
   const name = withText((t) => t === "[lead-1]")[0];
   must(name && name.props.layoutPriority === 3, "the name has no priority over the gap");
@@ -323,7 +328,8 @@ check("the panel head, control row, chips and search field have their new form",
   const here = withText((t) => t === "Here")[0];
   must(here.props.color === "#D1D1D6" && here.props.hoverBackground === "#FFFFFF14", "an unselected segment is not TEXT2 with a hover fill");
   const group = parentOf(all.id);
-  must(group.props.background === "#FFFFFF0F" && group.props.cornerRadius === 8 && group.props.padding === 2, "the segments have no group container");
+  // Only the selected segment has a fill: no box around the three, and no fill on the other two.
+  must(!group.props.background && here.props.background === "clear" && all.props.background === "#FFFFFF26", "a fill shows on more than the selected segment");
   const hive = withText((t) => t === "hive ↗")[0];
   must(hive.props.color === META && hive.props.minHeight === 24 && hive.props.hoverBackground === "#FFFFFF14", "hive ↗ is not a META toggle at least 24 tall");
   // The needs and working chips left the row: the head counts filter them.
@@ -448,8 +454,10 @@ check("the Limits view lists the limit windows", () => {
 check("Limits bars are 60 x 5 with a 3 pt minimum fill; a line with no data has no bar; cost lines stay", () => {
   must(reachable().some((n) => n.type === "capsule" && n.props.fill === "#34C759" && Math.abs(n.props.width - 25.2) < 0.01 && n.props.height === 5), "no 25.2 pt fill for 42%");
   must(reachable().some((n) => n.type === "capsule" && n.props.fill === "#34C759" && n.props.width === 3 && n.props.height === 5), "the 4% fill is not 3 pt");
-  const none = withText((t) => t === "no limit data on this Mac")[0];
-  must(none, "the grok line lost its text");
+  // The tools with no limit data share one line, named "no data".
+  must(withText((t) => t === "no limit data on this Mac").length === 0, "a tool with no data has a line of its own");
+  const none = withText((t) => /(^|, )Grok(,|$)/.test(t))[0];
+  must(none && withText((t) => t === "no data").length === 1, "the tools with no data do not share one line");
   must(!parentOf(none.id).children.map(node).some((n) => n.type === "zstack" || n.type === "capsule"), "the grok line has a bar");
   must(withText((t) => /^\$0\.30 · 1 session$/.test(t)).length === 1, "no cost line for the personal account");
   tap(withText((t) => t === "Limits")[0]);
