@@ -1,0 +1,179 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- Source of examples/window.png: a drawing of a cmux window with the Agents panel, with sample names only.
+     Render: headless Chrome, window size 1280x720, device scale factor 2. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>cmux Agents sidebar: sample window</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 1280px; height: 720px; background: #0b0b0d; overflow: hidden; }
+  body { font: 13px -apple-system, "SF Pro Text", "Helvetica Neue", Arial, sans-serif; color: #e6e6e8; padding: 14px; }
+  .mono { font-family: "SF Mono", Menlo, Monaco, monospace; }
+  .win { width: 1252px; height: 692px; border-radius: 12px; background: #1c1c1f; border: 1px solid #3a3a3e; overflow: hidden;
+         display: grid; grid-template-rows: 30px 1fr; }
+  .title { display: flex; align-items: center; gap: 8px; padding: 0 12px; background: #2a2a2e; border-bottom: 1px solid #111; font-weight: 600; font-size: 12.5px; }
+  .light { width: 12px; height: 12px; border-radius: 50%; }
+  .title .name { margin-left: 14px; color: #d8d8dc; }
+  .body { display: grid; grid-template-columns: 384px 496px 1fr; min-height: 0; }
+  .col { border-right: 1px solid #0e0e10; min-height: 0; display: flex; flex-direction: column; }
+  .tabs { display: flex; height: 28px; background: #232326; border-bottom: 1px solid #111; font-size: 11.5px; color: #9a9aa0; }
+  .tab { padding: 0 10px; display: flex; align-items: center; gap: 5px; border-right: 1px solid #151517; white-space: nowrap; overflow: hidden; }
+  .tab.on { background: #1c1c1f; color: #f2f2f4; }
+  .spark { color: #e8704a; font-size: 11px; }
+  .term { flex: 1; padding: 10px 12px; font-size: 11.5px; line-height: 1.5; color: #c9c9ce; background: #1c1c1f; white-space: pre; overflow: hidden; }
+  .term .dim { color: #7c7c84; } .term .ok { color: #34c759; } .term .warn { color: #ff9f0a; } .term .blue { color: #5aa9ff; } .term .hi { color: #f2f2f4; font-weight: 600; }
+  .prompt { border-top: 1px solid #5a5ad0; margin-top: 6px; padding-top: 7px; }
+  .low { flex: 0 0 104px; border-top: 1px solid #0e0e10; }
+  .addr { height: 30px; display: flex; align-items: center; gap: 10px; padding: 0 12px; background: #232326; border-bottom: 1px solid #111; color: #9a9aa0; font-size: 11.5px; }
+  .addr .url { flex: 1; background: #1a1a1c; border-radius: 6px; padding: 4px 10px; color: #b9b9bf; }
+  .hive { flex: 1; background: #1b1b1e; padding: 12px 12px 0; }
+  .hive h1 { font-size: 15px; } .hive p { font-size: 11px; color: #8e8e93; margin-top: 3px; }
+  svg text { fill: #f2f2f4; font-size: 11px; font-family: -apple-system, "Helvetica Neue", Arial, sans-serif; }
+  svg text.s { fill: #8e8e93; font-size: 9px; }
+  svg rect.b { fill: #2a2a2d; stroke: #48484c; }
+  svg rect.here { fill: #1f3552; stroke: #0a84ff; stroke-width: 2; }
+  svg rect.hot { stroke: #ff9f0a; stroke-width: 1.6; }
+  svg path { fill: none; stroke: #55555a; stroke-width: 1.1; }
+  .legend { display: flex; gap: 16px; font-size: 11px; color: #9a9aa0; padding: 0 2px; }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+  .panel { background: #252528; padding: 10px 10px 0; font-size: 12px; border-right: 0; }
+  .ptop { display: flex; justify-content: space-between; color: #8e8e93; font-size: 10.5px; padding: 0 4px 8px; border-bottom: 1px solid #333336; margin: 0 -10px 9px; padding-left: 14px; padding-right: 14px; }
+  .phead { display: flex; align-items: baseline; justify-content: space-between; padding: 0 4px; }
+  .phead b { font-size: 16px; } .phead span { color: #9a9aa0; font-size: 10.5px; }
+  .row { display: flex; align-items: center; gap: 4px; padding: 7px 4px 0; color: #8e8e93; font-weight: 600; font-size: 12px; }
+  .btn { padding: 3px 9px; border-radius: 7px; } .btn.on { background: #48484c; color: #f2f2f4; }
+  .sp { flex: 1; } .link { color: #3d8bff; }
+  .chip { padding: 2px 7px; border-radius: 6px; font-size: 11.5px; } .chip i { font-style: normal; color: #f2f2f4; margin-left: 3px; } .chip.zero { opacity: .45; }
+  .strip { padding: 9px 4px 0; font-size: 10.5px; color: #a8a8ae; display: grid; grid-template-columns: 52px 1fr; row-gap: 3px; }
+  .strip span:nth-child(odd) { color: #6f6f76; font-family: "SF Mono", Menlo, monospace; text-align: right; padding-right: 10px; }
+  .search { padding: 9px 6px 7px; color: #77777e; font-size: 13px; }
+  .band { display: flex; align-items: center; gap: 8px; background: #38383b; border-radius: 8px; padding: 6px 10px; margin-top: 6px; font-weight: 700; font-size: 13px; }
+  .band .bar { width: 4px; height: 15px; border-radius: 2px; } .band small { color: #8e8e93; font-weight: 500; font-size: 11px; }
+  .band .cost { margin-left: auto; color: #a8a8ae; font-weight: 500; font-size: 11px; }
+  .need { color: #ff9f0a; letter-spacing: .3px; }
+  .ar { display: flex; align-items: center; gap: 7px; padding: 5px 4px 0 12px; font-size: 12px; white-space: nowrap; }
+  .ar.sel { background: #3a3a3d; border-radius: 7px; margin: 4px 0 0; padding: 5px 4px 5px 12px; }
+  .ar .t { font-weight: 600; overflow: hidden; text-overflow: ellipsis; } .ar .k { color: #77777e; font-size: 9.5px; font-family: "SF Mono", Menlo, monospace; }
+  .ar .r { margin-left: auto; color: #8e8e93; font-size: 10px; font-family: "SF Mono", Menlo, monospace; }
+  .ar .pr { color: #ff9f0a; font-size: 9.5px; font-family: "SF Mono", Menlo, monospace; }
+  .sub { padding: 1px 4px 0 27px; font-size: 10.5px; color: #8e8e93; white-space: nowrap; } .sub b { color: #ff9f0a; font-weight: 500; } .sub .red { color: #ff453a; }
+</style>
+</head>
+<body>
+<div class="win">
+  <div class="title">
+    <span class="light" style="background:#ff5f57"></span><span class="light" style="background:#febc2e"></span><span class="light" style="background:#28c840"></span>
+    <span class="name">[api-7a !] Rate limit tests</span>
+  </div>
+  <div class="body">
+
+    <div class="col">
+      <div class="tabs">
+        <div class="tab"><span class="spark">✳</span>[api-3f] Checkout…</div>
+        <div class="tab on"><span class="spark">✳</span>[api-7a !] Rate limit tests</div>
+        <div class="tab"><span class="spark">✳</span>[api-b2] Schema…</div>
+      </div>
+      <div class="term mono"><span class="hi">⏺ Run the rate limit tests</span>
+  <span class="dim">⎿</span> pytest tests/test_rate_limit.py
+     <span class="ok">14 passed</span>, <span class="warn">1 failed</span> in 3.2s
+     <span class="warn">FAILED</span> test_burst_window
+
+<span class="hi">⏺ Update limiter.py</span>
+  <span class="dim">⎿</span> <span class="ok">+18</span> <span class="warn">−6</span>  src/limiter.py
+     <span class="ok">+ window = SlidingWindow(60)</span>
+     <span class="warn">− window = FixedWindow(60)</span>
+
+<span class="hi">⏺ Clear the old test cache</span>
+<div class="prompt"><span class="blue">Bash command</span>
+  rm -r .pytest_cache build/tmp
+
+<span class="hi">Do you want to proceed?</span>
+<span class="blue">❯ 1. Yes</span>
+  2. No
+<span class="dim">Esc to cancel · Tab to amend</span></div></div>
+      <div class="tabs" style="border-top:1px solid #0e0e10"><div class="tab on">…/projects/shop-api</div></div>
+      <div class="term mono low"><span class="dim">$</span> git status --short
+ M src/limiter.py
+ M tests/test_rate_limit.py
+<span class="dim">$</span> git log --oneline -1
+<span class="warn">4f2a91c</span> Add sliding window limiter</div>
+    </div>
+
+    <div class="col">
+      <div class="tabs"><div class="tab on">🌐 Agent hive</div></div>
+      <div class="addr">‹ › ↻ <span class="url mono">file:///…/hive.html</span></div>
+      <div class="hive">
+        <h1>Agent hive</h1>
+        <p>Live: updated 10:42:15. The blue box is the open tab. Click a session to go to its tab.</p>
+        <svg width="472" height="470" viewBox="0 0 472 470" xmlns="http://www.w3.org/2000/svg">
+          <path d="M62 235 C78 235 70 104 86 104"/><path d="M62 235 C78 235 70 300 86 300"/><path d="M62 235 C78 235 70 410 86 410"/>
+          <path d="M186 104 C200 104 194 40 208 40"/><path d="M186 104 C200 104 194 124 208 124"/><path d="M186 104 C200 104 194 168 208 168"/>
+          <path d="M186 300 C200 300 194 278 208 278"/><path d="M186 300 C200 300 194 322 208 322"/>
+          <path d="M368 40 C378 40 374 18 384 18"/><path d="M368 40 L384 40"/><path d="M368 40 C378 40 374 62 384 62"/>
+          <path d="M368 278 L384 278"/>
+
+          <rect class="b" x="2" y="219" width="60" height="32" rx="7"/><circle cx="13" cy="231" r="4" fill="#8e8e93"/>
+          <text x="22" y="233">hive</text><text class="s" x="22" y="244">3 spaces</text>
+
+          <rect class="here" x="86" y="88" width="100" height="32" rx="7"/><circle cx="97" cy="100" r="4" fill="#34c759"/>
+          <text x="106" y="102">shop-api</text><text class="s" x="106" y="113">3 · current</text>
+          <rect class="b" x="86" y="284" width="100" height="32" rx="7"/><circle cx="97" cy="296" r="4" fill="#0a84ff"/>
+          <text x="106" y="298">web-app</text><text class="s" x="106" y="309">2 sessions</text>
+          <rect class="b" x="86" y="394" width="100" height="32" rx="7"/><circle cx="97" cy="406" r="4" fill="#ff9f0a"/>
+          <text x="106" y="408">docs-site</text><text class="s" x="106" y="419">0 sessions</text>
+
+          <rect class="b" x="208" y="24" width="160" height="32" rx="7"/><circle cx="219" cy="36" r="4" fill="#0a84ff"/>
+          <text x="228" y="38">[api-3f] Checkout retries</text><text class="s" x="228" y="49">Fable 5.2 · ctx 42% · $12.34</text>
+          <rect class="here" x="208" y="108" width="160" height="32" rx="7"/><rect class="hot" x="208" y="108" width="160" height="32" rx="7" fill="none"/><circle cx="219" cy="120" r="4" fill="#ff9f0a"/>
+          <text x="228" y="122">[api-7a !] Rate limit tests</text><text class="s" x="228" y="133">Sonnet 5.5 · ctx 31% · $3.10</text>
+          <rect class="b" x="208" y="152" width="160" height="32" rx="7"/><circle cx="219" cy="164" r="4" fill="#34c759"/>
+          <text x="228" y="166">[api-b2] Schema migration</text><text class="s" x="228" y="177">Sonnet 5.5 · ctx 84% · PR #12</text>
+          <rect class="b" x="208" y="262" width="160" height="32" rx="7"/><circle cx="219" cy="274" r="4" fill="#34c759"/>
+          <text x="228" y="276">[web-1c] Login form</text><text class="s" x="228" y="287">Opus 5.5 · ctx 18% · $21.40</text>
+          <rect class="b" x="208" y="306" width="160" height="32" rx="7"/><circle cx="219" cy="318" r="4" fill="#0a84ff"/>
+          <text x="228" y="320">Codex</text><text class="s" x="228" y="331">codex</text>
+
+          <rect class="b" x="384" y="4" width="86" height="28" rx="7"/><circle cx="394" cy="14" r="3.5" fill="#0a84ff"/>
+          <text x="402" y="16" style="font-size:10px">Explore client</text><text class="s" x="402" y="26">running</text>
+          <rect class="b" x="384" y="36" width="86" height="28" rx="7"/><circle cx="394" cy="46" r="3.5" fill="#0a84ff"/>
+          <text x="402" y="48" style="font-size:10px">Review diff</text><text class="s" x="402" y="58">running</text>
+          <rect class="b" x="384" y="68" width="86" height="28" rx="7"/><circle cx="394" cy="78" r="3.5" fill="#8e8e93"/>
+          <text x="402" y="80" style="font-size:10px">5 finished</text><text class="s" x="402" y="90">done</text>
+          <rect class="b" x="384" y="264" width="86" height="28" rx="7"/><circle cx="394" cy="274" r="3.5" fill="#8e8e93"/>
+          <text x="402" y="276" style="font-size:10px">3 finished</text><text class="s" x="402" y="286">done</text>
+        </svg>
+        <div class="legend"><span><span class="dot" style="background:#ff9f0a"></span>needs you</span><span><span class="dot" style="background:#0a84ff"></span>working</span><span><span class="dot" style="background:#34c759"></span>idle</span></div>
+      </div>
+    </div>
+
+    <div class="col panel">
+      <div class="ptop"><span>Files</span><span>Find</span><span>Vault</span><span>Feed</span><span>Dock</span><span>Cloud</span></div>
+      <div class="phead"><b>Agents</b><span>1 needs you · 2 working · 2 idle · $45.59</span></div>
+      <div class="row"><span class="btn">Here</span><span class="btn on">All</span><span class="btn">Limits</span><span class="sp"></span><span class="link">hive ↗</span><span class="btn">Ended</span></div>
+      <div class="row"><span class="chip">!<i>1</i></span><span class="chip">▶<i>2</i></span><span class="chip">80%<i>1</i></span><span class="chip">PR<i>1</i></span><span class="chip zero">1h+<i>0</i></span><span class="sp"></span><span class="chip">✕</span><span class="chip">↑</span></div>
+      <div class="strip"><span>train</span><span>merged #11; refused none</span><span>week</span><span>36% of the 7-day limit used</span></div>
+      <div class="search">Search agents</div>
+
+      <div class="band"><span class="bar" style="background:#ff9f0a"></span><span class="need">NEEDS YOU</span><small>1</small></div>
+      <div class="ar"><span class="dot" style="background:#ff9f0a"></span><span class="t">[api-7a !] Rate limit tests</span><span class="k">claude</span><span class="r">2m 07s</span></div>
+      <div class="sub"><b>Needs input · permission prompt</b> &nbsp;fix-retries</div>
+
+      <div class="band"><span class="bar" style="background:#34c759"></span>shop-api<small>3</small><span class="cost">$24.19</span></div>
+      <div class="ar"><span class="dot" style="background:#0a84ff"></span><span class="t">[api-3f] Checkout retries</span><span class="k">claude</span><span class="r">48s</span></div>
+      <div class="sub">Working · Fable 5.2 high · ctx 42% · $12.34 · ▸ 2 sub</div>
+      <div class="ar sel"><span class="dot" style="background:#ff9f0a"></span><span class="t">[api-7a !] Rate limit tests</span><span class="k">claude</span><span class="r">2m 07s</span></div>
+      <div class="ar"><span class="dot" style="background:#34c759"></span><span class="t">[api-b2] Schema migration</span><span class="pr">#12 needs review</span><span class="r">9m ago</span></div>
+      <div class="sub">Sonnet 5.5 medium · <span class="red">ctx 84%</span> · $8.75</div>
+
+      <div class="band"><span class="bar" style="background:#0a84ff"></span>web-app<small>2</small><span class="cost">$21.40</span></div>
+      <div class="ar"><span class="dot" style="background:#34c759"></span><span class="t">[web-1c] Login form</span><span class="k">claude</span><span class="r">31m ago</span></div>
+      <div class="ar"><span class="dot" style="background:#0a84ff"></span><span class="t">Codex</span><span class="k">codex</span><span class="r">1m 12s</span></div>
+
+      <div class="band"><span class="bar" style="background:#bf5a2a"></span>docs-site</div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

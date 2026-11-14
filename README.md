@@ -5,6 +5,10 @@ You see who waits for you, who works, and who is idle. You click a row to go to 
 
 It is made for people who run many agent sessions at the same time: Claude Code, Codex, OpenCode, Grok Build, Antigravity, or any tool that cmux detects.
 
+![A cmux window with agent terminal tabs on the left, the hive graph page in the middle and the Agents panel on the right](examples/window.png)
+
+A drawing of a cmux window with the panel, with sample names.
+
 ## What you get
 
 | Part | What it shows |
