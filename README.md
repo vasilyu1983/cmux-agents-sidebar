@@ -14,6 +14,7 @@ It is made for people who run many agent sessions at the same time: Claude Code,
 | `NEEDS YOU` block | All sessions that wait for your input, at the top, with the reason when it is known |
 | Filter chips | `!` needs you, `▶` working, `80%` context nearly full, `PR` has a pull request, `1h+` idle for an hour |
 | `↑` sort | Sessions that need attention first; the default order is the tab order |
+| `✕` | Back to the default view: no chip, tab order, all workspaces, no ended rows. The search text stays |
 | Subagents | `▸ 2 sub` on a row opens the subagent rows, for tools that report them |
 | Details | `›` on a row opens state, tool, folder, branch, ports, first and last request |
 | Right-click menu | Go to session, copy name, copy folder, copy PR number, fast commands |

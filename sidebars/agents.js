@@ -692,11 +692,15 @@ sidebar(() =>
       ForEach({ items: () => FILTERS.map((f) => ({ id: f[0], label: f[1] })), key: (f) => f.id },
         (f) => toggleButton(() => f().label, () => filter() === f().id, () => setFilter(filter() === f().id ? "" : f().id))),
       Spacer(),
+      // Back to the default view: no chip, tab order, all workspaces, no ended rows. The search text stays.
+      toggleButton("✕", () => false, () => { setFilter(""); setAttention(false); setScopeAll(true); setShowEnded(false); }),
       toggleButton("↑", () => attention(), () => setAttention(!attention())),
     ]).paddingHorizontal(10),
     Text(() => {
       const on = FILTERS.find((f) => f[0] === filter());
-      return [on ? "showing: " + on[2] : "", attention() ? "sorted: needs attention first" : ""].filter(Boolean).join(" · ");
+      return [on ? "showing: " + on[2] : "", attention() ? "sorted: needs attention first" : "",
+        scopeAll() ? "" : "this workspace only", showEnded() ? "with ended" : "",
+        on || attention() || !scopeAll() || showEnded() ? "✕ resets" : ""].filter(Boolean).join(" · ");
     }).font(10).color("tertiary").lineLimit(1).paddingHorizontal(12),
 
     VStack({ spacing: 3 }, [ForEach({ items: strip, key: (s) => s.key }, (s) => stripRow(s))]),
