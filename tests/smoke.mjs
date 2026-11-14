@@ -376,8 +376,8 @@ check("the panel head, control row, chips and search field have their new form",
   const group = parentOf(all.id);
   // Only the selected segment has a fill: no box around the three, and no fill on the other two.
   must(!group.props.background && here.props.background === "clear" && all.props.background === "#FFFFFF2E", "a fill shows on more than the selected segment");
-  const hive = withText((t) => t === "hive ↗")[0];
-  must(hive.props.color === META && hive.props.minHeight === 24 && hive.props.hoverBackground === "#FFFFFF14", "hive ↗ is not a META toggle at least 24 tall");
+  const hive = withText((t) => t === "views ↗")[0];
+  must(hive.props.color === META && hive.props.minHeight === 24 && hive.props.hoverBackground === "#FFFFFF14", "views ↗ is not a META toggle at least 24 tall");
   // The needs and working chips left the row: the head counts filter them.
   must(withText((t) => t === "!" || t === "▶").length === 0, "the needs or working chip is still in the chip row");
   const done = withText((t) => t === "✓")[0];
@@ -478,13 +478,23 @@ check("the Copy name menu item writes the session name to the clipboard", () => 
   must(clipboard.includes("lead-1"), "clipboard holds " + JSON.stringify(clipboard));
 });
 check("the hive button asks cmux for a browser split with the hive page", () => {
-  const btn = withText((t) => t === "hive ↗")[0];
+  const btn = withText((t) => t === "views ↗")[0];
   must(btn, "hive button not found");
   const before = cmuxCalls().length;
   tap(btn);
   const calls = cmuxCalls().slice(before);
   must(calls.length === 1 && calls[0].method === "browser.open_split", "got " + JSON.stringify(calls));
   must(/^file:\/\/.*hive\.html#/.test(calls[0].params.url), "url is not a hive page link");
+});
+check("a row menu opens the views page on the timeline, with the session marked", () => {
+  const item = withText((t) => t === "Show in timeline")[0];
+  must(item, "menu item not found");
+  const before = cmuxCalls().length;
+  tap(item);
+  const calls = cmuxCalls().slice(before);
+  must(calls.length === 1 && calls[0].method === "browser.open_split", "got " + JSON.stringify(calls));
+  const sent = JSON.parse(decodeURIComponent(calls[0].params.url.split("#")[1]));
+  must(sent.v === "timeline" && /^[a-z0-9-]+$/.test(sent.sel), "the link carries " + JSON.stringify([sent.v, sent.sel]));
 });
 check("the Limits view lists the limit windows", () => {
   const btn = withText((t) => t === "Limits")[0];

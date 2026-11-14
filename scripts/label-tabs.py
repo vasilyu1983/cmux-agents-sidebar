@@ -366,7 +366,7 @@ def hive_places(tree):
 
 def hive_agent(fields):
     """The description fields of one session, as the hive page's keys: m model, x context %, c cost, p PR,
-    l lane, u account, ch subagents (the running ones by name, the finished ones as a count)."""
+    l lane, u account, q compactions, ch subagents (the running ones by name, the finished ones as a count)."""
     agent = {"k": "claude"}
     for field in fields:
         sub = re.fullmatch(r"sub (\d{1,4})/(\d{1,4})(?:: (.*))?", field)
@@ -388,6 +388,8 @@ def hive_agent(fields):
             agent["l"] = field[5:]
         elif field.startswith("acct "):
             agent["u"] = field[5:]
+        elif re.fullmatch(r"comp \d{1,4}", field):
+            agent["q"] = int(field[5:])
         elif not field.startswith(("cold ", "waits ", "comp ", "next ", "ahead ", "wrong ", "prompt ", "title ", "screen ")) and field != "dup" and "m" not in agent:
             agent["m"] = field
     return agent

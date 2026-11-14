@@ -23,7 +23,7 @@ A drawing of a cmux window with the panel, with sample names.
 | Subagents | `▸ 2 sub` on a row opens the subagent rows. The count comes from cmux, or from the Claude Code records when cmux reports none |
 | Details | `›` on a row opens state, tool, folder, branch, ports, first and last request |
 | Right-click menu | Go to session, copy name, copy folder, copy PR number, fast commands |
-| `hive ↗` | A graph page: workspace → session → subagent, in a cmux browser tab. It updates every 15 seconds. The open tab has a blue box. A click on a session goes to its tab, and the page follows you to another workspace |
+| `views ↗` | A page of pictures in a cmux browser tab, with a switch at the top: Hive, Timeline, Cost, Limits, Queue, Context, Rhythm (see "The views page"). The Hive view is a graph: workspace → session → subagent. It updates every 15 seconds. The open tab has a blue box. A click on a session goes to its tab, and the page follows you to another workspace |
 | Next waiting | `next-waiting.sh` goes to the Claude Code session that has waited for you the longest |
 | `Limits` | Next to `Here` and `All`: the rate limits of each agent tool on this Mac, per window (5 hours, week), with the reset time and the age of the figure. With an accounts file: one line per tool and account. The panel remembers the choice |
 | Search | Type in `Search agents`: rows stay when the text is in the tab title (with the session name), the tool, the account, the workspace name or the folder. Capital letters do not matter. A search text looks in every workspace, also with `Here` on. A chip narrows the result further. While `Limits` is on, a search text shows the sessions again |
@@ -72,7 +72,7 @@ From top to bottom of the picture. "You do" says what the mark asks of you.
 | `↑` | Sort: sessions that need attention first | Click to turn on or off |
 | `state` | Groups the rows by state in place of by workspace | Click to turn on or off |
 | `Ended` | Also shows sessions that ended. The ended runs of a tab that hosts a live session share one row, `3 earlier runs in this tab`, with no marks, no cost and no focus: those belong to the live session | Click to turn on or off |
-| `hive ↗` | Opens the graph page: workspace, session, subagent | Click |
+| `views ↗` | Opens the views page: the hive graph, and six more pictures of the same data | Click |
 | `you 2` chip | 2 sessions whose next step is yours | Click to see only those |
 | `train` line | One line of project state from a watcher of your own (optional) | Read |
 | `claude 36% ▬ personal · week · resets Wed 23:00` | The fullest limit window of that tool over all your accounts: share used, account, window, reset time. Red from 80% | Slow down or change account before 100% |
@@ -106,6 +106,36 @@ From top to bottom of the picture. "You do" says what the mark asks of you.
 A row shows at most 2 pills. Their order of priority is: `≠`, a PR that needs you, `83%`, `→ you`, `↑2`, `dup`, `⟳`, `❄`, PR, account, folder.
 
 ![Render of the hive page: workspaces, their sessions, and subagents, with a blue box on the open tab and the account name in its colour](examples/hive.png)
+
+### The views page
+
+`views ↗` opens one page with seven views. The page opens on the view that you used last. A click on a session, in any view, goes to its tab.
+
+| View | The picture | The question it answers | Data |
+|------|-------------|-------------------------|------|
+| Hive | A tree: workspace → session → subagent | What runs where? | Live |
+| Timeline | One lane per session; a block per state: blue works, orange waited for you, pale green idle. Ranges: 1h, 6h, 24h, 7d | How long did each agent work, and how long did it wait for me? | History |
+| Cost | Nested boxes: one column per workspace, one box per session. The area is the cost, the colour is the model | Where does the money go? | Live |
+| Limits | One chart per limit window: the readings, then a dashed line to the reset. Red when the line reaches 100% before the reset | Will I hit a limit before it resets? | History |
+| Queue | One bar per waiting session; the longest wait is first. Orange asks you, pale green ended its turn | Who waits for me longest? | Live and history |
+| Context | One gauge per session, fullest first, with the number of compactions (`⟳`) | Which session must I compact or restart? | Live |
+| Rhythm | A grid of hours × the last 7 days; darker = more agent work | When do my agents work? | History |
+
+![Timeline view: one lane per session with blue, orange and pale green blocks, and the worked and waited times at the right](examples/view-timeline.png)
+
+![Limits view: one chart per limit window with the readings and a dashed forecast line](examples/view-limits.png)
+
+![Cost view: one column per workspace, one box per session, coloured by model](examples/view-cost.png)
+
+![Context view: one gauge per session](examples/view-context.png)
+
+The pictures are renders of `scripts/hive.html` with sample data. More: `examples/view-queue.png`, `examples/view-rhythm.png`.
+
+- "History" views fill while the watcher runs. On the first day they hold little.
+- The history covers Claude Code sessions. Other tools publish no session state.
+- A gap in a lane is a time when the watcher did not run (the Mac slept, or the watcher was stopped).
+- The forecast is a straight line from the last readings. It knows nothing about your plans.
+- From the panel: right-click a row → `Show in timeline`; right-click a limit line → `Show the limit forecast`; right-click a cost line → `Show the cost map`.
 
 The `Limits` view with several accounts: one line per tool and account, red from 80%. A drawing with sample names, made from `examples/limits.html`.
 
@@ -191,6 +221,7 @@ Files that appear later, while the kit runs:
 | `~/.cache/cmux-agents/<session id>.seen` | `label-tabs.py` | How far the transcript was read, the compaction count, the last `Next:` line, the start of the last request and the session title |
 | `~/.cache/cmux-agents/limit-warned` | `label-tabs.py` | The limit windows that already got a warning, so each one warns once |
 | `~/.config/cmux/scripts/hive-data.js` | `label-tabs.py` | The data of the hive page; it holds your session titles (mode 600) |
+| `~/.config/cmux/scripts/history-data.js` | `label-tabs.py` | The history for the Timeline, Limits, Queue and Rhythm views: at most 7 days (mode 600) |
 | `~/.config/cmux/agents-accounts` | You, or `agents-account-add.sh` | The account list and the folder rules |
 
 The `statusLine` key that it adds:
@@ -385,9 +416,11 @@ Without a watcher of your own the strip shows only the limit lines, one per tool
 - From the same transcript `label-tabs.py` takes the title of the session (the one you set with `/rename`, else the one the tool gave it), cut to 48 characters. It goes into the workspace description and into `~/.cache/cmux-agents/<session id>.seen`, and the panel shows it on a tab with no title of its own.
 - The start of your last request (60 characters) also goes into the workspace description.
 - For a tab that runs Codex, OpenCode, Grok or Antigravity, `label-tabs.py` asks cmux for the last 30 lines on screen (`cmux read-screen`). It tests them for two fixed interface lines and keeps one word: `working`, `asks` or `idle`. No screen text is stored or shown.
+- `label-tabs.py` keeps a history file, `~/.config/cmux/scripts/history-data.js`, for the views page. Every 15 seconds it records, per live Claude Code session: the session id, the short session name, the workspace name, the state (working, needs input, idle) with start and end times, the model, the context share, the cost and the account name. It also records each limit figure with its time. It holds no request text, no reply text and no session title. It keeps 7 days, is readable by you only (mode 600), and never leaves your Mac. `uninstall.sh` removes it.
+- The views page stores two words in the browser's local storage of its cmux tab: the last view and the last time range.
 - `~/.cache/cmux-agents` is created with mode 700.
 - The panel writes to the clipboard only from a menu item that you click.
-- The panel builds no shell command. A strip menu copies the text of its line and nothing else.
+- The panel builds no shell command. A strip menu copies the text of its line, or opens the views page; nothing else.
 
 ## Remove
 
@@ -431,6 +464,7 @@ This project is not affiliated with cmux or its authors.
 
 ```
 node tests/smoke.mjs
+python3 tests/history.py
 ```
 
 The test runs the panel inside the sidebar runtime of your installed cmux, with invented data and no socket. It prints `SKIP` when cmux is not installed.

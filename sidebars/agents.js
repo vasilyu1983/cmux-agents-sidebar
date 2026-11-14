@@ -698,7 +698,9 @@ function hiveSubs(subs) {
 }
 
 // mark: the tab of a jump ({ ws, tab }), shown as the open tab; without it, the tab that has the focus now.
-function hiveUrl(mark) {
+// view: the view that the page opens on ("timeline", "limits", ...); without it, the view that the page had last.
+// sel: a session name that the Timeline view marks.
+function hiveUrl(mark, view, sel) {
   const all = data.workspaces() ?? [];
   // The home folder comes from label-tabs.py ("@home: ..." in a description), not from a folder that an agent reports.
   let home = "";
@@ -724,7 +726,15 @@ function hiveUrl(mark) {
     ws.push({ n: dirTail(String(w.description ?? "").split(" | ")[0]) || w.title, c: w.color || "#8E8E93", f: mark ? mark.ws === w.id : Boolean(w.selected), a: agents });
   }
   if (!home) return "";
-  return "file://" + home + "/.config/cmux/scripts/hive.html#" + encodeURIComponent(JSON.stringify({ t: data.clock()?.epoch ?? 0, ws }));
+  return "file://" + home + "/.config/cmux/scripts/hive.html#" + encodeURIComponent(JSON.stringify({ t: data.clock()?.epoch ?? 0, v: view ?? "", sel: sel ?? "", ws }));
+}
+
+// Opens the views page (hive.html) as a browser tab inside cmux: it opens a local page and keeps the data after "#".
+// openURL did not open this link.
+function openViews(view, sel) {
+  const url = hiveUrl(undefined, view, sel);
+  if (url) cmux("browser.open_split", { url, workspace_id: data.selectedId(), focus: true });
+  else log("views: the description carries no home folder yet; the watcher writes it within 15 seconds");
 }
 
 // A click on a session in the hive page asks for a jump. A web page cannot call cmux, so the page puts the
@@ -928,6 +938,10 @@ const rowTitle = (t) => {
 
 // One line of the project strip: a dim label and its text on one line; the hover shows the whole text. A week
 // line that starts with a percent shows the percent, a bar, then the rest. A click opens the workspace that carries it.
+// The view of the views page that fits a strip or Limits line, with the text of its menu item.
+const VIEW_OF = (key) => (String(key).startsWith("cost-") ? ["cost", "Show the cost map"]
+  : String(key).startsWith("limit") ? ["limits", "Show the limit forecast"] : ["timeline", "Show the timeline"]);
+
 function stripRow(entry) {
   const value = entry().bar >= 0
     ? [
@@ -944,7 +958,10 @@ function stripRow(entry) {
     .paddingHorizontal(10)
     .frame({ maxWidth: "infinity" })
     .onTap(() => cmux("workspace.select", { workspace_id: entry().wsId }))
-    .contextMenu([Button("Copy the text", () => clipboard.write(entry().copy))]);
+    .contextMenu([
+      Button("Copy the text", () => clipboard.write(entry().copy)),
+      Button(() => VIEW_OF(entry().key)[1], () => openViews(VIEW_OF(entry().key)[0])),
+    ]);
 }
 
 // A line of the Limits view, in fixed columns so the bars line up: label, bar, percent (primary from 80%), then
@@ -966,7 +983,10 @@ function limitRow(entry, width) {
     .paddingHorizontal(10)
     .frame({ maxWidth: "infinity" })
     .onTap(() => cmux("workspace.select", { workspace_id: entry().wsId }))
-    .contextMenu([Button("Copy the text", () => clipboard.write(entry().copy))]);
+    .contextMenu([
+      Button("Copy the text", () => clipboard.write(entry().copy)),
+      Button(() => VIEW_OF(entry().key)[1], () => openViews(VIEW_OF(entry().key)[0])),
+    ]);
 }
 
 
@@ -978,6 +998,7 @@ function rowMenu(entry) {
     Button(() => (openInfo()[entry().rowId] ? "Hide details" : "Show details"), () => flip(openInfo, setOpenInfo, entry().rowId)),
     Button(() => "Copy name" + (entry().sessName ? ": " + entry().sessName : ""), () => clipboard.write(entry().sessName || entry().tabTitle)),
     Button("Copy folder", () => clipboard.write(entry().folder)),
+    Button("Show in timeline", () => openViews("timeline", entry().sessName)),
     Button(() => (entry().prText ? "Copy PR " + entry().prText.split(" ")[0] : "No PR for this session"),
       () => { if (entry().prText) clipboard.write(entry().prText.split(" ")[0]); }),
   ];
@@ -1232,14 +1253,8 @@ sidebar(() =>
         toggleButton("↑", () => attention(), () => setView({ a: !attention() })),
         toggleButton("state", () => byState(), () => setByState(!byState())),
         toggleButton("Ended", () => showEnded(), () => setView({ e: !showEnded() })),
-        // Opens the hive graph in the browser: workspaces, sessions and subagents as a tree.
-        toggleButton("hive ↗", () => false, () => {
-          // A browser tab inside cmux: it opens a local page and keeps the data after "#".
-          // openURL did not open this link.
-          const url = hiveUrl();
-          if (url) cmux("browser.open_split", { url, workspace_id: data.selectedId(), focus: true });
-          else log("hive: the description carries no home folder yet; the watcher writes it within 15 seconds");
-        }),
+        // Opens the views page in the browser: the hive tree, the timeline, cost, limits, queue, context and rhythm.
+        toggleButton("views ↗", () => false, () => openViews()),
       ]).paddingHorizontal(10),
     ]),
 
