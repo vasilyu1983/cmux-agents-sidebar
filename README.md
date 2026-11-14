@@ -198,6 +198,7 @@ default personal
 - `account <tool> <name> <folder>`: the data folder of one account. The name has 1 to 16 characters from `a-z`, `0-9` and `-`. The folder must be under your home folder.
 - `rule <folder prefix> <name>`: a session started in that folder, or below it, uses that account. The longest matching prefix wins.
 - `default <name>`: the account when no rule matches.
+- Keep your first account in the tool's normal folder: name it on the `default` line and give it no `account` line. Only the extra accounts get a folder, so no account has two histories. `agents-account-add.sh` refuses a folder for the default name.
 - A name with no `account` line for a tool means the tool's normal folder (`~/.claude`, `~/.codex`). In the example, `personal` is the login that you have today.
 
 Two scripts:

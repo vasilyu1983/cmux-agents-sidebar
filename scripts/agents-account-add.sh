@@ -28,6 +28,9 @@ run() { if [ "$dry" = 1 ]; then echo "  would run: $*"; else "$@" || die "failed
 have_line=0
 if [ -f "$conf" ]; then
   while read -r kw a b rest || [ -n "$kw" ]; do
+    # The primary account lives in the tool's normal folder. A second folder for it would split its history.
+    [ "$kw" = default ] && [ "$a" = "$name" ] \
+      && die "'$name' is the default account; it uses the tool's normal folder and needs no extra folder"
     [ "$kw" = account ] && [ "$a" = "$tool" ] && [ "$b" = "$name" ] || continue
     case "$rest" in "~/"*) rest="$HOME/${rest#"~/"}" ;; esac
     [ "$rest" = "$dir" ] || die "$conf already gives $tool/$name another folder; edit that line by hand"
