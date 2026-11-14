@@ -61,10 +61,11 @@ function sessionsOf(w) {
       else if (f.startsWith("lane ")) s.lane = f.slice(5);
       else if (f.startsWith("pr ")) s.pr = f.slice(3);
       else if (f.startsWith("cold ")) s.cold = f;
-      else if (/^sub \d+\/\d+/.test(f)) {
+      else if (f.startsWith("sub ")) {
         // "sub 2/7: Explore repo; Review diff": subagents from the Claude Code records, running ones by name.
-        const m = /^sub (\d+)\/(\d+)(?:: (.*))?$/.exec(f);
-        s.subs = { run: Number(m[1]), total: Number(m[2]), names: m[3] ? m[3].split("; ") : [] };
+        // A field that does not have this form is left out.
+        const m = /^sub (\d{1,4})\/(\d{1,4})(?:: (.*))?$/.exec(f);
+        if (m) s.subs = { run: Number(m[1]), total: Number(m[2]), names: m[3] ? m[3].split("; ") : [] };
       }
       else s.model = f;
     }
@@ -444,7 +445,7 @@ function stripRow(entry) {
     .paddingHorizontal(10)
     .frame({ maxWidth: "infinity" })
     .onTap(() => cmux("workspace.select", { workspace_id: entry().wsId }))
-    .contextMenu([Button(() => (entry().label === "run" ? "Copy the commands to run" : "Copy"), () => clipboard.write(entry().copy))]);
+    .contextMenu([Button("Copy the text", () => clipboard.write(entry().copy))]);
 }
 
 // "#644 needs grant" in orange when the PR waits for the owner; "cold 198K" on an idle session whose prompt cache
