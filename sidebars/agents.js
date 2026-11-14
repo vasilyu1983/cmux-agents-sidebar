@@ -7,6 +7,19 @@
 // focus the terminal the agent runs in.
 //   cmux right-sidebar set custom panel-subagents
 
+// Colours of the rows, bands, child and detail rows. META is the dim text: times, counts, marks.
+const META = "#B4B4BA";
+const TEXT2 = "#D1D1D6";
+// Text hues. Orange means the owner is needed.
+const ORANGE = "#FF9F0A";
+const BLUE_TEXT = "#5AA9FF";
+const PURPLE_TEXT = "#D68BFF";
+const RED_TEXT = "#FF6B61";
+// The dot and fill of a session that finished and was not seen.
+const DONE_DOT = "#BF5AF2";
+// The fill of a pill that only informs.
+const NEUTRAL = "#FFFFFF14";
+
 const [query, setQuery] = signal("");
 const [showLimitsS, setShowLimitsS] = signal(null);
 // The view (chip, sort, scope, ended rows, folded groups) survives a panel reload. A panel has no storage of its
@@ -201,7 +214,7 @@ const sessionName = (tabTitle) => (/^\[(.+?)(?: [!?])?\]/.exec(tabTitle ?? "") ?
 const STATUS = {
   needs_input: { color: "#FF9F0A", label: "Needs input", rank: 0 },
   working: { color: "#0A84FF", label: "Working", rank: 1 },
-  idle: { color: "#34C759", label: "Idle", rank: 2 },
+  idle: { color: "#34C75990", label: "Idle", rank: 2 },
   ended: { color: "#7f7f7f66", label: "Ended", rank: 3 },
 };
 const statusOf = (a) => STATUS[a.status] ?? { color: "#7f7f7f66", label: a.status, rank: 9 };
@@ -210,7 +223,7 @@ const statusOf = (a) => STATUS[a.status] ?? { color: "#7f7f7f66", label: a.statu
 const lookOf = (a, sess) =>
   a.status === "working" || a.status === "needs_input" || a.status === "ended" ? a.status
     : sess.screen === "asks" ? "needs_input" : sess.screen === "working" ? "working" : a.status;
-const dotColor = (row) => (STATUS[row.look] ?? statusOf(row.agent)).color;
+const dotColor = (row) => (row.done ? DONE_DOT : (STATUS[row.look] ?? statusOf(row.agent)).color);
 
 // Ended sessions stay visible briefly (a just-finished agent is still news),
 // then hide behind the Ended toggle.
@@ -226,7 +239,7 @@ function fmtElapsed(secs) {
   const s = Math.max(0, Math.floor(secs));
   if (s < 60) return s + "s";
   const m = Math.floor(s / 60);
-  if (m < 60) return m + "m " + String(s % 60).padStart(2, "0") + "s";
+  if (m < 60) return m + "m";
   return Math.floor(m / 60) + "h " + String(m % 60).padStart(2, "0") + "m";
 }
 
@@ -241,12 +254,12 @@ function fmtAgo(secs) {
 }
 
 // Right-aligned time column: live elapsed for in-flight states (ticks with
-// the 1s clock), "ago" for settled ones.
+// the 1s clock), the time since the last activity for settled ones.
 function timeText(a, epoch) {
   if ((a.status === "working" || a.status === "needs_input") && a.sinceEpoch) {
     return fmtElapsed(epoch - a.sinceEpoch);
   }
-  if (a.lastActivityAt) return fmtAgo(epoch - a.lastActivityAt) + " ago";
+  if (a.lastActivityAt) return fmtAgo(epoch - a.lastActivityAt);
   return "";
 }
 
@@ -256,32 +269,47 @@ const dirTail = (d) => {
 };
 
 const PR_ALERT = /needs grant|refused|blocked/;
-// The pills of a row: small coloured tags under the name. A one-line row leaves out the tool (unless it has an
-// account or is not the usual one) and the folder; the view by state adds the workspace.
-function pillsOf(a, sess, w, compact) {
+// The pills of a row, in the order in which they matter. Orange: the owner is needed. Red: context 80% or more.
+// An account keeps its colour, the view by state adds the workspace in its colour, every other pill is neutral.
+function pillsOf(a, sess, w) {
   const out = [];
-  const add = (id, text, color) => { if (text) out.push({ id, text: String(text), color }); };
+  const add = (id, text, color, bg) => { if (text) out.push({ id, text: String(text), color, bg }); };
+  const plain = (id, text) => add(id, text, META, NEUTRAL);
   const wsName = dirTail(String(w.description ?? "").split(" | ")[0]) || dirTail(w.directory) || w.title;
   if (byState()) add("ws", wsName, w.color || "#8E8E93");
-  const kind = String(a.kind ?? "");
-  if (!compact || sess.acct || kind !== "claude") add("tool", kind + (sess.acct ? " · " + sess.acct : ""), sess.acct ? acctColor(sess.acct) : "#8E8E93");
-  add("wrong", sess.wrong ? "≠ " + sess.wrong : "", "#FF9F0A");
+  add("wrong", sess.wrong ? "≠ " + sess.wrong : "", ORANGE);
+  const alert = PR_ALERT.test(sess.pr ?? "");
+  if (alert) add("pr", sess.pr, ORANGE);
+  add("ctx", sess.ctx >= 80 ? sess.ctx + "%" : "", RED_TEXT);
+  if (sess.look !== "working" && yours(sess.next)) add("you", "→ you", ORANGE);
+  plain("ahead", sess.ahead > 0 ? "↑" + sess.ahead : "");
+  plain("dup", sess.dup ? "dup" : "");
+  plain("comp", sess.comp >= 3 ? "⟳" + sess.comp : "");
+  plain("cold", sess.look === "idle" ? String(sess.cold ?? "").replace(/^cold /, "❄") : "");
+  if (!alert) plain("pr", sess.pr);
+  const tool = String(a.kind ?? "") + (sess.acct ? " · " + sess.acct : "");
+  if (sess.acct) add("tool", tool, acctColor(sess.acct));
+  else plain("tool", tool);
   const tail = dirTail(a.directory).replace(/^lane-/, "");
-  if (!compact && tail !== wsName) add("dir", tail, "#8E8E93");
-  add("pr", sess.pr, PR_ALERT.test(sess.pr ?? "") ? "#FF9F0A" : "#BF5AF2");
-  if (sess.look !== "working" && yours(sess.next)) add("you", "→ you", "#0A84FF");
-  add("dup", sess.dup ? "dup" : "", "#FF9F0A");
-  add("ahead", sess.ahead > 0 ? "↑" + sess.ahead : "", "#FF9F0A");
-  add("comp", sess.comp >= 3 ? "⟳" + sess.comp : "", "#FF9F0A");
-  add("cold", sess.look === "idle" ? String(sess.cold ?? "").replace(/^cold /, "❄") : "", "#64D2FF");
-  add("ctx", sess.ctx >= 80 ? sess.ctx + "%" : "", "#FF453A");
+  if (tail !== wsName) plain("dir", tail);
   return out;
 }
+// The second line of a full row shows 3 pills; "+N" stands for the rest and names them on hover.
+function cappedPills(all) {
+  if (all.length <= 3) return all;
+  const rest = all.slice(3);
+  return [...all.slice(0, 3), { id: "more", text: "+" + rest.length, color: META, bg: NEUTRAL, help: rest.map((p) => p.text).join(" · ") }];
+}
+// A one-line row shows 2 bare marks: no tool and no folder. The workspace counts, in the view by state.
+const marksOf = (all) => all.filter((p) => p.id !== "tool" && p.id !== "dir").slice(0, 2);
 const pill = (p) =>
-  Text(() => p().text).font(9).weight("medium").monospaced().lineLimit(1).fixedSize()
+  Text(() => p().text).font(11).weight("medium").monospaced().lineLimit(1).fixedSize()
     .color(() => p().color).paddingHorizontal(5).paddingVertical(1)
-    .background(() => p().color + "26").cornerRadius(4);
+    .background(() => p().bg ?? p().color + "26").cornerRadius(4)
+    .help(() => p().help ?? null);
 const pillRow = (entry) => ForEach({ items: () => entry().pills, key: (p) => p.id }, pill);
+const markRow = (entry) => ForEach({ items: () => entry().marks, key: (p) => p.id }, (p) =>
+  Text(() => p().text).font(11).monospaced().lineLimit(1).fixedSize().color(() => p().color));
 
 // One flat entry list: workspace headers + agent rows, so a single keyed
 // ForEach owns the whole roster (kind is encoded in the key, so templates
@@ -360,12 +388,11 @@ const view = computed(() => {
         look: sess.look,
         done: sess.done,
         // The second line: "asked" when the agent asks a question or waits for a permission, "finished · not seen"
-        // when its turn ended and the tab is unread. "from screen": the state comes from the terminal screen.
-        state: a.status === "needs_input" ? "asked"
+        // when its turn ended and the tab is unread, "quiet 20m+" when it stalled. "from screen": the state comes
+        // from the terminal screen. A plain working row shows no state word: its dot says it.
+        state: [a.status === "needs_input" ? "asked"
           : sess.look === "needs_input" ? "asked · from screen"
-          : sess.look === "working" && a.status !== "working" ? "working · from screen"
-          : sess.done ? "finished · not seen"
-          : statusOf(a).label,
+          : sess.done ? "finished · not seen" : "", stalled ? "quiet 20m+" : ""].filter(Boolean).join(" · "),
         sessName: sessionName(tabTitle) ?? "",
         // The name on the workspace band: the second line leaves the folder out when it only repeats this name.
         wsName: dirTail(String(w.description ?? "").split(" | ")[0]) || dirTail(w.directory) || w.title,
@@ -373,10 +400,11 @@ const view = computed(() => {
         prText: sess.pr ?? "",
         acct: sess.acct ?? "",
         wrong: sess.wrong ?? "",
-        // Work marks, in orange: a duplicate session, commits that no remote holds, 3 or more compactions.
+        // Work marks (pillsOf): a duplicate session, commits that no remote holds, 3 or more compactions.
         // The request the session works on: what label-tabs.py read from the transcript, else what cmux reports.
         prompt: String(sess.prompt || tab?.latestPrompt || "").replace(/\s+/g, " ").trim().slice(0, 120),
-        pills: pillsOf(a, sess, w, compact),
+        pills: cappedPills(pillsOf(a, sess, w)),
+        marks: marksOf(pillsOf(a, sess, w)),
         cold: sess.look === "idle" ? String(sess.cold ?? "").replace(/^cold /, "❄") : "",
         folder: String(a.directory ?? ""),
         // Why the session waits, and its context share when that is 80% or more (the row shows it in red).
@@ -435,7 +463,8 @@ const view = computed(() => {
     // The "attention" toggle puts the sessions that need the owner first, and keeps tab order inside each rank.
     rows.sort((x, y) => (attention() ? x.rank - y.rank : 0) || x.tabIndex - y.tabIndex);
     out.push({
-      key: "h:" + w.id,
+      // An empty workspace is a thin line, not a band: the key carries the form, as for the rows.
+      key: "h:" + w.id + (rows.length ? "" : ":e"),
       kind: "header",
       wsId: w.id,
       // The project folder names the group. w.title is the title of the focused tab, which reads like one more session.
@@ -453,7 +482,8 @@ const view = computed(() => {
     for (const r of rows) if (r.look === "needs_input") waiting.push({ ...r, key: "n:" + r.key });
     for (const r of rows) flat.push({ ...r, age: epoch - (r.agent.lastActivityAt ?? epoch) });
     if (collapsed()[w.id]) continue;
-    for (const r of rows) expand(r, out);
+    // A waiting session is shown in full in the top block; its copy in the workspace takes one line.
+    for (const r of rows) expand(r.look === "needs_input" ? { ...r, compact: true, key: r.key + ":w" } : r, out);
   }
   // "Needs you": every waiting session of every workspace, longest wait first, above the groups.
   waiting.sort((x, y) => (x.agent.sinceEpoch ?? 0) - (y.agent.sinceEpoch ?? 0));
@@ -471,13 +501,13 @@ const view = computed(() => {
     for (const [title, color, test] of SECTIONS) {
       const rows = flat.filter(test).sort((x, y) => x.age - y.age);
       if (rows.length === 0) continue;
-      list.push({ key: "h:state:" + title, kind: "header", needsYou: true, wsTitle: title, wsColor: color, count: rows.length, wsSelected: false, dots: [] });
+      list.push({ key: "h:state:" + title, kind: "header", needsYou: true, wsTitle: title, wsColor: color, count: rows.length });
       for (const r of rows) expand(r, list);
     }
     return { rows: list, chips, accts };
   }
   if (waiting.length === 0) return { rows: out, chips, accts };
-  return { chips, accts, rows: [{ key: "h:needs-you", kind: "header", needsYou: true, wsTitle: "NEEDS YOU", wsColor: "#FF9F0A", count: waiting.length, wsSelected: true, dots: [] }, ...waiting, ...out] };
+  return { chips, accts, rows: [{ key: "h:needs-you", kind: "header", needsYou: true, wsTitle: "NEEDS YOU", wsColor: ORANGE, count: waiting.length }, ...waiting, ...out] };
 });
 // A search text brings the session list back, also while Limits is on: a search must always find sessions.
 const limitsShown = () => showLimits() && !query().trim();
@@ -522,7 +552,7 @@ const limits = computed(() => {
     const seen = Number(m[5]);
     const age = seen && epoch >= seen ? " · seen " + fmtAgo(epoch - seen) + " ago" : "";
     let value = "no limit data on this Mac";
-    let color = "tertiary";
+    let color = META;
     let bar = -1;  // no bar for a line without a live window
     if (m[3] !== "") {
       const used = Number(m[3]);
@@ -553,7 +583,7 @@ const limits = computed(() => {
     const value = "$" + sums[who].sum.toFixed(2) + " · " + sums[who].n + (sums[who].n === 1 ? " session" : " sessions");
     out.push({ key: "cost-" + who, label: "cost " + who, value, color: "secondary", copy: "cost " + who + " " + value, wsId: data.selectedId(), acct: who });
   }
-  if (out.length === 0) out.push({ key: "limit-none", label: "limits", value: "no data yet: the watcher writes it within 15 seconds", color: "tertiary", copy: "", wsId: data.selectedId() });
+  if (out.length === 0) out.push({ key: "limit-none", label: "limits", value: "no data yet: the watcher writes it within 15 seconds", color: META, copy: "", wsId: data.selectedId() });
   return out;
 });
 
@@ -681,51 +711,97 @@ function newTab(wsId) {
 
 function toggleButton(labelFn, activeFn, onTapFn) {
   return Text(labelFn)
-    .font(11).weight("semibold").lineLimit(1).fixedSize()
+    .font(12).weight("semibold").lineLimit(1).fixedSize()
     .paddingHorizontal(8).paddingVertical(3)
     .cornerRadius(6)
-    .color(() => (activeFn() ? "primary" : "tertiary"))
+    .color(() => (activeFn() ? "primary" : META))
     .background(() => (activeFn() ? "#7f7f7f3d" : null))
     .hoverBackground("#7f7f7f3d")
     .onTap(onTapFn);
 }
 
-// Workspace header: title + one mini status dot per agent (the roster's shape
-// at a glance, like a phase rail).
+// The workspace colour at a given alpha ("14" is about 8%). A colour that is not "#RRGGBB" gets a faint white.
+const tint = (color, alpha) => (/^#[0-9A-Fa-f]{6}$/.test(color ?? "") ? color + alpha : "#FFFFFF0A");
+// Right-click on a workspace band or line: "New tab here".
+const bandMenu = (entry) => [Button("New tab here", () => newTab(entry().wsId))];
+const selectWs = (entry) => () => cmux("workspace.select", { workspace_id: entry().wsId });
+// "+" opens a new tab in the workspace, as the right-click menu does.
+const plusMark = (entry) => Text("+").font(12).color(TEXT2).frame({ width: 22, height: 22 }).onTap(() => newTab(entry().wsId));
+
+// A header: a section of the view by state (and the "NEEDS YOU" block), an empty workspace, or a workspace band.
+// The form is fixed per key.
 function headerRow(entry) {
-  // Right-click on a workspace band: "New tab here". The "NEEDS YOU" band has no workspace, so it gets no menu.
-  const menu = (band) => (entry().wsId ? band.contextMenu([Button("New tab here", () => newTab(entry().wsId))]) : band);
+  const first = entry();
+  if (first.needsYou) return sectionRow(entry);
+  return first.count ? bandRow(entry) : emptyRow(entry);
+}
+
+// A section: its name in the section colour, the count, then a hairline to the right edge. No tint, no menu.
+function sectionRow(entry) {
   return VStack({ spacing: 0 }, [
     Rectangle().fill("clear").frame({ height: 8 }),
-    menu(HStack({ spacing: 4 }, [
-      Text(() => (entry().needsYou || !entry().count ? "" : entry().folded ? "▸" : "▾"))
-        .font(11).color("secondary").paddingHorizontal(3).paddingVertical(2)
-        .onTap(() => { if (entry().wsId) toggleFold(entry().wsId); }),
+    HStack({ spacing: 6 }, [
+      Text(() => entry().wsTitle).font(11).weight("bold").lineLimit(1).fixedSize().color(() => entry().wsColor),
+      Text(() => String(entry().count)).font(11).monospaced().color(META),
+      Rectangle().fill("#7f7f7f40").frame({ height: 1, maxWidth: "infinity" }),
+    ]).paddingHorizontal(8).paddingVertical(5).frame({ maxWidth: "infinity" }),
+  ]).frame({ maxWidth: "infinity" });
+}
+
+// A workspace with no session: one thin line, no band. A click selects the workspace.
+function emptyRow(entry) {
+  return VStack({ spacing: 0 }, [
+    Rectangle().fill("clear").frame({ height: 2 }),
+    HStack({ spacing: 4 }, [
       HStack({ spacing: 7 }, [
-      RoundedRectangle({ cornerRadius: 2 }).fill(() => entry().wsColor).frame({ width: 4, height: 16 }),
-      Text(() => entry().wsTitle || "untitled")
-        .font(13).weight("bold").lineLimit(1).truncation("tail")
-        .color(() => (entry().needsYou ? entry().wsColor : "primary")),
-      Text(() => (entry().count ? String(entry().count) : "")).font(10).monospaced().color("tertiary"),
-      // The summed cost estimate of the workspace's sessions (Claude Code only).
-      Text(() => (entry().cost >= 1 ? "$" + Math.round(entry().cost) : "")).font(10).monospaced().color("tertiary"),
-      Spacer(),
-      // Unread notifications of the workspace, as the left list shows them.
-      Text(() => (entry().unread ? entry().unread + " new" : "")).font(9).weight("semibold").color("#0A84FF"),
-      ForEach(
-        { items: () => entry().dots.map((c, i) => ({ id: String(i) + c, color: c })), key: (d) => d.id },
-        (d) => Circle({ size: 5 }).fill(() => d().color)
-      ),
-      ]).frame({ maxWidth: "infinity" })
-        .onTap(() => { if (entry().wsId) cmux("workspace.select", { workspace_id: entry().wsId }); }),
-      // "+" opens a new tab in the workspace, as the right-click menu does.
-      Text(() => (entry().wsId ? "+" : "")).font(12).color("secondary").paddingHorizontal(3)
-        .onTap(() => newTab(entry().wsId)),
+        Capsule().fill(() => entry().wsColor).frame({ width: 3, height: 12 }),
+        Text(() => entry().wsTitle || "untitled").font(12).color(META).lineLimit(1).truncation("tail"),
+        Spacer(),
+      ]).frame({ maxWidth: "infinity" }).onTap(selectWs(entry)),
+      plusMark(entry).showOnHover(),
     ])
-      .paddingHorizontal(8).paddingVertical(6)
-      .background(() => (entry().wsSelected ? "#7f7f7f33" : "#7f7f7f1a"))
-      .cornerRadius(7)
-      .frame({ maxWidth: "infinity" })),
+      .paddingLeading(30).paddingTrailing(4)
+      .frame({ maxWidth: "infinity" })
+      .contextMenu(bandMenu(entry)),
+  ]).frame({ maxWidth: "infinity" });
+}
+
+// A workspace band, tinted in the workspace colour: fold mark, name, unread, then "sessions · cost" and "+".
+// The dots, one per session, show while the band is folded (the roster's shape at a glance).
+function bandRow(entry) {
+  return VStack({ spacing: 0 }, [
+    Rectangle().fill("clear").frame({ height: 8 }),
+    HStack({ spacing: 4 }, [
+      Text(() => (entry().folded ? "▸" : "▾"))
+        .font(12).color(TEXT2).frame({ width: 22, height: 22 })
+        .onTap(() => toggleFold(entry().wsId)),
+      HStack({ spacing: 7 }, [
+        Capsule().fill(() => entry().wsColor).frame({ width: 3, height: 14 }),
+        Text(() => entry().wsTitle || "untitled")
+          .font(13).weight("semibold").lineLimit(1).truncation("tail").color("primary"),
+        Spacer(),
+        ForEach(
+          { items: () => (entry().folded ? entry().dots.map((c, i) => ({ id: String(i) + c, color: c })) : []), key: (d) => d.id },
+          (d) => Circle({ size: 5 }).fill(() => d().color)
+        ),
+        // Unread notifications of the workspace, as the left list shows them.
+        ForEach({ items: () => (entry().unread ? [{ id: "unread" }] : []), key: (x) => x.id },
+          () => HStack({ spacing: 3 }, [
+            Circle({ size: 6 }).fill(DONE_DOT),
+            Text(() => String(entry().unread)).font(11).monospaced().color(PURPLE_TEXT),
+          ])),
+        // The session count and the summed cost estimate of the workspace's sessions (Claude Code only).
+        Text(() => String(entry().count) + (entry().cost >= 1 ? " · $" + Math.round(entry().cost) : ""))
+          .font(11).monospaced().lineLimit(1).fixedSize().color(META),
+      ]).frame({ maxWidth: "infinity" }).onTap(selectWs(entry)),
+      plusMark(entry),
+    ])
+      .paddingHorizontal(4).paddingVertical(5)
+      .background(() => tint(entry().wsColor, entry().wsSelected ? "24" : "14"))
+      .hoverBackground(() => tint(entry().wsColor, "2E"))
+      .cornerRadius(8)
+      .frame({ maxWidth: "infinity" })
+      .contextMenu(bandMenu(entry)),
   ]).frame({ maxWidth: "infinity" });
 }
 
@@ -742,8 +818,8 @@ const rowTitle = (t) => {
 // One line of the project strip: a dim label and its text. A click opens the workspace that carries it.
 function stripRow(entry, width = 58) {
   return HStack({ spacing: 8 }, [
-    Text(() => entry().label).font(10).monospaced().color("tertiary").lineLimit(1).truncation("tail").frame({ width, alignment: "leading" }),
-    Text(() => entry().value).font(10).color(() => entry().color).lineLimit(2).truncation("tail"),
+    Text(() => entry().label).font(11).monospaced().color(META).lineLimit(1).truncation("tail").frame({ width, alignment: "leading" }),
+    Text(() => entry().value).font(11).color(() => entry().color).lineLimit(2).truncation("tail"),
     Spacer(),
   ])
     .paddingHorizontal(10)
@@ -758,12 +834,12 @@ const BAR = 44;
 function limitRow(entry, width) {
   const used = () => entry().bar ?? -1;
   return HStack({ spacing: 8 }, [
-    Text(() => entry().label).font(10).monospaced().color("tertiary").lineLimit(1).truncation("tail").frame({ width, alignment: "leading" }),
+    Text(() => entry().label).font(11).monospaced().color(META).lineLimit(1).truncation("tail").frame({ width, alignment: "leading" }),
     HStack({ spacing: 0 }, [
       Capsule().fill(() => (used() >= 80 ? "#FF453A" : used() >= 50 ? "#FF9F0A" : "#34C759")).frame(() => ({ width: used() < 0 ? 0 : Math.max(2, BAR * used() / 100), height: 4 })),
       Capsule().fill("#7f7f7f40").frame(() => ({ width: used() < 0 ? 0 : BAR - Math.max(2, BAR * used() / 100), height: 4 })),
     ]),
-    Text(() => entry().value).font(10).color(() => entry().color).lineLimit(2).truncation("tail"),
+    Text(() => entry().value).font(11).color(() => entry().color).lineLimit(2).truncation("tail"),
     Spacer(),
   ])
     .paddingHorizontal(10)
@@ -778,6 +854,7 @@ function rowMenu(entry) {
   const cmd = commandsOf(entry().agent);
   const items = [
     Button("Go to session", () => jump(entry())),
+    Button(() => (openInfo()[entry().rowId] ? "Hide details" : "Show details"), () => flip(openInfo, setOpenInfo, entry().rowId)),
     Button(() => "Copy name" + (entry().sessName ? ": " + entry().sessName : ""), () => clipboard.write(entry().sessName || entry().tabTitle)),
     Button("Copy folder", () => clipboard.write(entry().folder)),
     Button(() => (entry().prText ? "Copy PR " + entry().prText.split(" ")[0] : "No PR for this session"),
@@ -795,116 +872,150 @@ function rowMenu(entry) {
   return items;
 }
 
+// "new": unread output. A finished-not-seen row leaves it out: its tint and its state say it already.
 const unreadBadge = (entry) =>
-  Text(() => (entry().unread ? "new" : "")).font(9).weight("semibold").color("#0A84FF");
+  Text(() => (entry().unread && !entry().done ? "new" : "")).font(11).weight("semibold").color(PURPLE_TEXT);
 // "▸ 2 sub running": the subagents of a session as a count. A click opens or closes their rows.
 const kidsBadge = (entry) =>
   Text(() => {
     const e = entry();
     if (!e.kids) return "";
     return (openKids()[e.rowId] ? "▾" : "▸") + (e.kidsRunning ? e.kidsRunning + "/" + e.kids : e.kids);
-  }).font(10).monospaced().lineLimit(1).fixedSize()
-    .color(() => (entry().kidsRunning ? "#0A84FF" : "tertiary"))
+  }).font(11).monospaced().lineLimit(1).fixedSize()
+    .color(() => (entry().kidsRunning ? BLUE_TEXT : META))
     .onTap(() => flip(openKids, setOpenKids, entry().rowId));
-// "›" at the end of a row opens its detail lines; "⌄" closes them.
+// "›" at the end of a row opens its detail lines and shows on hover only; "⌄" closes them and stays in view.
 const infoMark = (entry) =>
   Text(() => (openInfo()[entry().rowId] ? "⌄" : "›"))
-    .font(12).color("secondary").paddingHorizontal(4)
+    .font(12).color(TEXT2).paddingHorizontal(4)
+    .showOnHover(() => !openInfo()[entry().rowId])
     .onTap(() => flip(openInfo, setOpenInfo, entry().rowId));
+
+// Child and detail lines start under the title of their row: past the 13 pt dot and its 6 pt gap.
+const UNDER_TITLE = 19;
 
 // One detail line under an agent row: a dim label and its value.
 function detailRow(entry) {
   return HStack({ spacing: 8 }, [
     guide(entry, 16),
-    Text("").frame({ width: 12 }),
-    Text(() => entry().label).font(10).monospaced().color("tertiary").frame({ width: 58, alignment: "leading" }),
-    Text(() => entry().value).font(10).color("secondary").lineLimit(2).truncation("tail"),
-    Spacer(),
+    HStack({ spacing: 8 }, [
+      Text(() => entry().label).font(11).monospaced().color(META).frame({ width: 58, alignment: "leading" }),
+      Text(() => entry().value).font(11).color(TEXT2).lineLimit(2).truncation("tail"),
+      Spacer(),
+    ]).paddingLeading(UNDER_TITLE),
   ])
     .paddingLeading(9).paddingTrailing(10)
     .frame({ maxWidth: "infinity" })
     .onTap(() => jump(entry()));
 }
 
-// A card: tinted orange when the session asks, purple when it finished and was not seen.
+// A card: tinted orange with an orange border when the session asks, purple when it finished and was not seen.
 const rowBackground = (entry) => () =>
-  (entry().focused ? "#7f7f7f40" : entry().look === "needs_input" ? "#FF9F0A26" : entry().done ? "#BF5AF226" : "#7f7f7f14");
-// The first line of a row: dot, name, unread mark, then subagents, time and the detail mark.
-const titleLine = (entry, weight) => {
+  (entry().focused ? "#FFFFFF1F" : entry().look === "needs_input" ? "#FF9F0A26" : entry().done ? "#BF5AF226" : "#FFFFFF0F");
+// The status dot, with a halo for a row that works, asks or finished unseen. The 13 pt frame is always there,
+// so the titles line up.
+const haloDot = (entry) => {
+  const halo = () => entry().look === "working" || entry().look === "needs_input" || entry().done;
+  return ZStack({}, [
+    Circle({ size: 13 }).fill(() => (halo() ? dotColor(entry()) + "33" : "clear")),
+    Circle({ size: 7 }).fill(() => dotColor(entry())),
+  ]).frame({ width: 13, height: 13 });
+};
+// "[name] rest": the name in bold, the rest dim, and the rest truncates first. The rest is left out when it only
+// names the tool.
+const titleParts = (entry) => {
+  const a = entry().agent;
+  const t = rowTitle(entry().tabTitle) || a.title || a.name || "";
+  const m = /^(\[[^\]]+\]) (.+)$/.exec(t);
+  if (!m) return { name: t, rest: "" };
+  const tool = [a.name, a.kind, "Claude Code"].some((x) => x && String(x).toLowerCase() === m[2].toLowerCase());
+  return { name: m[1], rest: tool ? "" : m[2] };
+};
+// The first line of a row: dot, name, the marks of a one-line row, unread mark, then subagents, time and the
+// detail mark. An old settled row shows its name dim.
+const titleLine = (entry, compact) => {
   const a = () => entry().agent;
   return HStack({ spacing: 6 }, [
-    Circle({ size: 7 }).fill(() => dotColor(entry())),
-    Text(() => rowTitle(entry().tabTitle) || a().title || a().name)
-      .font(12).weight(weight).lineLimit(1).truncation("tail")
-      .color(() => (a().status === "ended" ? "tertiary" : "primary")),
+    haloDot(entry),
+    HStack({ spacing: 4 }, [
+      Text(() => titleParts(entry).name)
+        .font(13).weight("semibold").lineLimit(1).truncation("tail").layoutPriority(1)
+        .color(() => (a().status === "ended" || entry().old ? META : "primary")),
+      ForEach({ items: () => (titleParts(entry).rest ? [{ id: "rest" }] : []), key: (x) => x.id },
+        () => Text(() => titleParts(entry).rest).font(13).lineLimit(1).truncation("tail").color(META)),
+    ]),
+    ...(compact ? [markRow(entry)] : []),
     unreadBadge(entry),
     Spacer(),
     kidsBadge(entry),
     Text(() => timeText(a(), data.clock()?.epoch ?? 0))
-      .font(10).monospaced().color("tertiary").lineLimit(1).fixedSize(),
+      .font(11).monospaced().lineLimit(1)
+      .color(() => (entry().look === "needs_input" ? ORANGE : META))
+      .frame({ width: 44, alignment: "trailing" }),
     infoMark(entry),
   ]);
 };
 const card = (entry, row) => row
   .paddingLeading(9).paddingTrailing(8)
   .background(rowBackground(entry))
-  .cornerRadius(8)
-  .hoverBackground("#7f7f7f2e")
+  .cornerRadius(10)
+  .borderWidth(1)
+  .borderColor(() => (entry().look === "needs_input" ? "#FF9F0A73" : "clear"))
+  .hoverBackground("#FFFFFF17")
   .frame({ maxWidth: "infinity" })
   .onTap(() => jump(entry()))
   .contextMenu(rowMenu(entry));
 
-// A settled session (idle, ended): the name line, then its pills when it has any.
+// A settled session (idle, ended), and the workspace copy of a waiting one: one line with at most 2 marks.
 function compactRow(entry) {
-  return card(entry, HStack({ spacing: 8 }, [guide(entry, 16), VStack({ spacing: 3 }, [
-    titleLine(entry, "regular"),
-    ForEach({ items: () => (entry().pills.length ? [{ id: "pills" }] : []), key: (x) => x.id },
-      () => HStack({ spacing: 4 }, [pillRow(entry), Spacer()]).paddingLeading(13)),
-  ])]).paddingVertical(4)).opacity(() => (entry().old ? 0.55 : 1));
+  return card(entry, HStack({ spacing: 8 }, [guide(entry, 16), titleLine(entry, true)]).paddingVertical(6));
 }
 
 // A session that works, asks or finished unseen: the name line, the state with the pills, then the request.
+// The second line shows only when it has a state or a pill. A waiting row shows why it waits in place of the request.
 function agentRow(entry) {
+  const reason = () => (entry().look === "needs_input" && entry().wait ? entry().wait : "");
   return card(entry, HStack({ spacing: 8 }, [guide(entry, 34), VStack({ spacing: 4 }, [
-    titleLine(entry, "semibold"),
-    HStack({ spacing: 4 }, [
-      Text(() => entry().state + (entry().wait ? " · " + entry().wait : "") + (entry().stalled ? " · quiet 20m+" : ""))
-        .font(10).weight("medium").lineLimit(1).fixedSize()
-        .color(() => (entry().look === "needs_input" || entry().stalled ? "#FF9F0A" : entry().done ? "#BF5AF2" : "secondary")),
-      pillRow(entry),
-      Spacer(),
-    ]).paddingLeading(13),
-    ForEach({ items: () => (entry().prompt ? [{ id: "prompt" }] : []), key: (x) => x.id },
-      () => HStack({ spacing: 0 }, [
-        Text(() => entry().prompt).font(10).color("tertiary").lineLimit(2).truncation("tail"),
+    titleLine(entry, false),
+    ForEach({ items: () => (entry().state || entry().pills.length ? [{ id: "state" }] : []), key: (x) => x.id },
+      () => HStack({ spacing: 4 }, [
+        ForEach({ items: () => (entry().state ? [{ id: "word" }] : []), key: (x) => x.id },
+          () => Text(() => entry().state).font(11).weight("medium").lineLimit(1).truncation("tail")
+            .color(() => (entry().look === "needs_input" || entry().stalled ? ORANGE : entry().done ? PURPLE_TEXT : META))),
+        pillRow(entry),
         Spacer(),
-      ]).paddingLeading(13)),
+      ]).paddingLeading(UNDER_TITLE)),
+    ForEach({ items: () => (reason() || entry().prompt ? [{ id: "prompt" }] : []), key: (x) => x.id },
+      () => HStack({ spacing: 0 }, [
+        Text(() => reason() || entry().prompt).font(12).lineLimit(1).truncation("tail")
+          .color(() => (reason() ? ORANGE : META)),
+        Spacer(),
+      ]).paddingLeading(UNDER_TITLE)),
   ])]).paddingVertical(6));
 }
 
-// Child (subagent) row: indented under its parent with a tree tick. Running
+// Child (subagent) row: under the title of its parent with a tree tick. Running
 // children tick a live elapsed; settled ones show their total, muted.
 function childRow(entry) {
   const c = () => entry().child;
-  return HStack({ spacing: 6 }, [
+  return HStack({ spacing: 8 }, [
     guide(entry, 18),
-    Text("   └").font(10).monospaced().color("tertiary"),
-    Circle({ size: 5 })
-      .fill(() => (c().running ? "#0A84FF" : "#7f7f7f55")),
-    Text(() => c().label || "subagent")
-      .font(11).lineLimit(1).truncation("tail")
-      .color(() => (c().running ? "secondary" : "tertiary")),
-    Spacer(),
-    Text(() => {
-      if (c().noTime) return c().running ? "running" : "";
-      const epoch = data.clock()?.epoch ?? 0;
-      const end = c().running ? epoch : (c().endedEpoch ?? epoch);
-      const s = Math.max(0, Math.floor(end - (c().startedEpoch ?? end)));
-      if (s < 60) return s + "s";
-      const m = Math.floor(s / 60);
-      return m < 60 ? m + "m " + String(s % 60).padStart(2, "0") + "s" : Math.floor(m / 60) + "h " + String(m % 60).padStart(2, "0") + "m";
-    })
-      .font(10).monospaced().color("tertiary"),
+    HStack({ spacing: 6 }, [
+      Text("└").font(11).monospaced().color(META),
+      Circle({ size: 5 })
+        .fill(() => (c().running ? "#0A84FF" : "#7f7f7f55")),
+      Text(() => c().label || "subagent")
+        .font(12).lineLimit(1).truncation("tail")
+        .color(() => (c().running ? TEXT2 : META)),
+      Spacer(),
+      Text(() => {
+        if (c().noTime) return c().running ? "running" : "";
+        const epoch = data.clock()?.epoch ?? 0;
+        const end = c().running ? epoch : (c().endedEpoch ?? epoch);
+        return fmtElapsed(end - (c().startedEpoch ?? end));
+      })
+        .font(11).monospaced().color(META),
+    ]).paddingLeading(UNDER_TITLE),
   ])
     .paddingLeading(9).paddingTrailing(10).paddingVertical(1)
     .cornerRadius(7)
@@ -930,14 +1041,14 @@ const filterChip = (f) =>
 sidebar(() =>
   VStack({ spacing: 8 }, [
     HStack({ spacing: 6 }, [
-      Text("Agents").font(14).weight("semibold"),
+      Text("Agents").font(15).weight("semibold"),
       Spacer(),
       // One coloured count per state: orange needs you, blue working, green idle. Then the cost estimate.
-      Text(() => (counts().needs_input > 0 ? "● " + counts().needs_input : "")).font(10).monospaced().color("#FF9F0A").help("need you"),
-      Text(() => (counts().working > 0 ? "● " + counts().working : "")).font(10).monospaced().color("#0A84FF").help("working"),
-      Text(() => (counts().idle > 0 ? "● " + counts().idle : "")).font(10).monospaced().color("#34C759").help("idle"),
-      Text(() => (counts().ended > 0 && showEnded() ? "● " + counts().ended : "")).font(10).monospaced().color("tertiary").help("ended"),
-      Text(() => (totalCost() >= 1 ? "$" + Math.round(totalCost()) : "")).font(10).monospaced().color("tertiary"),
+      Text(() => (counts().needs_input > 0 ? "● " + counts().needs_input : "")).font(11).monospaced().color("#FF9F0A").help("need you"),
+      Text(() => (counts().working > 0 ? "● " + counts().working : "")).font(11).monospaced().color("#0A84FF").help("working"),
+      Text(() => (counts().idle > 0 ? "● " + counts().idle : "")).font(11).monospaced().color("#34C759").help("idle"),
+      Text(() => (counts().ended > 0 && showEnded() ? "● " + counts().ended : "")).font(11).monospaced().color(META).help("ended"),
+      Text(() => (totalCost() >= 1 ? "$" + Math.round(totalCost()) : "")).font(11).monospaced().color(META),
     ]).paddingHorizontal(10),
 
     HStack({ spacing: 4 }, [
@@ -948,7 +1059,7 @@ sidebar(() =>
       // No text: this view reads the tab titles, so it runs again when one changes, and serves the hive page's jumps.
       Text(() => hiveGo()).font(1),
       // Opens the hive graph in the browser: workspaces, sessions and subagents as a tree.
-      Text("hive ↗").font(11).weight("semibold").color("#0A84FF").paddingHorizontal(6).paddingVertical(3)
+      Text("hive ↗").font(12).weight("semibold").color("#0A84FF").paddingHorizontal(6).paddingVertical(3)
         .hoverBackground("#7f7f7f3d").cornerRadius(6)
         .onTap(() => {
           // A browser tab inside cmux: it opens a local page and keeps the data after "#".
@@ -977,7 +1088,7 @@ sidebar(() =>
       Spacer(),
     ]).paddingHorizontal(10),
     ForEach({ items: () => (showing() ? [{ id: "showing" }] : []), key: (x) => x.id },
-      () => Text(() => showing()).font(10).color("tertiary").lineLimit(1).paddingHorizontal(12)),
+      () => Text(() => showing()).font(11).color(META).lineLimit(1).paddingHorizontal(12)),
 
     VStack({ spacing: 3 }, [ForEach({ items: strip, key: (s) => s.key }, (s) => stripRow(s))]),
     // The Limits view takes the place of the session list.
@@ -1006,7 +1117,7 @@ sidebar(() =>
         ? "No matches."
         : "No agents yet. Sessions started in cmux terminals show up here with live status.")
       : ""))
-      .font(11).color("tertiary").paddingHorizontal(10),
+      .font(11).color(META).paddingHorizontal(10),
     Spacer(),
   ]).paddingHorizontal(6),
   { surface: "glass" }

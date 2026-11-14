@@ -78,13 +78,15 @@ const workspaces = [
   },
   {
     id: "ws-web", title: "ignored", directory: "/work/web", description: webDescription, color: "#654321", selected: false, unread: 0,
-    tabs: [tab(3, "[scout-4] search"), tab(4, "[helper-6] notes")],
+    tabs: [tab(3, "[scout-4] search", { hasUnread: true }), tab(4, "[helper-6] notes")],
     agents: [
       agent("a3", T(3), "working", "claude", { children: [{ id: "c1", label: "Explore repo", running: true, startedEpoch: EPOCH - 30 }] }),
       agent("a4", T(4), "idle", "codex"),
     ],
     prs: [],
   },
+  // A workspace with no session: the panel shows it as a thin line, not a band.
+  { id: "ws-docs", title: "ignored", directory: "/work/docs", description: "docs", color: "#336699", selected: false, unread: 0, tabs: [], agents: [], prs: [] },
 ];
 
 // ---------------------------------------------------------------- host bridge and scene tree
@@ -138,6 +140,10 @@ const tapTarget = (n) => { for (let c = n; c; c = parentOf(c.id)) if (c.props.ta
 const tap = (n) => ctx.__dispatch(n.id, "tap", null);
 const withText = (pred) => reachable().filter((n) => typeof n.props.text === "string" && pred(n.props.text));
 const cmuxCalls = () => actions.filter((a) => a.kind === "cmux");
+// The hover texts: a "+N" pill names the pills that its row has no room for.
+const helpText = () => reachable().map((n) => (typeof n.props.help === "string" ? n.props.help : "")).filter(Boolean).join("\n");
+const META = "#B4B4BA";
+const ORANGE = "#FF9F0A";
 
 // ---------------------------------------------------------------- tiny harness
 let failed = 0;
@@ -189,15 +195,62 @@ check("render shows workspace groups and the needs-you block", () => {
 check("render shows all four states", () => {
   // Settled rows are one line with a dot only, so idle and ended show in the summary line of the panel head.
   mustContain(rendered, "asked");  // a session that needs input reads "asked" on its second line
-  mustContain(rendered, "Working");
+  mustContain(rendered, "finished · not seen");
+  // A plain working row shows no state word: its blue dot says it.
+  must(!rendered.includes("Working"), "a plain working row shows a state word");
+  must(reachable().some((n) => n.props.fill === "#0A84FF"), "no blue dot for the working session");
   // The panel head counts each state as a coloured dot with a number: one needs you, two idle, one ended.
   mustContain(rendered, "● 1");
   mustContain(rendered, "● 2");
 });
-check("render shows the unread mark of the idle session", () => mustContain(rendered, "new"));
+check("render shows the unread mark of the working session, and not on the finished-not-seen row", () => {
+  const marks = withText((t) => t === "new");
+  must(marks.length === 1, "expected one \"new\" mark (scout-4), got " + marks.length);
+});
 check("render shows the work marks: ahead count and duplicate", () => {
   mustContain(rendered, "↑2");
-  mustContain(rendered, "dup");
+  mustContain(helpText(), "dup");  // lead-1 has more pills than its second line holds
+});
+check("a full row shows 3 pills by priority, then a +N pill that names the rest", () => {
+  const more = withText((t) => t === "+4");
+  must(more.length === 1, "expected one \"+4\" pill on lead-1, got " + more.length);
+  must(more[0].props.help === "dup · ⟳3 · claude · work · a1", "help of +4 is " + JSON.stringify(more[0].props.help));
+  for (const t of ["83%", "→ you", "↑2"]) must(withText((x) => x === t).length > 0, "pill " + t + " not shown");
+});
+check("a waiting session is full in the top block and one line in its workspace", () => {
+  must(withText((t) => t === "[lead-1]").length === 2, "lead-1 is not shown twice");
+  must(withText((t) => t.startsWith("asked")).length === 1, "the workspace copy of lead-1 has a state line");
+  // At most 2 marks: "↑2" is the third candidate, so it shows on the full copy only.
+  must(withText((t) => t === "↑2").length === 1, "the one-line copy shows more than 2 marks");
+  // The one-line copy shows its first 2 marks bare: no pill background.
+  must(withText((t) => t === "83%").some((n) => !n.props.background), "no bare 83% mark on the one-line copy");
+  must(reachable().some((n) => n.props.borderColor === "#FF9F0A73"), "no orange border on the waiting card");
+});
+check("the title splits into the name and a dim rest; a waiting row shows its reason in place of the request", () => {
+  const name = withText((t) => t === "[lead-1]")[0];
+  must(name.props.font === 13 && name.props.weight === "semibold", "name is not 13 semibold");
+  const rest = withText((t) => t === "fix the login test");
+  must(rest.length > 0 && rest.every((n) => n.props.font === 13 && n.props.color === META), "rest is not a 13 pt META title part");
+  must(withText((t) => t === "permission").some((n) => n.props.color === ORANGE), "the wait reason is not orange");
+});
+check("times are short: no \"ago\", minutes without seconds", () => {
+  must(withText((t) => t === "5m").length > 0, "no \"5m\" elapsed time");
+  must(!rendered.split("\n").some((l) => / ago$/.test(l)), "a time still ends in \"ago\"");
+});
+check("workspace bands take the workspace colour; the selected one is stronger", () => {
+  must(reachable().some((n) => n.props.background === "#12345624"), "no selected band tint for api");
+  must(reachable().some((n) => n.props.background === "#65432114"), "no band tint for web");
+  must(reachable().some((n) => n.props.hoverBackground === "#1234562E"), "no hover tint for api");
+  must(withText((t) => t === "3 · $1").length === 1, "no \"3 · $1\" count and cost on the api band");
+  must(reachable().some((n) => n.props.size === 6 && n.props.fill === "#BF5AF2"), "no unread dot on the api band");
+  must(!reachable().some((n) => n.props.size === 5), "session dots show on an open band");
+  must(reachable().some((n) => n.props.fill === "#7f7f7f40" && n.props.height === 1), "no hairline on the NEEDS YOU section");
+});
+check("an empty workspace is a thin line with a hover-only +", () => {
+  const name = withText((t) => t === "docs");
+  must(name.length === 1 && name[0].props.font === 12 && name[0].props.color === META, "docs line is not 12 pt META");
+  must(!reachable().some((n) => /^#336699/.test(String(n.props.background ?? ""))), "the empty workspace has a band tint");
+  must(withText((t) => t === "+").filter((n) => n.props.showOnHover === true).length === 1, "no hover-only + on the docs line");
 });
 check("render shows the waiting reason, context share and your-turn mark", () => {
   mustContain(rendered, "permission");
@@ -206,8 +259,10 @@ check("render shows the waiting reason, context share and your-turn mark", () =>
 });
 check("render shows the cold-cache mark of the idle session", () => mustContain(rendered, "❄5m"));
 check("render shows the account of a session and of a tab named in @accts", () => {
-  mustContain(rendered, "· work");
+  mustContain(helpText(), "claude · work");  // lead-1, behind its "+N" pill
   mustContain(rendered, "· personal");
+  // helper-6 is a one-line row with no tool pill: its @accts account shows in the account chip count.
+  mustContain(rendered, "work 2");
 });
 check("render shows the project strip lines", () => {
   mustContain(rendered, "2 ready");
@@ -222,7 +277,7 @@ check("fields the panel may not know yet (prompt, screen) do not throw", () => {
 
 // ---------------------------------------------------------------- clicks (after the no-call check above)
 check("a click on a session row focuses its tab", () => {
-  const title = withText((t) => t === "[lead-1] fix the login test")[0];
+  const title = withText((t) => t === "[lead-1]")[0];
   must(title, "row title of lead-1 not found");
   const row = tapTarget(title);
   must(row, "no tappable ancestor for the lead-1 row");
@@ -231,6 +286,36 @@ check("a click on a session row focuses its tab", () => {
   const calls = cmuxCalls().slice(before);
   must(calls.length === 1 && calls[0].method === "surface.focus", "expected one surface.focus, got " + JSON.stringify(calls));
   must(calls[0].params.workspace_id === "ws-api", "wrong workspace in " + JSON.stringify(calls[0]));
+});
+check("a click on an empty workspace line selects it", () => {
+  const line = tapTarget(withText((t) => t === "docs")[0]);
+  must(line, "no tappable ancestor for the docs line");
+  const before = cmuxCalls().length;
+  tap(line);
+  const calls = cmuxCalls().slice(before);
+  must(calls.length === 1 && calls[0].method === "workspace.select" && calls[0].params.workspace_id === "ws-docs", "got " + JSON.stringify(calls));
+});
+check("a folded band shows one dot per session; opening it hides them", () => {
+  const caret = withText((t) => t === "▾")[0];
+  must(caret, "fold mark not found");
+  tap(caret);
+  must(reachable().filter((n) => n.props.size === 5).length > 0, "no session dots on the folded band");
+  tap(withText((t) => t === "▸")[0]);
+  must(!reachable().some((n) => n.props.size === 5), "session dots stayed after the band opened");
+});
+check("the Show details menu item opens the detail lines of its row", () => {
+  must(withText((t) => t === "›").every((n) => n.props.showOnHover === true), "a closed detail mark is not hover-only");
+  const menu = parentOf(withText((t) => t === "Copy name: lead-1")[0].id);
+  const item = () => menu.children.map(node).find((n) => n && /^(Show|Hide) details$/.test(n.props.text));
+  must(item() && item().props.text === "Show details", "no Show details item in the lead-1 menu");
+  must(!textOf().includes("duplicate"), "lead-1 details already open");
+  tap(item());
+  mustContain(textOf(), "duplicate");
+  must(item().props.text === "Hide details", "the item did not change to Hide details");
+  const open = withText((t) => t === "⌄");
+  must(open.length > 0 && open.every((n) => n.props.showOnHover === false), "the open detail mark is not always in view");
+  tap(item());
+  must(!textOf().includes("duplicate"), "Hide details did not close the lines");
 });
 check("the info mark opens detail lines", () => {
   const before = textOf().split("\n").length;
@@ -251,14 +336,16 @@ check("the state button groups the rows into sections by state, and a second cli
   const grouped = textOf();
   mustContain(grouped, "NEEDS YOU");
   mustContain(grouped, "RUNNING");
+  // A one-line row keeps its workspace as a bare mark in this view (helper-6 in web).
+  must(withText((t) => t === "web").some((n) => !n.props.background && n.props.color === "#654321"), "no workspace mark on a one-line row");
   tap(btn());
   must(!textOf().includes("RUNNING"), "the sections stayed after the second click");
 });
 check("a row carries its marks as pills: account, your-turn mark and compaction count", () => {
   const all = textOf();
-  mustContain(all, "claude · work");
+  mustContain(helpText(), "claude · work");  // past the third pill: named by "+N"
   mustContain(all, "→ you");
-  mustContain(all, "⟳3");
+  mustContain(helpText(), "⟳3");
 });
 check("the Copy name menu item writes the session name to the clipboard", () => {
   const item = withText((t) => t === "Copy name: lead-1")[0];
