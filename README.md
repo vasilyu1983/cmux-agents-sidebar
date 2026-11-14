@@ -27,7 +27,7 @@ A drawing of a cmux window with the panel, with sample names.
 | `Limits` | Next to `Here` and `All`: the rate limits of each agent tool on this Mac, per window (5 hours, week), with the reset time and the age of the figure. With an accounts file: one line per tool and account. The panel remembers the choice |
 | Search | Type in `Search agents`: rows stay when the text is in the tab title (with the session name), the tool, the account, the workspace name or the folder. Capital letters do not matter. A search text looks in every workspace, also with `Here` on. A chip narrows the result further. While `Limits` is on, a search text shows the sessions again |
 | Account chips | With sessions on two accounts or more, one chip per account under the filter chips, with its row count. A click shows only that account; a second click, or `✕`, shows all |
-| Account colour | Each account name has one fixed colour, the same on the row tag and at the start of the session's status line |
+| Account colour | Each account name has one fixed colour, the same on the row tag, on the hive page and at the start of the session's status line. There are six colours, so two names can share one |
 | Wrong-account mark | `≠ work` in orange on a row: the folder rules name `work` for that folder, and the session runs on another account. Needs `rule` lines |
 | Limit warning | One cmux notification when a limit window of any account passes 80% |
 | Cost per account | In `Limits`, under the limit lines: the summed cost estimate of the open Claude Code sessions per account |
@@ -111,11 +111,23 @@ The panel shows in the right sidebar. Claude Code sessions that start after the 
 | `~/.config/cmux/scripts/agents-watch.sh` | Opens the panel and runs `label-tabs.py` every 15 seconds |
 | `~/.config/cmux/scripts/hive.html` | The graph page |
 | `~/.config/cmux/scripts/next-waiting.sh` | Goes to the session that has waited the longest |
+| `~/.config/cmux/scripts/agent-run.sh` | The launcher for several accounts. It does nothing until you use it |
+| `~/.config/cmux/scripts/agents-account-add.sh` | Makes the folder and the links of one extra account, when you run it |
+| `~/.config/cmux/scripts/agents-shell.sh` | The short commands. They load only after you add the `source` line to your shell file |
 | `~/.claude/statusline-command.sh` | The status line script (skipped with `--no-statusline`) |
 | `~/.claude/settings.json` | Gets one key, `statusLine`, only when the file has none (skipped with `--no-statusline`) |
 
 If a target file exists and differs, the installer first copies it to `<name>.<date>.bak`.
-The installer does not change `cmux.json`.
+The installer does not change `cmux.json`, your shell files or the accounts file.
+
+Files that appear later, while the kit runs:
+
+| File | Written by | Content |
+|------|------------|---------|
+| `~/.cache/cmux-agents/<session id>` | The status line | Model, context, cost and limit figures of one session |
+| `~/.cache/cmux-agents/limit-warned` | `label-tabs.py` | The limit windows that already got a warning, so each one warns once |
+| `~/.config/cmux/scripts/hive-data.js` | `label-tabs.py` | The data of the hive page; it holds your session titles (mode 600) |
+| `~/.config/cmux/agents-accounts` | You, or `agents-account-add.sh` | The account list and the folder rules |
 
 The `statusLine` key that it adds:
 
@@ -231,6 +243,7 @@ It gives short commands:
 | `cla work` | Claude Code with the account `work`, for this start only |
 | `cdx work` | Codex with the account `work`, for this start only |
 | `accounts` | Prints the account list and the account that the current folder gets |
+| `accounts doctor` | Checks the folder and the links of every extra account, and adds missing links |
 
 What an account folder shares: `agents-account-add.sh` links a fixed list of setup files from the tool's normal folder, when they exist there. It never replaces a real file in the account folder. Run it again for an existing account to add links that a newer version of the list holds.
 
@@ -248,7 +261,7 @@ Where you see the account:
 - A panel row names the account after the tool (`claude · work`, `codex · work`). For Codex the watcher reads one variable, `CODEX_HOME`, from the process of that tab.
 - The detail lines of a row hold `account`; a session on the default account reads `personal (primary)`, with the name from your `default` line.
 - `Limits` names the default account on the lines of the normal folder.
-- The account name has one fixed colour on the row tag and in the status line. The status line takes the name from the folder (`~/.claude-work` gives `work`), so the colours match when the folder follows that pattern.
+- The account name has one fixed colour on the row tag, on the hive page and in the status line. The status line takes the name from the folder (`~/.claude-work` gives `work`), so the colours match when the folder follows that pattern.
 - `≠ work` on a row means that the folder rules name another account for that folder than the one the session runs on. Start the session again with the right account.
 - `accounts doctor` checks the folder and the links of every extra account in one run.
 
@@ -266,7 +279,7 @@ Limits to know:
 
 A cmux panel gets workspaces, tabs and agents from cmux. It cannot read a file, and cmux does not know the model or the cost of a session. So the data takes this path:
 
-1. The status line script runs inside each Claude Code session. It writes one small file per session to `~/.cache/cmux-agents/<session id>`: model, context share, cost, lane branch, cold-cache tokens and the limit figures (5 hours and 7 days, with reset times), separated by tabs.
+1. The status line script runs inside each Claude Code session. It writes one small file per session to `~/.cache/cmux-agents/<session id>`: model, context share, cost, lane branch, cold-cache tokens, the limit figures (5 hours and 7 days, with reset times) and the name of the account folder, separated by tabs.
 2. `label-tabs.py` reads the Claude Code session registry (`~/.claude/sessions/`) and those files. It renames each tab to `[session name] title`, with `!` for a waiting session and `?` for a busy session whose transcript was quiet for 20 minutes.
 3. `label-tabs.py` writes the session data into the workspace description: `<folder> | @week: 36% | api-3f: Fable 5.2 high · ctx 42% · $12.34`.
    For each Claude Code session it also adds the subagents that Claude Code recorded on disk: `sub 2/7: Explore repo; Review diff` means 2 run now, 7 in all.
@@ -281,6 +294,9 @@ Facts that follow from this design:
 - The hive page gets its first data in the link, after `#`. After that it reads `hive-data.js`, a file that `label-tabs.py` writes next to the page every 15 seconds (mode 600; it holds your session titles). The page loads nothing from the network. Only Claude Code sessions update; other tools keep the state of the first picture. Without a fresh file the page says "Fixed picture".
 - The panel saves your view (chip, sort, scope, ended rows, folds) in a description part, `@view: ...`, on a click. `label-tabs.py` keeps that part, so the view returns after a panel reload.
 - `label-tabs.py` deletes files in `~/.cache/cmux-agents` that are older than 14 days.
+- The account of a session comes from its data folder: the status line passes the folder name for Claude Code, and `label-tabs.py` reads the variable `CODEX_HOME` of a Codex tab. The accounts file maps the folder to a name. A Claude Code row gets its account after the first reply of the session.
+- The limit warning is a `cmux notify` call from `label-tabs.py`: one per limit window at 80% or more. A window that drops below 80% can warn again.
+- A limit line stays empty until the tool sent a figure. Claude Code sends none before the first reply of a session, and it can send a week figure without a 5-hour figure.
 - The `Limits` view reads local files only: the Claude Code status line data, and the `rate_limits` record in the newest Codex session file (`~/.codex/sessions`). It reads no login token and calls no network. A figure is as old as the tool's last reply, so each line shows its age. A tool that is installed and leaves no limit data shows "no limit data on this Mac"; this is the case for OpenCode, Grok Build and Antigravity today. The Claude Code lines need the status line of this repository.
 - A click on a session in the hive page goes to its tab. A web page cannot call cmux, so the page puts the request in its tab title for 5 seconds (`go:<workspace id>:<tab id>:<time>`), and the panel, which gets tab titles from cmux, focuses that tab. The panel must be open. It accepts only ids of tabs that it knows and a request younger than 20 seconds, and a request can do nothing but change the focus.
 - The hive page shows subagents under their session. It uses what cmux reports; when cmux reports none, it uses the Claude Code records: the running ones by name, the finished ones as a count. A subagent counts as running while its record is not finished and its transcript got a line in the last 15 minutes.
@@ -297,7 +313,8 @@ Without a watcher the strip shows only the `week` line.
 ## Privacy and safety
 
 - Everything stays on your Mac. No script calls the network.
-- `label-tabs.py` reads the environment of your own agent processes to find one value, `CMUX_SURFACE_ID`. It keeps nothing else from it.
+- `label-tabs.py` reads the environment of your own agent processes to find two values, `CMUX_SURFACE_ID` and `CODEX_HOME`. It keeps nothing else from it.
+- The only message that the kit sends is a local cmux notification for a limit warning.
 - `~/.cache/cmux-agents` is created with mode 700.
 - The panel writes to the clipboard only from a menu item that you click.
 - The panel builds no shell command. A strip menu copies the text of its line and nothing else.
@@ -325,6 +342,9 @@ Tab labels stay until you rename the tabs or close them.
 - The "Next waiting agent" entry was tested with sample data only. Its palette entry opens a tab to run the script.
 - The saved view was tested for the restore; the save on a click was not observed.
 - The session cost is a running total. The panel shows no cost per day.
+- The wrong-account mark, the limit warning and the Codex account tag were tested with sample data and stub commands, not on live sessions.
+- OpenCode, Grok Build and Antigravity leave no limit figure in their local files, as far as their table and key names show. OpenCode keeps a cost per session; the panel does not show it yet.
+- The panel cannot start a new session. No documented cmux call for that was found.
 
 ## License
 

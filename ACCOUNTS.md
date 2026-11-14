@@ -44,7 +44,8 @@ the part "Several accounts" in the [README](README.md). The names here (`persona
    cdx work login
    ```
 4. Check: start a session (`cla work`), send one message, type `/status`. The status line starts with the
-   account name, and the panel row reads `claude · work`.
+   account name, and the panel row reads `claude · work`. The limit line of that account in `Limits` fills
+   after this first reply, not before.
 
 For Codex or OpenCode, use `codex` or `opencode` in place of `claude` in steps 1 and 2.
 
@@ -121,6 +122,23 @@ data.
 folder, with no spaces. A bad line is skipped and reported by its number: run
 `python3 ~/.config/cmux/scripts/label-tabs.py --next-waiting` in a terminal to see such messages.
 
+## What the panel shows per account
+
+| Where | What |
+|---|---|
+| Row tag | `claude · work`, in the colour of the account. A session on the primary account shows the tool only |
+| Row details (`›`) | `account work`, or `account personal (primary)`. On a wrong account also a `rule` line with the account that the folder rule names |
+| Account chips | One chip per account with its row count, when sessions run on two accounts or more |
+| Search | The account name matches, in every workspace |
+| `≠ work` | The folder rule names `work`, and the session runs on another account |
+| `Limits` | One limit line per tool and account, and the summed cost of the open Claude Code sessions per account |
+| Notification | One warning when a limit window of an account passes 80% |
+| Hive page | The account name on each session box, in its colour |
+| Status line | The account name first, in its colour, on an extra account |
+
+The colour comes from the name, out of six colours. Two names can get the same colour; a rename is the
+only way to change it.
+
 ## What is shared, what is separate
 
 | | Shared through links | Separate for each account |
@@ -145,6 +163,11 @@ not read personal notes.
 | `Limits` shows "no limit data" for an account | No reply yet on that account, or its plan sends no figure | Send one message on that account |
 | Hooks do not run on one account | Its `settings.json` or `hooks` link is missing | Run the add script and read the table |
 | `--resume` opens another account | A session id belongs to the account that made it | Start with that account: `cla <account> --resume` |
+
+## Remove the kit
+
+`bash uninstall.sh` in the repo folder shows the plan; `bash uninstall.sh --yes` deletes the panel, the
+scripts and the cache. It keeps the accounts file, every account folder and every login.
 
 ## Safety
 
