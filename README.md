@@ -114,9 +114,9 @@ A row shows at most 2 pills. Their order of priority is: `≠`, a PR that needs 
 | View | The picture | The question it answers | Data |
 |------|-------------|-------------------------|------|
 | Hive | A tree: workspace → session → subagent | What runs where? | Live |
-| Timeline | One lane per session; a block per state: blue works, orange waited for you, pale green idle. Ranges: 1h, 6h, 24h, 7d | How long did each agent work, and how long did it wait for me? | History |
-| Cost | Nested boxes: one column per workspace, one box per session. The area is the cost, the colour is the model | Where does the money go? | Live |
-| Limits | One chart per limit window: the readings, then a dashed line to the reset. Red when the line reaches 100% before the reset | Will I hit a limit before it resets? | History |
+| Timeline | One lane per session; a block per state: blue works, orange waited for you, pale green idle. Ranges: auto (fits the history that exists), 1h, 6h, 24h, 7d | How long did each agent work, and how long did it wait for me? | History |
+| Cost | A map: one column per workspace, one box per session; the area is the cost, the tint is the model. Below it, a ranked list of the sessions | Where does the money go? | Live |
+| Limits | One card per limit window: the share in big figures, a verdict (`about 81% at the reset` or `100% Sat 19:57`), the readings, then a dashed line to the reset. A red card reaches 100% before the reset | Will I hit a limit before it resets? | History |
 | Queue | One bar per waiting session; the longest wait is first. Orange asks you, pale green ended its turn | Who waits for me longest? | Live and history |
 | Context | One gauge per session, fullest first, with the number of compactions (`⟳`) | Which session must I compact or restart? | Live |
 | Rhythm | A grid of hours × the last 7 days; darker = more agent work | When do my agents work? | History |
@@ -131,6 +131,7 @@ A row shows at most 2 pills. Their order of priority is: `≠`, a PR that needs 
 
 The pictures are renders of `scripts/hive.html` with sample data. More: `examples/view-queue.png`, `examples/view-rhythm.png`.
 
+- Each view starts with its main figures in big type, for example the time the agents worked and the time sessions waited for you.
 - "History" views fill while the watcher runs. On the first day they hold little.
 - The history covers Claude Code sessions. Other tools publish no session state.
 - A gap in a lane is a time when the watcher did not run (the Mac slept, or the watcher was stopped).
