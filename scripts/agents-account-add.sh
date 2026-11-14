@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Adds one account folder for a coding-agent tool and its line in ~/.config/cmux/agents-accounts.
 #   agents-account-add.sh <claude|codex|opencode> <name> [--dry-run]
-# For Claude Code it links the shared setup (settings, instructions, hooks, skills ...) from ~/.claude,
-# so both accounts follow the same rules. It links no session data, no project memory and no login data,
+# For Claude Code and Codex it links the shared setup (settings, instructions, hooks, skills ...) from the
+# tool's normal folder, so every account follows the same rules. It links no session data, no project memory and no login data,
 # and it reads none of them. You log in yourself with the command that it prints.
 set -u
 die() { echo "agents-account-add: $*" >&2; exit 2; }
@@ -57,12 +57,13 @@ fi
 ) || exit 2
 echo "Account $tool/$name: folder $shown"
 
-if [ "$tool" = claude ]; then
-  echo "Shared setup from ~/.claude:"
-  # A fixed list. Session data, project memory, history and login data are never on it.
-  for item in settings.json CLAUDE.md hooks rules skills agents commands output-styles plugins statusline-command.sh; do
-    src="$HOME/.claude/$item"; dst="$dir/$item"
-    if [ ! -e "$src" ]; then state="not in ~/.claude, skipped"
+# Fixed lists of setup files. Login data, sessions, memory, history and databases are never on them.
+link_shared() {
+  local base="$1" item src dst state; shift
+  echo "Shared setup from ~/$base:"
+  for item in "$@"; do
+    src="$HOME/$base/$item"; dst="$dir/$item"
+    if [ ! -e "$src" ]; then state="not in ~/$base, skipped"
     elif [ -L "$dst" ] && [ "$(readlink "$dst")" = "$src" ]; then state="linked"
     elif [ -L "$dst" ]; then state="a link to another place, left as it is"
     elif [ -e "$dst" ]; then state="a real file of this account, left as it is"
@@ -72,11 +73,15 @@ if [ "$tool" = claude ]; then
     fi
     printf '  %-24s %s\n' "$item" "$state"
   done
+}
+if [ "$tool" = claude ]; then
+  link_shared .claude settings.json CLAUDE.md hooks rules skills agents commands output-styles plugins \
+    statusline-command.sh workflows keybindings.json teams
   echo "Separate for this account: the login, sessions and /resume, project memory, history."
   login="claude auth login"
 elif [ "$tool" = codex ]; then
-  echo "Nothing is linked for Codex. The new folder starts without your config.toml, AGENTS.md and hooks.json from ~/.codex."
-  echo "Copy or link the ones that you want by hand."
+  link_shared .codex config.toml AGENTS.md instructions.md hooks.json rules skills agents plugins keybindings.json
+  echo "Separate for this account: the login, sessions, memories, history."
   login="codex login"
 else
   echo "Nothing is linked for OpenCode. Its settings stay shared in ~/.config/opencode; the login and the sessions are separate."

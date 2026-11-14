@@ -221,7 +221,15 @@ It gives short commands:
 | `cdx work` | Codex with the account `work`, for this start only |
 | `accounts` | Prints the account list and the account that the current folder gets |
 
-What a Claude Code account folder shares: `agents-account-add.sh` links `settings.json`, `CLAUDE.md`, `hooks`, `rules`, `skills`, `agents`, `commands`, `output-styles`, `plugins` and `statusline-command.sh` from `~/.claude`, when they exist there. It never replaces a real file in the account folder. Separate for each account: the login, the sessions, project memory and history. For Codex and OpenCode the script links nothing; a new Codex folder starts without your `config.toml`, `AGENTS.md` and `hooks.json`.
+What an account folder shares: `agents-account-add.sh` links a fixed list of setup files from the tool's normal folder, when they exist there. It never replaces a real file in the account folder. Run it again for an existing account to add links that a newer version of the list holds.
+
+| Tool | Linked | Separate for each account |
+|---|---|---|
+| Claude Code | `settings.json`, `CLAUDE.md`, `hooks`, `rules`, `skills`, `agents`, `commands`, `output-styles`, `plugins`, `statusline-command.sh`, `workflows`, `keybindings.json`, `teams` | The login, sessions and `/resume`, project memory, history, MCP servers added at user level |
+| Codex | `config.toml`, `AGENTS.md`, `instructions.md`, `hooks.json`, `rules`, `skills`, `agents`, `plugins`, `keybindings.json` | The login, sessions, memories, history |
+| OpenCode | nothing; its settings stay in `~/.config/opencode` | The login and the sessions |
+
+A tool that saves a linked file by replacing it turns the link into a real file of that account. Run the script again to see the state of each link.
 
 Limits to know:
 
