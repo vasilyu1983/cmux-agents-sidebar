@@ -821,7 +821,7 @@ sidebar(() =>
 
     VStack({ spacing: 3 }, [ForEach({ items: strip, key: (s) => s.key }, (s) => stripRow(s))]),
     // The Limits view takes the place of the session list.
-    VStack({ spacing: 5 }, [ForEach({ items: () => (showLimits() ? limits() : []), key: (s) => s.key }, (s) => stripRow(s, limits().some((x) => x.acct) ? 108 : 58))]),
+    VStack({ spacing: 5 }, [ForEach({ items: () => (showLimits() ? limits() : []), key: (s) => s.key }, (s) => stripRow(s, limits().some((x) => x.acct) ? 150 : 58))]),
 
     TextField("", {
       placeholder: "Search agents",
@@ -841,7 +841,7 @@ sidebar(() =>
       }
     )]),
 
-    Text(() => (entries().length === 0
+    Text(() => (entries().length === 0 && !showLimits()
       ? (query().trim()
         ? "No matches."
         : "No agents yet. Sessions started in cmux terminals show up here with live status.")
