@@ -9,6 +9,17 @@ It is made for people who run many agent sessions at the same time: Claude Code,
 
 A drawing of a cmux window with the panel, with sample names.
 
+The panel opens a page of eight views of the same sessions. Four of them:
+
+| | |
+|---|---|
+| [![Timeline view](examples/view-timeline.png)](#the-views-page) | [![Cost view](examples/view-cost.png)](#the-views-page) |
+| **Timeline**: who worked, who waited for you, and when | **Cost**: where the money goes, by workspace, session and hour |
+| [![Flow view](examples/view-flow.png)](#the-views-page) | [![Limits view](examples/view-limits.png)](#the-views-page) |
+| **Flow**: cost from account to workspace to model | **Limits**: will a limit window reach 100% before its reset? |
+
+All pictures in this file are renders with sample names and sample figures.
+
 ## What you get
 
 | Part | What it shows |
@@ -132,7 +143,11 @@ A row shows at most 2 pills. Their order of priority is: `≠`, a PR that needs 
 
 ![Context view: one gauge per session, each with a line of the share over the last 6 hours](examples/view-context.png)
 
-The pictures are renders of `scripts/hive.html` with sample data. More: `examples/view-queue.png`, `examples/view-rhythm.png`.
+![Queue view: one bar per waiting session, then bars of how fast you answer](examples/view-queue.png)
+
+![Rhythm view: a grid of hours for the last 7 days, then a calendar of days with the agent work per day](examples/view-rhythm.png)
+
+The pictures are renders of `scripts/hive.html` with sample data.
 
 - Each view starts with its main figures in big type, for example the time the agents worked and the time sessions waited for you.
 - "History" views fill while the watcher runs. On the first day they hold little.
