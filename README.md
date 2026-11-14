@@ -39,9 +39,9 @@ The pictures use sample names. The panel picture is a drawing of the layout; it 
 
 ![Render of the hive page: workspaces, their sessions, and subagents, with a blue box on the open tab](examples/hive.png)
 
-The `Limits` view with two accounts per tool: one line per tool, account and window, red from 80%. A drawing with sample names, made from `examples/limits.html`.
+The `Limits` view with several accounts: one line per tool and account, red from 80%. A drawing with sample names, made from `examples/limits.html`.
 
-<img src="examples/limits.png" alt="Drawing of the Limits view: rate limits of Claude and Codex for a personal and a work account, with reset times and the age of each figure" width="420">
+<img src="examples/limits.png" alt="Drawing of the Limits view: one rate limit line per tool and account (personal, work, client), with reset times and the age of each figure" width="420">
 
 A tab title, as `label-tabs.py` writes it:
 
