@@ -122,13 +122,15 @@ A row shows at most 2 pills. Their order of priority is: `≠`, a PR that needs 
 | Context | One gauge per session, fullest first, with the number of compactions (`⟳`). `–` = not known: after a compaction or a resume Claude Code gives no figure until the next reply. The line under a gauge is the share over the last 6 hours: it falls at a compaction; the dotted line is 80% | Which session must I compact or restart? | Live and history |
 | Rhythm | A grid of hours × the last 7 days, then a calendar of days (a week per row, up to 5 weeks); darker = more agent work | When do my agents work? | History |
 
-![Timeline view: one lane per session with blue, orange and pale green blocks, and the worked and waited times at the right](examples/view-timeline.png)
+![Timeline view: a strip with the number of agents at work, then one lane per session with blue, orange and pale green blocks, marks for compactions, and the worked and waited times at the right](examples/view-timeline.png)
 
 ![Limits view: one chart per limit window with the readings and a dashed forecast line](examples/view-limits.png)
 
-![Cost view: one column per workspace, one box per session, coloured by model](examples/view-cost.png)
+![Cost view: one column per workspace, one box per session, coloured by model, then a ranked list and bars of cost per hour](examples/view-cost.png)
 
-![Context view: one gauge per session](examples/view-context.png)
+![Flow view: bands of cost from account to workspace to model](examples/view-flow.png)
+
+![Context view: one gauge per session, each with a line of the share over the last 6 hours](examples/view-context.png)
 
 The pictures are renders of `scripts/hive.html` with sample data. More: `examples/view-queue.png`, `examples/view-rhythm.png`.
 
@@ -418,7 +420,7 @@ Without a watcher of your own the strip shows only the limit lines, one per tool
 - From the same transcript `label-tabs.py` takes the title of the session (the one you set with `/rename`, else the one the tool gave it), cut to 48 characters. It goes into the workspace description and into `~/.cache/cmux-agents/<session id>.seen`, and the panel shows it on a tab with no title of its own.
 - The start of your last request (60 characters) also goes into the workspace description.
 - For a tab that runs Codex, OpenCode, Grok or Antigravity, `label-tabs.py` asks cmux for the last 30 lines on screen (`cmux read-screen`). It tests them for two fixed interface lines and keeps one word: `working`, `asks` or `idle`. No screen text is stored or shown.
-- `label-tabs.py` keeps a history file, `~/.config/cmux/scripts/history-data.js`, for the views page. Every 15 seconds it records, per live Claude Code session: the session id, the session name (the one you gave it, else the short one of the tool, at most 60 characters), the workspace name, the state (working, needs input, idle) with start and end times, the model, the context share, the cost and the account name. It also records each limit figure with its time; a sample of the context share and the cost per session (one per minute at most, when a figure changed); the time of each compaction and of each cold prompt cache; and per subagent of a live session its agent type (for example `Explore`) with the start and end time, taken from the file times of its transcript. It holds no request text and no reply text. It keeps 30 days, is readable by you only (mode 600), and never leaves your Mac. `uninstall.sh` removes it.
+- `label-tabs.py` keeps a history file, `~/.config/cmux/scripts/history-data.js`, for the views page. Every 15 seconds it records, per live Claude Code session: the session id, the session name (the one you gave it, else the short one of the tool, at most 60 characters), the workspace name, the state (working, needs input, idle) with start and end times, the model, the context share, the cost and the account name. It also records each limit figure with its time; a sample of the context share and the cost per session (one per minute at most, when a figure changed, kept for one day); the time of each compaction and of each cold prompt cache; and per subagent of a live session its agent type (for example `Explore`) with the start and end time, taken from the file times of its transcript. It holds no request text and no reply text. It keeps 30 days, is readable by you only (mode 600), and never leaves your Mac. `uninstall.sh` removes it.
 - The views page stores two words in the browser's local storage of its cmux tab: the last view and the last time range.
 - `~/.cache/cmux-agents` is created with mode 700.
 - The panel writes to the clipboard only from a menu item that you click.

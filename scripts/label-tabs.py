@@ -424,6 +424,7 @@ def write_hive(tree, live, titles):
 
 HISTORY_SECONDS = 30 * 86400  # the Rhythm view shows a month of days; the other views show one week at most
 HISTORY_SAMPLE = 60  # seconds between two context and cost samples of one session
+HISTORY_SAMPLE_SECONDS = 86400  # the views draw the samples of the last 12 hours at most
 HISTORY_GAP = 60  # a longer silence of the watcher (sleep, a stopped watcher) ends a block of the timeline
 HISTORY_BLOCKS = 20000
 HISTORY_STATES = ("working", "needs_input", "idle")
@@ -435,6 +436,8 @@ def subagent_runs(sids):
     runs = []
     for home, _account in homes("claude", "~/.claude"):
         for sid in sids:
+            if not re.fullmatch(SESSION_ID, str(sid)):
+                continue
             for meta in glob.glob(os.path.join(home, "projects", "*", sid, "subagents", "*.meta.json")):
                 try:
                     with open(meta) as fh:
@@ -469,7 +472,8 @@ def history_step(old, rows, readings, now, runs=()):
             last[block[0]] = block
     sessions = {sid: info for sid, info in (old.get("s") or {}).items() if sid in last and isinstance(info, dict)}
     keep = now - HISTORY_SECONDS
-    samples = [p for p in old.get("p", []) if isinstance(p, list) and len(p) == 4 and isinstance(p[1], (int, float)) and p[1] >= keep]
+    samples = [p for p in old.get("p", []) if isinstance(p, list) and len(p) == 4 and isinstance(p[1], (int, float))
+               and p[1] >= now - HISTORY_SAMPLE_SECONDS]
     events = [e for e in old.get("e", []) if isinstance(e, list) and len(e) == 3 and isinstance(e[2], (int, float)) and e[2] >= keep]
     newest = {p[0]: p for p in samples}  # session id -> its newest sample
     for sid, name, space, state, model, ctx, cost, account, *marks in rows:
@@ -503,11 +507,11 @@ def history_step(old, rows, readings, now, runs=()):
             last[sid] = block
         sessions[sid] = {"n": str(name)[:60], "w": str(space)[:60], "m": str(model)[:40], "x": ctx, "c": str(cost)[:16],
                          "u": str(account)[:16], "q": count, "k": cold}
-    # A subagent run is known by its session and start; a newer pass brings its newer end.
-    known = {}
-    for run_ in list(old.get("g", [])) + [list(r) for r in runs]:
-        if isinstance(run_, list) and len(run_) == 4 and isinstance(run_[2], (int, float)) and isinstance(run_[3], (int, float)) and run_[3] >= keep:
-            known[(run_[0], run_[2])] = run_
+    # The runs of a session that this pass read replace its stored runs (two subagents can start in one second);
+    # the runs of the other sessions stay.
+    fresh = {r[0] for r in runs}
+    all_runs = [r for r in old.get("g", []) if isinstance(r, list) and len(r) == 4 and r[0] not in fresh] + [list(r) for r in runs]
+    all_runs = [r for r in all_runs if isinstance(r[2], (int, float)) and isinstance(r[3], (int, float)) and r[3] >= keep]
     seen = set()
     limits = []
     for item in list(old.get("l", [])) + [list(r) for r in readings]:
@@ -519,7 +523,7 @@ def history_step(old, rows, readings, now, runs=()):
         seen.add(key)
         limits.append(item)
     return {"t": int(now), "s": sessions, "b": blocks[-HISTORY_BLOCKS:], "l": limits[-5000:], "p": samples[-HISTORY_BLOCKS:],
-            "e": events[-2000:], "g": sorted(known.values(), key=lambda r: r[2])[-5000:]}
+            "e": events[-2000:], "g": sorted(all_runs, key=lambda r: r[2])[-5000:]}
 
 
 def write_history(rows):

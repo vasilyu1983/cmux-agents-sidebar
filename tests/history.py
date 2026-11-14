@@ -46,6 +46,8 @@ old = step({}, [row("idle")], [], T - 31 * 86400, [[SID, "Explore", T - 31 * 864
 h = step(old, [], [], T)
 check("a block older than 30 days goes, and its session, samples and subagent runs with it",
       h["b"] == [] and h["s"] == {} and h["p"] == [] and h["g"] == [])
+h = step(step({}, [row("idle")], [], T - 2 * 86400), [], [], T)
+check("a sample older than a day goes, its block stays", h["p"] == [] and len(h["b"]) == 1)
 check("a block of 8 days ago stays", len(step(step({}, [row("idle")], [], T - 8 * 86400), [], [], T)["b"]) == 1)
 
 check("an unknown state and a bad session id are left out",
@@ -93,6 +95,11 @@ check("a cache that goes cold gives one mark", h["e"][-1] == [SID, "cold", T + 4
 h = step({}, [row("working")], [], T, [[SID, "Explore", T - 50, T - 10]])
 h = step(h, [row("working")], [], T + 15, [[SID, "Explore", T - 50, T + 15], [SID, "Plan", T, T + 15]])
 check("a subagent run is kept once, with its newest end", h["g"] == [[SID, "Explore", T - 50, T + 15], [SID, "Plan", T, T + 15]])
+h = step(h, [row("working")], [], T + 30, [[SID, "Explore", T, T + 30], [SID, "Plan", T, T + 20]])
+check("two subagents that started in one second are both kept", len(h["g"]) == 2 and {r[1] for r in h["g"]} == {"Explore", "Plan"})
+OTHER = "99999999-2222-3333-4444-555555555555"
+h = step(h, [row("working", sid=OTHER)], [], T + 45, [[OTHER, "Explore", T + 40, T + 45]])
+check("the runs of a session that this pass did not read stay", len(h["g"]) == 3)
 
 many = {"b": [[SID, "idle", T - 10, T - 10]] * (watcher.HISTORY_BLOCKS + 50)}
 check("the number of blocks has a cap", len(step(many, [], [], T)["b"]) == watcher.HISTORY_BLOCKS)

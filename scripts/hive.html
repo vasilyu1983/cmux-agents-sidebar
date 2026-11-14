@@ -441,7 +441,8 @@ function drawTimeline(svg) {
   for (const r of hits.values()) {
     if (r[5] <= from || r[5] > now) continue;
     svg.appendChild(el("line", { x1: x(r[5]), x2: x(r[5]), y1: top0 + 4, y2: y - 4, style: "stroke:#FF6B61;stroke-width:1.2;stroke-dasharray:3 4" }));
-    svg.appendChild(el("text", { x: x(r[5]) + 5, y: top0 + 14, style: "font-size:10px;font-weight:600;fill:#FF6B61" }, (TOOL_NAMES[r[0]] || r[0]) + " " + r[1] + " limit at " + r[3] + "%"));
+    const late = x(r[5]) > LEFT + plot * 0.7;  // near the right edge the text goes to the left of the line
+    svg.appendChild(el("text", { x: x(r[5]) + (late ? -5 : 5), y: top0 + 14, "text-anchor": late ? "end" : "start", style: "font-size:10px;font-weight:600;fill:#FF6B61" }, (TOOL_NAMES[r[0]] || r[0]) + " " + r[1] + " limit at " + r[3] + "%"));
   }
   size(svg, W, y + 4);
   legendItems = [[STATUS.working[0], "working"], [STATUS.needs_input[0], "waited for you"], [STATUS.idle[0], "idle (thin line)"], ["#98989d", "empty = the watcher did not run"],
@@ -831,16 +832,16 @@ function drawRhythm(svg) {
     }
   }
   const flat = cells.flat(), max = Math.max(...flat), total = flat.reduce((p, q) => p + q, 0);
-  if (!max) {
+  if (!hist.b.some((b) => b[1] === "working" && b[3] > b[2])) {
     empty(svg, ["No working time in the history yet.", "This view fills over some days: it shows the hours in which your agents work."]);
     return "Rhythm: no data.";
   }
   const best = flat.indexOf(max), bestDay = new Date((day0 + Math.floor(best / 24) * 86400 + 43200) * 1000);
   const today = cells[DAYS - 1].reduce((p, q) => p + q, 0), active = cells.filter((row) => row.some(Boolean)).length;
   const top = tiles(svg, [[dur(total), "agent work, 7 days", STATUS.working[0]], [dur(today), "today", ""],
-    [two(best % 24) + ":00", "busiest hour, " + bestDay.toLocaleDateString(undefined, { weekday: "short" }) + " (" + dur(max) + ")", ""],
+    [max ? two(best % 24) + ":00" : "–", max ? "busiest hour, " + bestDay.toLocaleDateString(undefined, { weekday: "short" }) + " (" + dur(max) + ")" : "no work in the last 7 days", ""],
     [active + " of " + DAYS, "days with history", ""]]);
-  const W = pageWidth(), LEFT = 104, RIGHT = 84, CW = Math.min(46, (W - LEFT - RIGHT) / 24), row0 = cells.findIndex((row) => row.some(Boolean)),
+  const W = pageWidth(), LEFT = 104, RIGHT = 84, CW = Math.min(46, (W - LEFT - RIGHT) / 24), row0 = max ? cells.findIndex((row) => row.some(Boolean)) : DAYS - 1,
     CHH = DAYS - row0 <= 2 ? 60 : 34, TOP = top + 22, hourNow = new Date(now * 1000).getHours();
   size(svg, LEFT + 24 * CW + RIGHT, TOP + (DAYS - row0) * CHH + 8);
   for (let h = 0; h < 24; h += 2) svg.appendChild(el("text", { class: "sub", x: LEFT + h * CW + (CW - 4) / 2, y: top + 12, "text-anchor": "middle", style: "font-size:11px" }, two(h)));
@@ -896,7 +897,7 @@ function drawRhythm(svg) {
   size(svg, gridW, cy + weeks * DH + 6);
   legendItems = [["#0A84FF", "stronger blue = more agent work in that hour or day"], ["#98989d", "the outlined cells are the current hour and today"]];
   return "Agent work per hour for the last " + DAYS + " days, and per day for up to 5 weeks, Claude Code sessions. Two agents that work in one hour count twice."
-    + (row0 ? " The history started " + (DAYS - row0 === 1 ? "today" : (DAYS - row0) + " days ago") + ": earlier days are not shown." : "");
+    + (row0 && max ? " The history started " + (DAYS - row0 === 1 ? "today" : (DAYS - row0) + " days ago") + ": earlier days are not shown." : "");
 }
 
 // ---- The switch and the page loop ----
