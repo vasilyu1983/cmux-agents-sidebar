@@ -46,7 +46,7 @@ const apiDescription = [
   "api",
   "lead-1: opus · acct work · ctx 83% · $1.20 · waits permission · next you push the branch · comp 3 · ahead 2 · dup"
     + " · prompt fix the login test · screen asks",
-  "worker-2: sonnet · cold 5m · sub 2/7: Review diff; Lint",
+  "worker-2: sonnet · cold 5m · next the lead merges · sub 2/7: Review diff; Lint",
   "old-5: sonnet · ctx 12% · title Release notes",
   "@home: " + HOME,
   "@primary: personal",
@@ -277,16 +277,26 @@ check("the rows of a workspace sit inside its band; the top block and the view b
   must(margins.includes(12), "no row is indented under its band");
   must(margins.includes(0), "the top copy of the waiting row is indented");
 });
-check("a tool name alone makes no second line, and a system notice is not a request", () => {
+check("a tool has no pill of its own: a session with no known model names its tool in the model column", () => {
   must(withText((t) => t === "[solo-7]").length === 1, "the solo-7 row is missing");
-  must(withText((t) => t === "opencode").length === 0, "a lone tool pill shows");
+  const tool = withText((t) => t === "opencode");
+  must(tool.length === 1 && !tool[0].props.background && tool[0].props.weight === "medium", "solo-7 does not name its tool in the model column");
+  must(!reachable().some((n) => n.props.text === "claude" && n.props.background), "a plain tool pill shows");
   must(!rendered.includes("<task-notification"), "a system notice shows as a request");
 });
 check("a tab with no title of its own shows the title of its session; the request, model, context and cost are on the second line", () => {
   // old-5: the tab title is only the tool name. Its description carries "title Release notes".
   must(withText((t) => t === "Release notes").some((n) => n.props.font === 13 && n.props.color === META && n.props.layoutPriority === 2), "old-5 does not show its session title beside the name");
   must(withText((t) => t === "close the release notes").some((n) => n.props.font === 12 && n.props.color === META), "old-5 does not show its last request on the second line");
-  must(withText((t) => t === "sonnet · 12%").some((n) => n.props.fixedSize === true && n.props.font === 11), "old-5 does not end its second line with model and context");
+  // The end of the second line is three columns of fixed width, so the values line up down the list.
+  must(withText((t) => t === "sonnet").some((n) => n.props.font === 11 && n.props.weight === "medium" && n.props.color === META), "old-5 has no model column");
+  must(withText((t) => t === "12%").some((n) => n.props.font === 11 && n.props.color === META), "old-5 has no context column");
+  must(withText((t) => t === "$1.20").some((n) => n.props.font === 11 && n.props.color === "#D1D1D6"), "lead-1 has no cost column in the lighter colour");
+  // worker-2 does not work and has a next step: a bare "next" label stands before the text of its second line.
+  must(withText((t) => t === "next").some((n) => n.props.background === "clear" && n.props.color === "#D1D1D6"), "no bare next label on worker-2");
+  must(withText((t) => t.endsWith("the lead merges")).length >= 1, "worker-2 does not show its next step");
+  const widths = (w) => reachable().filter((n) => n.props.width === w).length;
+  must(widths(46) >= 6 && widths(46) === widths(30) && widths(30) === widths(54), "the three columns are not on every row");
   must(withText((t) => t === "claude").some((n) => n.props.fixedSize === true && n.props.font === 11), "the strip line of the limit is not labelled claude");
   must(withText((t) => t === "week").length === 0, "the strip still has a line labelled week");
 });

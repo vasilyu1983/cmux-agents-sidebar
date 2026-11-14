@@ -291,8 +291,8 @@ function pillsOf(a, sess, w) {
   plain("cold", sess.look === "idle" ? String(sess.cold ?? "").replace(/^cold /, "❄") : "");
   if (!alert) plain("pr", sess.pr);
   const tool = String(a.kind ?? "") + (sess.acct ? " · " + sess.acct : "");
+  // The tool has a pill only with an account: the end of the second line names the model or the tool.
   if (sess.acct) add("tool", tool, acctColor(sess.acct));
-  else if (out.length) plain("tool", tool);  // alone, a tool name is no reason for a second line
   const tail = dirTail(a.directory).replace(/^lane-/, "");
   if (tail !== wsName) plain("dir", tail);
   return out;
@@ -405,11 +405,17 @@ const view = computed(() => {
         // A text that starts with "<" or "[SYSTEM" is a notice that the tool added, not a request of the user.
         prompt: [sess.prompt, tab?.latestPrompt].map((t) => String(t ?? "").replace(/\s+/g, " ").trim())
           .find((t) => t && !/^(<|\[SYSTEM)/.test(t))?.slice(0, 120) ?? "",
-        pills: cappedPills(pillsOf(a, sess, w)),
+        // After the pills, a bare "next" label when the text of the line is the next step and not the request.
+        pills: [...cappedPills(pillsOf(a, sess, w)),
+          ...(a.status !== "needs_input" && sess.look !== "working" && sess.next ? [{ id: "nextl", text: "next", color: TEXT2, bg: "clear" }] : [])],
         // The second line: why it waits; else what comes next for a session that does not work; else the request.
-        line2: (a.status === "needs_input" && sess.wait) || (sess.look !== "working" && sess.next ? "next: " + sess.next : ""),
-        // The end of the second line: model, context share and cost.
-        meta: [String(sess.model ?? "").split(" ")[0], sess.ctx >= 0 && sess.ctx < 80 ? sess.ctx + "%" : "", sess.cost ?? ""].filter(Boolean).join(" · "),
+        line2: (a.status === "needs_input" && sess.wait) || (sess.look !== "working" && sess.next) || "",
+        // The end of the second line, in three columns: the model (the tool when no model is known), the context
+        // share (yellow from 50%; from 80% it is a red pill, not a column value) and the cost.
+        model: String(sess.model ?? "").split(" ")[0] || String(a.kind ?? ""),
+        ctxText: sess.ctx >= 0 && sess.ctx < 80 ? sess.ctx + "%" : "",
+        ctxWarm: sess.ctx >= 50,
+        costText: sess.cost ?? "",
         stalled,
         cold: sess.look === "idle" ? String(sess.cold ?? "").replace(/^cold /, "❄") : "",
         folder: String(a.directory ?? ""),
@@ -1085,7 +1091,11 @@ function agentRow(entry) {
         .font(12).lineLimit(1).truncation("tail").layoutPriority(1)
         .color(() => (hot() ? ORANGE : entry().done ? PURPLE_TEXT : META)),
       Spacer(),
-      Text(() => entry().meta).font(11).monospaced().lineLimit(1).fixedSize().color(META),
+      // Three columns with fixed widths, so model, context and cost line up down the list.
+      cell(Text(() => entry().model).font(11).weight("medium").lineLimit(1).color(META), 46, "trailing"),
+      cell(Text(() => entry().ctxText).font(11).monospaced().lineLimit(1)
+        .color(() => (entry().ctxWarm ? "#FFD60A" : META)), 30, "trailing"),
+      cell(Text(() => entry().costText).font(11).monospaced().lineLimit(1).color(TEXT2), 54, "trailing"),
     ]).paddingLeading(UNDER_TITLE).frame({ minHeight: 16 }),
   ])]).paddingVertical(4));
 }
