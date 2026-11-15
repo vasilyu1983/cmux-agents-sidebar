@@ -323,18 +323,15 @@ check("a tab with no title of its own shows the title of its session; the reques
   must(withText((t) => t === "next").some((n) => n.props.background === "clear" && n.props.color === "#D1D1D6"), "no bare next label on worker-2");
   must(withText((t) => t.endsWith("the lead merges")).length >= 1, "worker-2 does not show its next step");
   const widths = (w) => reachable().filter((n) => n.props.width === w).length;
-  must(widths(27) >= 6 && widths(27) === widths(49) && widths(49) === widths(29), "the three number columns are not on every row");
+  must(widths(27) >= 6 && widths(27) === widths(49) && widths(29) === 0, "the two number columns are not on every row, or the token column is back");
   must(withText((t) => t === "claude").some((n) => n.props.fixedSize === true && n.props.font === 10), "the strip line of the limit is not labelled claude");
   must(withText((t) => t === "week").length === 0, "the strip still has a line labelled week");
 });
-check("the context tokens show beside the share in the same slate colour: 420K, 1.2M; none when unknown", () => {
-  must(withText((t) => t === "420K").some((n) => n.props.font === 10 && n.props.color === "#A9C0D4"), "old-5 has no slate 420K beside its share");
-  must(withText((t) => t === "1.2M").some((n) => n.props.color === "#A9C0D4"), "scout-4 has no 1.2M (one decimal from 1M)");
-  // A Codex row gets its share and tokens by tab id.
-  must(withText((t) => t === "37%").length >= 1 && withText((t) => t === "95K").length >= 1, "the Codex row of helper-6 has no 37% and 95K");
-  // Only the rows with a token field show a token figure.
+check("a row shows no token count: it is in the detail lines, so the next step has the width", () => {
+  // The token column took 34 pt of the second line; context share and cost stay on the row.
   const figures = withText((t) => /^\d+(\.\d)?[KM]$/.test(t)).map((n) => n.props.text);
-  must(figures.every((t) => ["420K", "1.2M", "95K"].includes(t)), "a token figure shows for a row that has none: " + JSON.stringify(figures));
+  must(figures.length === 0, "a token figure shows on a row: " + JSON.stringify(figures));
+  must(withText((t) => t === "12%").length >= 1 && withText((t) => t === "37%").length >= 1, "a context share left the rows");
 });
 check("the two parts of a title sit directly in the row and rank above the gap", () => {
   const name = withText((t) => t === "[lead-1]")[0];
@@ -348,8 +345,13 @@ check("render shows the waiting reason, context share and your-turn mark", () =>
 check("every session row has the same two lines, whatever its state", () => {
   // A row must not change its height when its state changes, or the list jumps under the pointer.
   const rows = reachable().filter((n) => n.props.cornerRadius === 10 && n.props.borderWidth === 1);
-  must(rows.length >= 6 && rows.every((n) => { const [rail, text] = n.children.map(node); return rail.props.minHeight === 42 && rail.props.opacity === 0.35 && text.props.paddingVertical === 4; }), "a session row has another form");
-  const seconds = reachable().filter((n) => n.props.minHeight === 16 && n.props.paddingLeading === 19);
+  must(rows.length >= 6 && rows.every((n) => {
+    // The left column is 13 pt wide: the group line (42 pt at least) with the status dot on it. Then the text.
+    const [gutter, text] = n.children.map(node);
+    const line = node(gutter.children[0]);
+    return gutter.props.width === 13 && line.props.minHeight === 42 && line.props.opacity === 0.35 && text.props.paddingVertical === 4;
+  }), "a session row has another form");
+  const seconds = rows.map((n) => node(node(n.children[1]).children[1])).filter((n) => n.props.minHeight === 16 && !n.props.paddingLeading);
   must(seconds.length === rows.length, "second lines: " + seconds.length + " for " + rows.length + " rows");
 });
 check("render shows the cold-cache mark of the idle session", () => mustContain(rendered, "❄5m"));
@@ -757,8 +759,13 @@ check("the detail lines name each health field in full; a bad value adds no line
 });
 check("rows keep their height and their columns with and without the new fields", () => {
   const rows = reachable().filter((n) => n.props.cornerRadius === 10 && n.props.borderWidth === 1);
-  must(rows.length === 9 && rows.every((n) => { const [rail, text] = n.children.map(node); return rail.props.minHeight === 42 && rail.props.opacity === 0.35 && text.props.paddingVertical === 4; }), "a session row has another form");
-  const seconds = reachable().filter((n) => n.props.minHeight === 16 && n.props.paddingLeading === 19);
+  must(rows.length === 9 && rows.every((n) => {
+    // The left column is 13 pt wide: the group line (42 pt at least) with the status dot on it. Then the text.
+    const [gutter, text] = n.children.map(node);
+    const line = node(gutter.children[0]);
+    return gutter.props.width === 13 && line.props.minHeight === 42 && line.props.opacity === 0.35 && text.props.paddingVertical === 4;
+  }), "a session row has another form");
+  const seconds = rows.map((n) => node(node(n.children[1]).children[1])).filter((n) => n.props.minHeight === 16 && !n.props.paddingLeading);
   must(seconds.length === rows.length, "second lines: " + seconds.length + " for " + rows.length + " rows");
   const widths = (w) => reachable().filter((n) => n.props.width === w).length;
   must(widths(27) === rows.length && widths(49) === rows.length, "the context and cost columns are not on every row");

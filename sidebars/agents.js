@@ -1162,6 +1162,7 @@ function bandRow(entry) {
 // A thin line in the workspace colour on the left of each row: the rows read as the inside of their group.
 // It is faint and takes the whole height of its row, so the lines of a group read as one rail and the status dot
 // beside it stays the strongest mark. "height" is the least height, for a row with little text.
+const DOT_RING = "#2B2B2B";
 const guide = (entry, height) =>
   Rectangle().fill(() => seen(entry().wsColor)).opacity(0.35).frame({ width: 2, minHeight: height, maxHeight: "infinity" });
 
@@ -1287,7 +1288,8 @@ const infoMark = (entry) =>
     .onTap(() => flip(openInfo, setOpenInfo, entry().rowId));
 
 // Child and detail lines start under the title of their row: past the 13 pt dot and its 6 pt gap.
-const UNDER_TITLE = 19;
+// A detail or subagent line starts under the title of its session: 2 line + 8 gap + 9 = the 13 pt column + 6.
+const UNDER_TITLE = 9;
 
 // One detail line under an agent row: a dim label and its value.
 function detailRow(entry) {
@@ -1316,9 +1318,18 @@ const haloDot = (entry) => {
   const halo = () => entry().look === "working" || entry().look === "needs_input" || entry().done;
   return ZStack({}, [
     Circle({ size: 13 }).fill(() => (halo() ? dotColor(entry()) + "33" : "clear")),
+    // A dark ring: the dot sits on the group line, and the ring keeps the two apart.
+    Circle({ size: 10 }).fill(DOT_RING),
     Circle({ size: 7 }).fill(() => dotColor(entry())),
   ]).frame({ width: 13, height: 13 });
 };
+// The left column of a session row, 13 pt wide: the group line runs down it and the status dot sits on the line at
+// the height of the title, as a node on a rail. One column for both marks: side by side they took 29 pt, here 19.
+const gutter = (entry) =>
+  ZStack({}, [
+    guide(entry, 42),
+    VStack({ spacing: 0 }, [haloDot(entry).paddingTop(5), Spacer()]),
+  ]).frame({ width: 13 });
 // "[name] rest": the name in bold, the rest dim, and the rest truncates first. The rest is left out when it only
 // names the tool.
 const titleParts = (entry) => {
@@ -1340,7 +1351,6 @@ const titleParts = (entry) => {
 const titleLine = (entry) => {
   const a = () => entry().agent;
   return HStack({ spacing: 6 }, [
-    haloDot(entry),
     // Both parts are plain texts of the row and rank above the gap, so a title is cut only when the row is full.
     // A text inside a wrapper (a ForEach, an inner HStack) is cut while the row still has space.
     Text(() => titleParts(entry).name)
@@ -1374,7 +1384,7 @@ const card = (entry, row) => row
 // the pills, then why it waits, what comes next or the request, and at the end model, context share and cost.
 function agentRow(entry) {
   const hot = () => entry().look === "needs_input" || entry().stalled;
-  return card(entry, HStack({ spacing: 8 }, [guide(entry, 42), VStack({ spacing: 4 }, [
+  return card(entry, HStack({ spacing: 6 }, [gutter(entry), VStack({ spacing: 4 }, [
     titleLine(entry),
     // The texts are plain parts of the line: a text inside a wrapper is cut while the line still has space.
     // No spacing of the line: an empty pill place would add a gap. Each part has its own 5 pt margin.
@@ -1385,14 +1395,13 @@ function agentRow(entry) {
         .color(() => (hot() ? ORANGE : entry().done ? PURPLE_TEXT : META))
         .marginLeading(() => (entry().pills.length ? 5 : 0)),
       Spacer().layoutPriority(-2),
-      // The model takes the width of its name, so the text before it gets the rest. Then three columns with
-      // fixed widths, so context, tokens and cost line up down the list.
+      // The model takes the width of its name, so the text before it gets the rest. Then two columns with
+      // fixed widths, so context and cost line up down the list. The token count is in the detail lines.
       Text(() => entry().model).font(10).monospaced().weight("medium").lineLimit(1).fixedSize().color(MODEL_INK).marginLeading(5),
       cell(Text(() => entry().ctxText).font(10).monospaced().lineLimit(1)
         .color(() => (entry().ctxWarm ? "#FFD60A" : CTX_INK)), 27, "trailing").marginLeading(5),
-      cell(Text(() => entry().tokText).font(10).monospaced().lineLimit(1).color(CTX_INK), 29, "trailing").marginLeading(5),
       cell(Text(() => entry().costText).font(10).monospaced().lineLimit(1).color(COST_INK), 49, "trailing").marginLeading(5),
-    ]).paddingLeading(UNDER_TITLE).frame({ minHeight: 16 }),
+    ]).frame({ minHeight: 16 }),
   ]).paddingVertical(4)]));
 }
 

@@ -117,7 +117,7 @@ From top to bottom of the picture. "You do" says what the mark asks of you.
 | Orange text | Why the session waits, or `quiet 20m+`: no output for 20 minutes | Open the tab and check |
 | `Opus` `Fable` `Sonnet` (lavender) | The model. A tool that reports no model shows its name (`codex`) | — |
 | `42%` (slate blue) | Share of the context window in use. Yellow from 50%; from 80% it becomes the red pill. A Codex row shows it too, when only one Codex tab uses that Codex folder | — |
-| `420K` (slate blue) | Tokens in the context at the last call, beside the share. `1.2M` from 1 million. Empty when unknown | — |
+| Token count | Tokens in the context at the last call (`420K`, `1.2M` from 1 million). Not on the row: it is in the `context` detail line, beside the share, so the next step has the width | Click `›` on the row |
 | `$31.20` (sand) | Cost estimate of the session so far | — |
 
 A row shows at most 2 pills. Their order of priority is: `≠`, a PR that needs you, `83%`, `→ you`, `↑2`, `dup`, `⟳`, `❄`, PR, account, folder.
