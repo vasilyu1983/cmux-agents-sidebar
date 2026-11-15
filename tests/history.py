@@ -388,9 +388,14 @@ os.makedirs(os.path.join(tools_home, ".mytool"))
 os.makedirs(os.path.join(tools_home, ".config", "cmux"))
 saved_home = os.environ.get("HOME")
 os.environ["HOME"] = tools_home
+real_found = watcher.commands_found
 try:
-    check("a built-in tool is listed when its folder exists, and one with no folder is not",
-          watcher.read_tools() == [("gemini", "gemini", "Gemini CLI")])
+    # The login shell is another process: here it "finds" every command but the one of the editor-only folder.
+    os.makedirs(os.path.join(tools_home, ".cursor"))
+    asked = []
+    watcher.commands_found = lambda commands: asked.append(sorted(commands)) or set(commands) - {"cursor-agent"}
+    check("a built-in tool is listed when its folder exists and its command is found; a folder alone is not enough",
+          watcher.read_tools() == [("gemini", "gemini", "Gemini CLI")] and asked == [["cursor-agent", "gemini"]])
     check("the description part names it as id=command=label", watcher.tools_part() == "@tools: gemini=gemini=Gemini CLI")
     bad_lines = ["tool a $(id) ~/.mytool Aaa", "tool b a;b ~/.mytool Bbb", "tool c ../x ~/.mytool Ccc", "tool d x y ~/.mytool Ddd",
                  "tool e ok ~/.mytool $(id)", "tool f ok /etc Fff", "tool g ok ~/../x Ggg", "tool claude ok ~/.mytool Claude",
@@ -405,7 +410,20 @@ try:
           found == [("gemini", "gem", "Gem Two"), ("mytool", "my-tool", "My Tool")])
     check("each bad user line is named by its number in one stderr line and its text is not echoed",
           err.getvalue().count("skipped") == len(bad_lines) and "$(id)" not in err.getvalue())
+    watcher.commands_found = real_found
+    saved_shell = os.environ.get("SHELL")
+    os.environ["SHELL"] = "/bin/sh"
+    try:
+        check("the shell is asked by name only: a real command is found, a missing one and an unsafe word are not",
+              real_found(["sh", "no-such-tool-zz", "$(id)"]) == {"sh"}
+              and os.stat(os.path.join(tools_home, ".cache", "cmux-agents", "tools-on-path")).st_mode & 0o777 == 0o600)
+    finally:
+        if saved_shell is None:
+            del os.environ["SHELL"]
+        else:
+            os.environ["SHELL"] = saved_shell
 finally:
+    watcher.commands_found = real_found
     if saved_home is None:
         del os.environ["HOME"]
     else:

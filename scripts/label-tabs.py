@@ -45,7 +45,7 @@ SURFACE_ENV = re.compile(r" CMUX_SURFACE_ID=([0-9A-Fa-f-]{36})(?: |$)")
 ACCOUNT_NAME = r"[a-z0-9-]{1,16}"
 ACCOUNT_TOOLS = ("claude", "codex", "opencode")
 # Other terminal coding agents for the start menu: (id, start command, data folder, label). A tool counts as present
-# when its folder exists; nothing is read from it. Each line comes from the tool's own docs or repo (command and
+# when its folder exists and your login shell finds its command (see commands_found); nothing is read from the folder. Each line comes from the tool's own docs or repo (command and
 # folder), checked on 2026-11-15. The command is one word, run by name through your login shell PATH.
 EXTRA_TOOLS = [
     # https://github.com/google-gemini/gemini-cli (start: "gemini"; settings in ~/.gemini/settings.json)
@@ -68,6 +68,9 @@ EXTRA_TOOLS = [
     ("goose", "goose", "~/.config/goose", "Goose"),
     # https://github.com/github/copilot-cli (start: "copilot"; user-level files in ~/.copilot)
     ("copilot", "copilot", "~/.copilot", "Copilot CLI"),
+    # https://cursor.com/docs/cli/reference/configuration (start: "cursor-agent"; ~/.cursor/cli-config.json; the Cursor
+    # editor makes ~/.cursor too, so the command check decides)
+    ("cursor", "cursor-agent", "~/.cursor", "Cursor Agent"),
 ]
 BUILT_IN_TOOLS = ("claude", "codex", "opencode", "grok", "agy")  # started by their own code; an extra tool may not reuse these ids
 TOOL_ID = r"[a-z][a-z0-9-]{0,11}"
@@ -168,12 +171,44 @@ def read_accounts():
             print(f"label-tabs: accounts file: line {number} skipped", file=sys.stderr)
 
 
+def commands_found(commands):
+    """The commands of this list that your login shell finds by name: the same shell and PATH that start a tool from
+    the menu. A folder alone is not proof (an editor of the same vendor, or a removed tool, leaves one). The shell
+    is asked at most once in 10 minutes; the answer is kept in ~/.cache/cmux-agents/tools-on-path."""
+    commands = sorted(c for c in set(commands) if re.fullmatch(TOOL_COMMAND, c))
+    if not commands:
+        return set()
+    cache = os.path.expanduser("~/.cache/cmux-agents/tools-on-path")
+    try:
+        with open(cache) as fh:
+            kept = json.load(fh)
+        if kept.get("asked") == commands and time.time() - kept.get("at", 0) < 600:
+            return set(kept.get("found", [])) & set(commands)
+    except (OSError, ValueError, AttributeError):
+        pass  # no answer kept yet, or an unreadable one: ask the shell
+    script = 'for c in "$@"; do command -v "$c" >/dev/null 2>&1 && echo "found:$c"; done'
+    try:
+        out = subprocess.run([os.environ.get("SHELL") or "/bin/zsh", "-lic", script, "sh", *commands], capture_output=True,
+                             text=True, timeout=10, stdin=subprocess.DEVNULL).stdout
+    except (OSError, subprocess.SubprocessError) as err:
+        print(f"label-tabs: the login shell did not answer which tools are installed: {err}", file=sys.stderr)
+        return set()
+    found = sorted({line[6:] for line in out.splitlines() if line.startswith("found:")} & set(commands))
+    try:
+        os.makedirs(os.path.dirname(cache), mode=0o700, exist_ok=True)
+        with open(os.open(cache, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w") as fh:
+            json.dump({"at": time.time(), "asked": commands, "found": found}, fh)
+    except OSError as err:
+        print(f"label-tabs: tools-on-path not kept: {err}", file=sys.stderr)
+    return set(found)
+
+
 def read_tools():
     """The extra tools of this Mac: EXTRA_TOOLS, then the lines of ~/.config/cmux/agents-tools. A line:
     "tool <id> <command> <folder> <Label words>", for example "tool mytool mytool ~/.mytool My Tool".
     Id: a-z, 0-9, "-", at most 12, a letter first. Command: one word of a-z, 0-9, "-" (at most 24), run by name
     through your login shell PATH, so no path and no arguments. Folder: starts with "~/" or "/" and resolves to a
-    place inside the home folder; the tool counts as present when it exists. Label: letters, digits, spaces, "."
+    place inside the home folder; the tool counts as present when it exists and the command is found. Label: letters, digits, spaces, "."
     and "-" (at most 20). A line with an id of the same name replaces the built-in entry; the ids of the five
     main tools are refused. A bad line is skipped and named by its number only. Returns [(id, command, label)]."""
     home = os.path.realpath(os.path.expanduser("~"))
@@ -200,7 +235,9 @@ def read_tools():
             wanted[words[1]] = (words[2], os.path.expanduser(words[3]), " ".join(words[4:]))
         else:
             print(f"label-tabs: tools file: line {number} skipped", file=sys.stderr)
-    return [(tool, command, label) for tool, (command, folder, label) in wanted.items() if os.path.isdir(folder)]
+    here = {tool: v for tool, v in wanted.items() if os.path.isdir(v[1])}
+    found = commands_found([command for command, _folder, _label in here.values()])
+    return [(tool, command, label) for tool, (command, _folder, label) in here.items() if command in found]
 
 
 def tools_part():
