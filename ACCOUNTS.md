@@ -133,7 +133,7 @@ folder, with no spaces. A bad line is skipped and reported by its number: run
 |---|---|
 | Row tag | `claude · work`, in the colour of the account. A session on the primary account shows the tool only |
 | Row details (`›`) | `account work`, or `account personal (primary)`. On a wrong account also a `rule` line with the account that the folder rule names |
-| Account chips | One chip per account with its row count, when sessions run on two accounts or more |
+| Account chips | One chip per account with its row count, when sessions run on two accounts or more. The name is neutral text with a dot in the colour of the account; the `Limits` headers carry the same dot. Chips that do not fit in one row go to a second row |
 | Search | The account name matches, in every workspace |
 | `≠ work` | The folder rule names `work`, and the session runs on another account |
 | `Limits` | `by account`: one group per account with its tools and its cost. `by tool`: one group per tool with its accounts, to see which account has room |

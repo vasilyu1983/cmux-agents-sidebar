@@ -996,12 +996,13 @@ function toggleButton(labelFn, activeFn, onTapFn, rank) {
     .onTap(onTapFn);
 }
 // One segment of the Here | All | Limits group. The selected one has the light fill and no hover.
-const segment = (label, activeFn, onTapFn) =>
+// "weak" is for a control under another selected segment: its fill is fainter, so the upper one reads as the parent.
+const segment = (label, activeFn, onTapFn, weak) =>
   Text(label).font(11).monospaced().weight("medium").lineLimit(1).fixedSize()
-    .paddingHorizontal(10).frame({ minHeight: 24 }).cornerRadius(6)
+    .paddingHorizontal(10).paddingVertical(5).frame({ minHeight: 24 }).cornerRadius(6)
     .color(() => (activeFn() ? "primary" : META))
     // No hover fill: a hover fill beside the selected one reads as two selections.
-    .background(() => (activeFn() ? "#FFFFFF2E" : "clear"))
+    .background(() => (activeFn() ? (weak ? "#FFFFFF14" : "#FFFFFF2E") : "clear"))
     .onTap(onTapFn);
 // A capsule chip: a label and its count.
 // With a colour, the label carries it (the colour of that state or account on the rows); the active chip is white on a tint of it.
@@ -1012,7 +1013,7 @@ const chip = (labelFn, countFn, activeFn, onTapFn, colorFn, dotFn) =>
     Text(labelFn).font(11).monospaced().weight("medium").lineLimit(1).fixedSize().color(() => (activeFn() ? "primary" : colorFn?.() ?? TEXT2)),
     ...(countFn ? [Text(countFn).font(10).monospaced().lineLimit(1).fixedSize().color(META)] : []),
   ])
-    .paddingHorizontal(10).frame({ minHeight: 24 }).cornerRadius(12)
+    .paddingHorizontal(10).paddingVertical(5).frame({ minHeight: 24 }).cornerRadius(12)
     .background(() => (activeFn() ? (colorFn?.() ? colorFn() + "40" : "#FFFFFF26") : "#FFFFFF0F"))
     .hoverBackground("#FFFFFF1A")
     .onTap(onTapFn);
@@ -1205,7 +1206,7 @@ const limitHead = (entry) =>
     Circle({ size: 6 }).fill(() => (entry().acct ? acctColor(entry().acct) : "clear")),
     Text(() => entry().label).font(11).monospaced().weight("semibold").color(TEXT2).lineLimit(1).truncation("tail"),
     Spacer(),
-  ]).paddingHorizontal(10).paddingTop(() => (entry().first ? 0 : 8));
+  ]).paddingHorizontal(10).paddingTop(() => (entry().first ? 0 : 12));
 function limitRow(entry) {
   if (entry().kind === "head") return limitHead(entry);
   const cells = entry().bar >= 0
@@ -1450,9 +1451,27 @@ const filterChip = (f) =>
     .help(() => f().help);
 const resetChip = () =>
   Text("✕ Reset").font(11).monospaced().weight("medium").lineLimit(1).fixedSize().color(ORANGE)
-    .paddingHorizontal(10).paddingVertical(4).cornerRadius(12)
+    .paddingHorizontal(10).paddingVertical(5).cornerRadius(12)
     .background("#FFFFFF0F").hoverBackground("#FFFFFF1A")
     .onTap(resetView);
+// cmux does not wrap a row, and a row wider than the sidebar cuts the panel at both edges. So the chips are packed
+// by an estimate of their width (11 pt monospaced, about 6.7 pt a character) into a first row of 280 pt at most,
+// the space of the narrowest sidebar (300 pt); the rest goes to a second row.
+const CHIP_ROW = 280;
+const chipW = (label, count, dot) => 24 + 6.7 * String(label).length + (count ? 4 + 6.1 * String(count).length : 0) + (dot ? 10 : 0);
+const packChips = (items, widthOf, reserved) => {
+  const rows = [[], []];
+  let used = reserved;
+  for (const it of items) {
+    const w = widthOf(it);
+    if (!rows[1].length && used + w <= CHIP_ROW) { rows[0].push(it); used += w; } else rows[1].push(it);
+  }
+  return rows;
+};
+const endedShown = () => counts().ended > 0 || showEnded();
+const chipRows = () => packChips(chipItems(), (f) => chipW(f.label, view().chips[f.id] ?? 0),
+  chipW("Here") + (endedShown() ? chipW("ended", counts().ended) : 0) + (viewChanged() ? chipW("✕ Reset") : 0));
+const acctRows = () => packChips(acctItems(), (a) => chipW(a.id, a.n, true), 0);
 // One chip per account, shown when the sessions run on two accounts or more (or while one is the filter).
 const acctItems = () => {
   const all = Object.entries(view().accts);
@@ -1509,8 +1528,8 @@ sidebar(() =>
 
     // Limits: per account (what one account uses and costs) or per tool (which account of a tool has room).
     optional("limits-group", limitsShown, () => HStack({ spacing: 0 }, [
-      segment("by account", () => !limitsByTool(), () => setLimitsByTool(false)),
-      segment("by tool", () => limitsByTool(), () => setLimitsByTool(true)),
+      segment("by account", () => !limitsByTool(), () => setLimitsByTool(false), true),
+      segment("by tool", () => limitsByTool(), () => setLimitsByTool(true), true),
       Spacer(),
     ]).paddingHorizontal(10)),
 
@@ -1518,16 +1537,27 @@ sidebar(() =>
     // chip shows all rows again. The chip "ended" adds the ended sessions to the list. Then the Reset chip.
     optional("chips", () => !limitsShown(), () => HStack({ spacing: 4 }, [
       chip("Here", null, () => !scopeAll(), () => setView({ s: !scopeAll() })).help("Only the open workspace"),
-      ForEach({ items: chipItems, key: (f) => f.id }, filterChip),
-      optional("ended", () => counts().ended > 0 || showEnded(), () =>
+      ForEach({ items: () => chipRows()[0], key: (f) => f.id }, filterChip),
+      optional("ended", endedShown, () =>
         chip("ended", () => String(counts().ended), () => showEnded(), () => setView({ e: !showEnded() }))
           .help("Show the ended sessions too")),
       Spacer(),
       optional("reset", viewChanged, resetChip),
     ]).paddingHorizontal(10)),
+    // The filter chips that did not fit in the first row.
+    optional("chips2", () => !limitsShown() && chipRows()[1].length, () => HStack({ spacing: 4 }, [
+      ForEach({ items: () => chipRows()[1], key: (f) => f.id }, filterChip),
+      Spacer(),
+    ]).paddingHorizontal(10)),
     // Row 3: one chip per account, with a dot in the colour of the account. A second click shows all again.
-    optional("accts", () => !limitsShown() && acctItems().length, () => HStack({ spacing: 4 }, [
-      ForEach({ items: acctItems, key: (a) => a.id },
+    optional("accts0", () => !limitsShown() && acctRows()[0].length, () => HStack({ spacing: 4 }, [
+      ForEach({ items: () => acctRows()[0], key: (a) => a.id },
+        (a) => chip(() => a().id, () => String(a().n), () => acctFilter() === a().id, () => setAcctFilter(acctFilter() === a().id ? "" : a().id),
+          null, () => acctColor(a().id)).help("Filter by account")),
+      Spacer(),
+    ]).paddingHorizontal(10)),
+    optional("accts1", () => !limitsShown() && acctRows()[1].length, () => HStack({ spacing: 4 }, [
+      ForEach({ items: () => acctRows()[1], key: (a) => a.id },
         (a) => chip(() => a().id, () => String(a().n), () => acctFilter() === a().id, () => setAcctFilter(acctFilter() === a().id ? "" : a().id),
           null, () => acctColor(a().id)).help("Filter by account")),
       Spacer(),

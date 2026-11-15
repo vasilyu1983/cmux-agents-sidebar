@@ -486,6 +486,24 @@ check("the sub badge opens the subagent rows, from cmux data and from the descri
   mustContain(after, "Explore repo");
   mustContain(after, "Review diff");
 });
+check("no chip row is wider than a 300 pt sidebar, by the estimate of the panel; the Limits grouping has the fainter fill", () => {
+  // cmux does not wrap a row: the panel packs the chips into rows of 280 pt at most, by 6.7 pt a character.
+  const chips = reachable().filter((n) => n.props.cornerRadius === 12);
+  must(chips.length >= 3, "fewer than 3 chips in the fixture");
+  const rows = new Map();
+  for (const c of chips) {
+    const texts = (c.children ?? []).map(node).filter((n) => typeof n.props.text === "string").map((n) => n.props.text);
+    const label = typeof c.props.text === "string" ? [c.props.text] : texts;
+    const w = 24 + 6.7 * label[0].length + (label[1] ? 4 + 6.1 * label[1].length : 0);
+    const row = parentOf(c.id).id;
+    rows.set(row, (rows.get(row) ?? 0) + w);
+  }
+  must([...rows.values()].every((w) => w <= 280), "a chip row is wider than 280: " + [...rows.values()].map(Math.round).join(", "));
+  tap(withText((t) => t === "Limits")[0]);
+  const sub = withText((t) => t === "by account")[0];
+  must(sub.props.background === "#FFFFFF14" && withText((t) => t === "Limits")[0].props.background === "#FFFFFF2E", "the Limits grouping is as strong as the view segment");
+  tap(withText((t) => t === "Limits")[0]);
+});
 check("the state button groups the rows into sections by state, and a second click restores the workspaces", () => {
   const btn = () => withText((t) => t === "By state")[0];
   must(btn(), "state button not found");
