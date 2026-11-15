@@ -30,7 +30,6 @@ const [showLimitsS, setShowLimitsS] = signal(null);
 const [scopeAllS, setScopeAllS] = signal(null);
 const [showEndedS, setShowEndedS] = signal(null);
 const [filterS, setFilterS] = signal(null);
-const [attentionS, setAttentionS] = signal(null);
 // Groups folded or opened since the reload (workspace id -> Bool) and sessions whose subagent rows are open (row id -> true).
 const [collapsedS, setCollapsedS] = signal({});
 const VIEW_RE = /^@view: ([a-z]=[a-z0-9]{1,12}(?:,[a-z]=[a-z0-9]{1,12}){0,7})$/;
@@ -75,7 +74,6 @@ const acctColor = (name) => {
 const flip = (get, set, id) => set({ ...get(), [id]: !get()[id] });
 // One filter chip at a time ("" = all rows), and the row order: tab order, or the sessions that need attention first.
 const filter = () => { const c = filterS() ?? saved().c; return FILTERS.some((f) => f[0] === c) ? c : ""; };
-const attention = () => attentionS() ?? saved().a;
 // Each chip is a short mark, so the row fits a narrow panel; the full name shows on hover.
 const FILTERS = [["needs", "!", "needs you"], ["done", "✓", "finished, not seen"], ["working", "▶", "working"], ["ctx", "80%", "context 80% or more"], ["pr", "PR", "has a PR"], ["idle", "1h+", "idle for 1 hour or more"], ["you", "you", "the next step is yours"], ["push", "push", "commits that no remote holds"]];
 // "Next: you push both repos": the next step is the reader's when the line starts with "you" or "owner".
@@ -106,14 +104,15 @@ function persist(next, wsId, fold) {
 }
 // One change of the view: c = chip, a = attention sort, s = all workspaces, e = ended rows, l = the Limits view.
 function setView(patch) {
-  const next = { c: filter(), a: attention(), s: scopeAll(), e: showEnded(), l: showLimits(), ...patch };
-  setFilterS(next.c); setAttentionS(next.a); setScopeAllS(next.s); setShowEndedS(next.e); setShowLimitsS(next.l);
+  // "a" was the attention sort; the panel has no such control now, and the saved view keeps the field as off.
+  const next = { c: filter(), a: false, s: scopeAll(), e: showEnded(), l: showLimits(), ...patch };
+  setFilterS(next.c); setScopeAllS(next.s); setShowEndedS(next.e); setShowLimitsS(next.l);
   persist(next, data.selectedId());
 }
 function toggleFold(wsId) {
   const fold = !collapsed()[wsId];
   setCollapsedS({ ...collapsedS(), [wsId]: fold });
-  persist({ c: filter(), a: attention(), s: scopeAll(), e: showEnded(), l: showLimits() }, wsId, fold);
+  persist({ c: filter(), a: false, s: scopeAll(), e: showEnded(), l: showLimits() }, wsId, fold);
 }
 
 // One agent record per tab: cmux can keep an older live record for the same tab. The record that waits or works
@@ -567,7 +566,7 @@ const view = computed(() => {
     if (rows.length === 0 && (query().trim() || filter() || acctFilter())) continue;
     // Same order as the tabs of the workspace; waiting sessions also show in the top block.
     // The "attention" toggle puts the sessions that need the owner first, and keeps tab order inside each rank.
-    rows.sort((x, y) => (attention() ? x.rank - y.rank : 0) || x.tabIndex - y.tabIndex);
+    rows.sort((x, y) => x.tabIndex - y.tabIndex);
     out.push({
       // An empty workspace is a thin line, not a band: the key carries the form, as for the rows.
       // The start menu is built with the row, so the key also carries its items.
@@ -999,19 +998,21 @@ function toggleButton(labelFn, activeFn, onTapFn, rank) {
 // One segment of the Here | All | Limits group. The selected one has the light fill and no hover.
 const segment = (label, activeFn, onTapFn) =>
   Text(label).font(11).monospaced().weight("medium").lineLimit(1).fixedSize()
-    .paddingHorizontal(10).paddingVertical(4).cornerRadius(6)
+    .paddingHorizontal(10).frame({ minHeight: 24 }).cornerRadius(6)
     .color(() => (activeFn() ? "primary" : META))
     // No hover fill: a hover fill beside the selected one reads as two selections.
     .background(() => (activeFn() ? "#FFFFFF2E" : "clear"))
     .onTap(onTapFn);
 // A capsule chip: a label and its count.
 // With a colour, the label carries it (the colour of that state or account on the rows); the active chip is white on a tint of it.
-const chip = (labelFn, countFn, activeFn, onTapFn, colorFn) =>
+// With a dot colour, a small dot comes first and the label stays neutral: a coloured label is a state, a dot an account.
+const chip = (labelFn, countFn, activeFn, onTapFn, colorFn, dotFn) =>
   HStack({ spacing: 4 }, [
+    ...(dotFn ? [Circle({ size: 6 }).fill(dotFn)] : []),
     Text(labelFn).font(11).monospaced().weight("medium").lineLimit(1).fixedSize().color(() => (activeFn() ? "primary" : colorFn?.() ?? TEXT2)),
-    Text(countFn).font(10).monospaced().lineLimit(1).fixedSize().color(META),
+    ...(countFn ? [Text(countFn).font(10).monospaced().lineLimit(1).fixedSize().color(META)] : []),
   ])
-    .paddingHorizontal(10).paddingVertical(4).cornerRadius(12)
+    .paddingHorizontal(10).frame({ minHeight: 24 }).cornerRadius(12)
     .background(() => (activeFn() ? (colorFn?.() ? colorFn() + "40" : "#FFFFFF26") : "#FFFFFF0F"))
     .hoverBackground("#FFFFFF1A")
     .onTap(onTapFn);
@@ -1199,9 +1200,10 @@ function stripRow(entry) {
 // the window, reset time and age. A line without a live window, and a cost line, shows its text after the tool column.
 // The account name of a group is a small muted header with space above it (no box, no rule).
 const limitHead = (entry) =>
-  HStack({ spacing: 0 }, [
-    // An account header carries the colour of that account, as its chip and its pills do.
-    Text(() => entry().label).font(10).monospaced().weight("semibold").color(() => (entry().acct ? acctColor(entry().acct) : META)).lineLimit(1).truncation("tail"),
+  HStack({ spacing: 5 }, [
+    // An account header has the dot of that account, as its chip has; the name stays neutral beside the bars.
+    Circle({ size: 6 }).fill(() => (entry().acct ? acctColor(entry().acct) : "clear")),
+    Text(() => entry().label).font(11).monospaced().weight("semibold").color(TEXT2).lineLimit(1).truncation("tail"),
     Spacer(),
   ]).paddingHorizontal(10).paddingTop(() => (entry().first ? 0 : 8));
 function limitRow(entry) {
@@ -1424,7 +1426,7 @@ function childRow(entry) {
 
 // The view differs from the default: a chip, an account, the attention sort, one workspace, ended rows, or the
 // view by state. The Reset chip shows then.
-const viewChanged = () => Boolean(filter() || acctFilter() || attention() || !scopeAll() || showEnded() || byState());
+const viewChanged = () => Boolean(filter() || acctFilter() || !scopeAll() || showEnded() || byState());
 // Back to the default view: no chip, no account, tab order, all workspaces, no ended rows, no view by state.
 // The search text stays.
 function resetView() {
@@ -1437,15 +1439,15 @@ function resetView() {
 // "needs" and "working" are the counts in the panel head; their chip shows only while it is the active filter.
 const HEAD_CHIPS = ["needs", "working"];
 const chipItems = () => FILTERS
-  .filter((f) => filter() === f[0] || (!HEAD_CHIPS.includes(f[0]) && (view().chips[f[0]] ?? 0) > 0))
+  .filter((f) => (view().chips[f[0]] ?? 0) > 0 && (filter() === f[0] || !HEAD_CHIPS.includes(f[0])))
   .map((f) => ({ id: f[0], label: f[1], help: f[2] }));
-// One colour per filter, the one that its state has on the rows: orange asks, purple finished, blue works, green idle.
-const CHIP_COLORS = { needs: ORANGE, you: ORANGE, push: ORANGE, done: PURPLE_TEXT, working: BLUE_TEXT, ctx: "#FFD60A", pr: "#64D2FF", idle: "#34C759" };
+// A filter has a colour only when its rows show that colour: orange asks, purple finished, blue works, red context
+// from 80%. The others (PR, push, idle, ended) are neutral, as their marks on the rows are.
+const CHIP_COLORS = { needs: ORANGE, you: ORANGE, done: PURPLE_TEXT, working: BLUE_TEXT, ctx: RED_TEXT };
 const filterChip = (f) =>
   chip(() => f().label, () => String(view().chips[f().id] ?? 0), () => filter() === f().id, () => setView({ c: filter() === f().id ? "" : f().id }),
     () => CHIP_COLORS[f().id])
-    .help(() => f().help)
-    .opacity(() => ((view().chips[f().id] ?? 0) === 0 && filter() !== f().id ? 0.45 : 1));
+    .help(() => f().help);
 const resetChip = () =>
   Text("✕ Reset").font(11).monospaced().weight("medium").lineLimit(1).fixedSize().color(ORANGE)
     .paddingHorizontal(10).paddingVertical(4).cornerRadius(12)
@@ -1492,11 +1494,12 @@ sidebar(() =>
       // No text: this view reads the tab titles, so it runs again when one changes, and serves the hive page's jumps.
       // It sits under the control row, so it adds no gap to a row.
       Text(() => hiveGo()).font(1),
-      // Row 1, what you look at: the sessions or the limits. The link at the right leaves the panel: it opens the
-      // views page in the browser (the hive tree, the timeline, cost, flow, limits, queue, context and rhythm).
+      // Row 1, what you look at: the sessions by workspace, the sessions by state, or the limits. The link at the
+      // right leaves the panel: it opens the views page in the browser (the hive tree, the timeline, cost, flow, ...).
       HStack({ spacing: 4 }, [
         HStack({ spacing: 0 }, [
-          segment("Sessions", () => !showLimits(), () => setView({ l: false })),
+          segment("Sessions", () => !showLimits() && !byState(), () => { setByState(false); setView({ l: false }); }),
+          segment("By state", () => !showLimits() && byState(), () => { setByState(true); setView({ l: false }); }),
           segment("Limits", () => showLimits(), () => setView({ l: !showLimits() })),  // a second click goes back to the sessions
         ]),
         Spacer(),
@@ -1504,17 +1507,6 @@ sidebar(() =>
       ]).paddingHorizontal(10),
     ]),
 
-    // Row 2, how it is arranged. A control with no effect in a view is not shown there.
-    // Sessions: this workspace or all, then the grouping by state and the attention sort.
-    optional("arrange", () => !limitsShown(), () => HStack({ spacing: 4 }, [
-      HStack({ spacing: 0 }, [
-        segment("Here", () => !scopeAll(), () => setView({ s: false })),
-        segment("All", () => scopeAll(), () => setView({ s: true })),
-      ]),
-      Spacer(),
-      toggleButton("by state", () => byState(), () => setByState(!byState()), 2),
-      toggleButton("attention first", () => attention(), () => setView({ a: !attention() }), 1),
-    ]).paddingHorizontal(10)),
     // Limits: per account (what one account uses and costs) or per tool (which account of a tool has room).
     optional("limits-group", limitsShown, () => HStack({ spacing: 0 }, [
       segment("by account", () => !limitsByTool(), () => setLimitsByTool(false)),
@@ -1522,26 +1514,26 @@ sidebar(() =>
       Spacer(),
     ]).paddingHorizontal(10)),
 
-    // Row 3, what is filtered (sessions only). A second click on the active chip shows all rows again. The chip
-    // "ended" adds the ended sessions to the list. Then the Reset chip.
-    optional("chips", () => !limitsShown() && (chipItems().length || viewChanged() || counts().ended > 0), () => HStack({ spacing: 4 }, [
+    // Row 2, what is filtered (sessions only). "Here" keeps the open workspace only. A second click on the active
+    // chip shows all rows again. The chip "ended" adds the ended sessions to the list. Then the Reset chip.
+    optional("chips", () => !limitsShown(), () => HStack({ spacing: 4 }, [
+      chip("Here", null, () => !scopeAll(), () => setView({ s: !scopeAll() })).help("Only the open workspace"),
       ForEach({ items: chipItems, key: (f) => f.id }, filterChip),
       optional("ended", () => counts().ended > 0 || showEnded(), () =>
-        chip("ended", () => String(counts().ended), () => showEnded(), () => setView({ e: !showEnded() }), () => META)
+        chip("ended", () => String(counts().ended), () => showEnded(), () => setView({ e: !showEnded() }))
           .help("Show the ended sessions too")),
       Spacer(),
       optional("reset", viewChanged, resetChip),
     ]).paddingHorizontal(10)),
-    // One chip per account, after the word "account". A second click shows all again.
+    // Row 3: one chip per account, with a dot in the colour of the account. A second click shows all again.
     optional("accts", () => !limitsShown() && acctItems().length, () => HStack({ spacing: 4 }, [
-      Text("account").font(10).monospaced().color(META).lineLimit(1).fixedSize(),
       ForEach({ items: acctItems, key: (a) => a.id },
         (a) => chip(() => a().id, () => String(a().n), () => acctFilter() === a().id, () => setAcctFilter(acctFilter() === a().id ? "" : a().id),
-          () => acctColor(a().id))),
+          null, () => acctColor(a().id)).help("Filter by account")),
       Spacer(),
     ]).paddingHorizontal(10)),
 
-    optional("strip", () => strip().length, () => VStack({ spacing: 2 }, [ForEach({ items: strip, key: (s) => s.key }, (s) => stripRow(s))])),
+    optional("strip", () => !limitsShown() && strip().length, () => VStack({ spacing: 2 }, [ForEach({ items: strip, key: (s) => s.key }, (s) => stripRow(s))])),
     // The Limits view takes the place of the session list.
     optional("limits", limitsShown, () => VStack({ spacing: 3 }, [ForEach({ items: limitRows, key: (s) => s.key }, (s) => limitRow(s))])),
 

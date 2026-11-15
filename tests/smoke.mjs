@@ -240,8 +240,8 @@ check("a narrow sidebar: pills, toggles and head counts can shrink, so the panel
   // the parts that are not in a fixed cell must not have one.
   const pills = reachable().filter((n) => n.props.cornerRadius === 4 && typeof n.props.text === "string");
   must(pills.some((n) => n.props.text) && pills.every((n) => n.props.fixedSize !== true), "a pill has a fixed size");
-  const toggles = withText((t) => ["attention first", "by state", "views ↗"].includes(t));
-  must(toggles.length === 3 && toggles.every((n) => n.props.fixedSize !== true), "a toggle of the control row has a fixed size");
+  const toggles = withText((t) => ["views ↗"].includes(t));
+  must(toggles.length === 1 && toggles.every((n) => n.props.fixedSize !== true), "a toggle of the control row has a fixed size");
   const counts = withText((t) => /^\d+ (need you|working|idle)$/.test(t));
   must(counts.length > 0 && counts.every((n) => n.props.fixedSize !== true), "a count of the panel head has a fixed size");
 });
@@ -392,10 +392,14 @@ check("the strip has one limit line per tool with a live window: percent, a 44 x
 });
 check("the panel head, control row, chips and search field have their new form", () => {
   must(!rendered.includes("showing:"), "the showing line is still there");
-  // Here | All | Limits is one segmented group; All is selected.
-  const all = withText((t) => t === "All")[0];
+  // Sessions | By state | Limits is one segmented group; Sessions is selected.
+  const all = withText((t) => t === "Sessions")[0];
   must(all.props.background === "#FFFFFF2E" && all.props.color === "primary", "the selected segment is not primary on #FFFFFF2E");
-  const here = withText((t) => t === "Here")[0];
+  const here = withText((t) => t === "By state")[0];
+  // The controls share one height, and "Here" is a chip of the filter row with no count: off means all workspaces.
+  must(all.props.minHeight === 24 && parentOf(withText((t) => t === "Here")[0].id).props.minHeight === 24, "a segment or a chip is not 24 tall");
+  must(parentOf(withText((t) => t === "Here")[0].id).children.length === 1, "the Here chip has a count");
+  must(withText((t) => t === "attention first" || t === "account").length === 0, "a removed control is still there");
   // An unselected segment is dim text with no fill at all, also on hover: one fill means one selection.
   must(here.props.color === META && !here.props.hoverBackground, "an unselected segment has a fill or is not dim");
   const group = parentOf(all.id);
@@ -483,7 +487,7 @@ check("the sub badge opens the subagent rows, from cmux data and from the descri
   mustContain(after, "Review diff");
 });
 check("the state button groups the rows into sections by state, and a second click restores the workspaces", () => {
-  const btn = () => withText((t) => t === "by state")[0];
+  const btn = () => withText((t) => t === "By state")[0];
   must(btn(), "state button not found");
   tap(btn());
   const grouped = textOf();
@@ -491,8 +495,8 @@ check("the state button groups the rows into sections by state, and a second cli
   mustContain(grouped, "RUNNING");
   // A row carries its workspace as a pill in this view (helper-6 in web).
   must(withText((t) => t === "web").some((n) => n.props.color === "#654321"), "no workspace pill on a row");
-  tap(btn());
-  must(!textOf().includes("RUNNING"), "the sections stayed after the second click");
+  tap(withText((t) => t === "Sessions")[0]);
+  must(!textOf().includes("RUNNING"), "the sections stayed after the click on Sessions");
 });
 check("a row carries its marks as pills: account, your-turn mark and compaction count", () => {
   const all = textOf();
@@ -585,7 +589,7 @@ check("the Limits view groups one account: its name once, the tool name once, th
   must(reachable().filter((n) => n.type === "capsule" && n.props.width === 60 && n.props.height === 5).length === 4, "not four 60 x 5 bars");
   // "tools" turns the same lines around: which account of a tool has room. The costs follow in their own group.
   // The Limits view shows only its own control: the controls of the session list are not there.
-  must(withText((t) => ["by state", "attention first", "Here", "All", "ended", "account"].includes(t)).length === 0, "a control of the session list shows in the Limits view");
+  must(withText((t) => ["Here", "ended", "train"].includes(t)).length === 0 && !reachable().some((n) => n.type === "textfield"), "a control of the session list shows in the Limits view");
   tap(withText((t) => t === "by tool")[0]);
   const texts = limitsTexts();
   const turned = texts.slice(texts.indexOf("Claude")).filter((t) => /^(personal|work|team-a|other|Claude|Codex|no data|cost|\$.* session.*|OpenCode, Grok|\d+%|5h · .*|week · .*)$/.test(t));
@@ -597,7 +601,7 @@ check("the Limits view groups one account: its name once, the tool name once, th
   ]), "the view per tool reads " + JSON.stringify(turned));
   tap(withText((t) => t === "by account")[0]);
   tap(withText((t) => t === "Limits")[0]);
-  must(withText((t) => t === "by state").length === 1 && withText((t) => t === "by tool").length === 0, "the controls of the session list did not come back");
+  must(withText((t) => t === "Here").length === 1 && withText((t) => t === "by tool").length === 0, "the controls of the session list did not come back");
 });
 check("the Limits view of one account with no accounts file has no header and still names a tool with no data", () => {
   ctx.__setData("workspaces", limitsFixture("claude,5h,30,21:20,1794650000;claude,week,10,Sun 10:00,1794650000;codex,,,,0;grok,,,,0"));
@@ -614,21 +618,21 @@ check("a head count filters the list, a second tap clears it; the idle count has
   tap(withText((t) => t === "1 need you")[0]);
   must(withText((t) => t === "!").some((n) => n.props.color === "primary"), "the needs chip does not show as the active filter");
   // A chip carries the colour of its state on the rows; the active one is white on a tint of that colour.
-  must(withText((t) => t === "PR").every((n) => n.props.color === "#64D2FF"), "the PR chip does not carry its colour");
+  must(withText((t) => t === "PR").every((n) => n.props.color === "#D1D1D6"), "the PR chip is not neutral, as the PR pill on a row is");
   must(withText((t) => t === "[worker-2]").length === 0, "an idle row shows under the needs filter");
   tap(withText((t) => t === "1 need you")[0]);
   must(withText((t) => t === "!").length === 0 && withText((t) => t === "[worker-2]").length === 1, "the second tap did not clear the filter");
 });
 check("the Reset chip restores the default view and turns the view by state off", () => {
-  tap(withText((t) => t === "by state")[0]);
-  tap(withText((t) => t === "Here")[0]);
+  tap(withText((t) => t === "By state")[0]);
+  tap(tapTarget(withText((t) => t === "Here")[0]));
   // Here shows the api workspace only: its finished-not-seen session gets its own section in the view by state.
   mustContain(textOf(), "FINISHED · NOT SEEN");
   const reset = withText((t) => t === "✕ Reset")[0];
   must(reset, "no Reset chip");
   tap(reset);
   must(!textOf().includes("FINISHED · NOT SEEN"), "the view by state stayed on");
-  must(withText((t) => t === "All")[0].props.background === "#FFFFFF2E", "the scope did not go back to All");
+  must(withText((t) => t === "Here")[0].props.color !== "primary" && withText((t) => t === "Sessions")[0].props.background === "#FFFFFF2E", "the scope did not go back to all workspaces");
   must(withText((t) => t === "ended").every((n) => n.props.color !== "primary"), "ended rows stayed on");
   must(withText((t) => t === "✕ Reset").length === 0, "the Reset chip stayed in the default view");
 });
@@ -719,13 +723,6 @@ check("a turn that ends in a tab without the focus is \"finished, not seen\"; a 
   ctx.__setData("workspaces", JSON.stringify(newData("h-err", "idle")));
   must(cardOf("h-seen").props.background === "#BF5AF226" && rowText("h-seen").includes("finished · not seen"), "h-seen is not marked unseen: " + rowText("h-seen").join(" | "));
   must(cardOf("h-bad").props.background === "clear", "h-bad was idle from the start and is marked");
-});
-check("the attention sort puts a loop just under the sessions that ask", () => {
-  tap(withText((t) => t === "attention first")[0]);
-  const ask = lastAt("h-ask");
-  const loop = lastAt("h-loop");
-  must(ask < loop && loop < lastAt("h-seen") && loop < lastAt("h-over"), "order: " + NAMES.map((n) => n + "@" + lastAt(n)).join(", "));
-  tap(withText((t) => t === "attention first")[0]);
 });
 check("the unseen mark clears when the owner focuses the tab, and stays clear after the focus moves on", () => {
   must(rowText("h-seen").includes("finished · not seen"), "h-seen is not marked unseen before the focus");
