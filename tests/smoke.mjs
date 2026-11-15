@@ -547,6 +547,13 @@ check("a row carries its marks as pills: account, your-turn mark and compaction 
   mustContain(all, "→ you");
   mustContain(helpText(), "⟳3");
 });
+check("the menus hold no item that does nothing or repeats a click", () => {
+  // A click on a row goes to the session; a session with no PR has no PR item; fold-all lives beside the search.
+  for (const dead of ["Go to session", "No PR for this session", "Agent session", "Collapse all groups", "Expand all groups"]) {
+    must(withText((t) => t === dead).length === 0, "the item is back: " + dead);
+  }
+  must(withText((t) => t === "Timeline").length >= 1 && withText((t) => t === "Setup").length >= 1, "the views submenu lost an item");
+});
 check("the Copy name menu item writes the session name to the clipboard", () => {
   const item = withText((t) => t === "Copy name: lead-1")[0];
   must(item, "menu item not found");
@@ -563,7 +570,7 @@ check("the hive button asks cmux for a browser split with the hive page", () => 
   must(/^file:\/\/.*hive\.html#/.test(calls[0].params.url), "url is not a hive page link");
 });
 check("a row menu opens the views page on the timeline, with the session marked", () => {
-  const item = withText((t) => t === "Show in timeline")[0];
+  const item = withText((t) => t === "Timeline")[0];
   must(item, "menu item not found");
   const before = cmuxCalls().length;
   tap(item);
@@ -805,7 +812,7 @@ check("rows keep their height and their columns with and without the new fields"
   must(widths(27) === rows.length && widths(49) === rows.length, "the context and cost columns are not on every row");
 });
 check("a row menu opens the views page on the inside view and on the setup view", () => {
-  for (const [label, v] of [["Show inside the sessions", "inside"], ["Show the setup", "setup"]]) {
+  for (const [label, v] of [["Inside the sessions", "inside"], ["Setup", "setup"]]) {
     const item = withText((t) => t === label)[0];
     must(item, "menu item " + JSON.stringify(label) + " not found");
     const before = cmuxCalls().length;
@@ -870,7 +877,7 @@ check("the group menu starts a plain terminal first, then each tool with each ac
     description: ["/work/bare", "@home: " + HOME, "@primary: main", "@limits: claude,week,4,Sat 09:39,1794600000;claude,,,,0,work;codex,,,,0;codex,,,,0,team;grok,,,,0;agy,,,,0", "b-one: sonnet"].join(" | "),
     tabs: [tab(1, "[b-one] t", { id: B(5), focused: true })], agents: [agent("b-one", B(5), "idle", "claude")], prs: [],
   }]));
-  const want = ["\u26AA  Terminal", "Agent session", "\u{1F7E0}  Claude", "main  \u2605 default", "work", "\u{1F7E2}  Codex", "team", "\u{1F534}  Grok", "\u{1F7E3}  Antigravity", "Add account", "\u{1F7E0}  Claude…", "\u{1F7E2}  Codex…", "\u{1F534}  Grok…"];
+  const want = ["Terminal", "Claude", "main  \u2605 default", "work", "Codex", "team", "Grok", "Antigravity", "Add account", "Claude…", "Codex…", "Grok…"];
   const once = [...new Set(withText((t) => want.includes(t)).map((n) => n.props.text))];
   must(JSON.stringify(once) === JSON.stringify(want), "menu items: " + JSON.stringify(once));
   must(withText((t) => t.endsWith("Antigravity…")).length === 0, "a tool with no account support got an add item");
@@ -884,11 +891,11 @@ check("the group menu starts a plain terminal first, then each tool with each ac
   calls = cmuxCalls().slice(before);
   must(calls.length === 1 && calls[0].params.initial_command === "\"$SHELL\" -lic 'printf \"New Codex account name (a-z, 0-9, -): \"; read -r n; \"$HOME/.config/cmux/scripts/agents-account-add.sh\" codex \"$n\"; exec \"$SHELL\" -l'", "add command: " + JSON.stringify(calls));
   before = cmuxCalls().length;
-  tap(withText((t) => t.endsWith("  Grok"))[0]);
+  tap(withText((t) => t === "Grok")[0]);
   calls = cmuxCalls().slice(before);
   must(calls.length === 1 && calls[0].params.initial_command === "\"$SHELL\" -lic 'AGENT_ACCOUNT=main \"$HOME/.config/cmux/scripts/agent-run.sh\" grok; exec \"$SHELL\" -l'", "grok command: " + JSON.stringify(calls));
   before = cmuxCalls().length;
-  tap(withText((t) => t.endsWith("  Terminal"))[0]);
+  tap(withText((t) => t === "Terminal")[0]);
   calls = cmuxCalls().slice(before);
   must(calls.length === 1 && calls[0].method === "surface.create" && !("initial_command" in calls[0].params), "a plain terminal got a command: " + JSON.stringify(calls));
 });
@@ -898,8 +905,8 @@ check("an account name that is not plain (it could carry shell text) gives no me
     description: ["/work/bare", "@home: " + HOME, "@limits: claude,,,,0,a;rm -rf x;codex,,,,0,$(id);claude,,,,0,ok-1", "b-one: sonnet"].join(" | "),
     tabs: [tab(1, "[b-one] t", { id: B(5), focused: true })], agents: [agent("b-one", B(5), "idle", "claude")], prs: [],
   }]));
-  const once = [...new Set(withText((t) => ["a", "ok-1", "$(id)", "x"].includes(t) || t.endsWith("Terminal") || t === "Agent session").map((n) => n.props.text))];
-  must(JSON.stringify(once) === JSON.stringify(["\u26AA  Terminal", "Agent session", "a", "ok-1"]), "menu items: " + JSON.stringify(once));
+  const once = [...new Set(withText((t) => ["a", "ok-1", "$(id)", "x"].includes(t) || t.endsWith("Terminal")).map((n) => n.props.text))];
+  must(JSON.stringify(once) === JSON.stringify(["Terminal", "a", "ok-1"]), "menu items: " + JSON.stringify(once));
 });
 
 check("a tool from @tools gets a flat item with a neutral dot and starts by its command word", () => {
@@ -908,11 +915,11 @@ check("a tool from @tools gets a flat item with a neutral dot and starts by its 
     description: ["/work/bare", "@home: " + HOME, "@limits: claude,,,,0;grok,,,,0", "@tools: gemini=gemini=Gemini CLI;kiro=kiro-cli=Kiro CLI", "b-one: sonnet"].join(" | "),
     tabs: [tab(1, "[b-one] t", { id: B(5), focused: true })], agents: [agent("b-one", B(5), "idle", "claude")], prs: [],
   }]));
-  const want = ["\u26AA  Terminal", "Agent session", "\u{1F7E0}  Claude", "\u{1F534}  Grok", "\u26AB  Gemini CLI", "\u26AB  Kiro CLI"];
+  const want = ["Terminal", "Claude", "Grok", "Gemini CLI", "Kiro CLI"];
   const once = [...new Set(withText((t) => want.includes(t)).map((n) => n.props.text))];
   must(JSON.stringify(once) === JSON.stringify(want), "menu items: " + JSON.stringify(once));
   const before = cmuxCalls().length;
-  tap(withText((t) => t === "\u26AB  Kiro CLI")[0]);
+  tap(withText((t) => t === "Kiro CLI")[0]);
   const calls = cmuxCalls().slice(before);
   must(calls.length === 1 && calls[0].method === "surface.create" && calls[0].params.initial_command === "\"$SHELL\" -lic 'kiro-cli; exec \"$SHELL\" -l'", "command: " + JSON.stringify(calls));
 });
@@ -923,8 +930,8 @@ check("a tool in @tools with a command, id or label that is not plain gives no m
     description: ["/work/bare", "@home: " + HOME, "@limits: claude,,,,0", "@tools: " + [...bad, "good=good-1=Good One"].join(";"), "b-one: sonnet"].join(" | "),
     tabs: [tab(1, "[b-one] t", { id: B(5), focused: true })], agents: [agent("b-one", B(5), "idle", "claude")], prs: [],
   }]));
-  const once = [...new Set(withText((t) => t.startsWith("\u26AB") || t === "\u{1F7E0}  Claude").map((n) => n.props.text))];
-  must(JSON.stringify(once) === JSON.stringify(["\u{1F7E0}  Claude", "\u26AB  Good One"]), "menu items: " + JSON.stringify(once));
+  const once = [...new Set(withText((t) => t === "Claude" || t === "Good One" || /^(Aaa|Bbb|Ccc|Ddd|\$\(id\)|Fff.*|Claude2|Ggg|Hhh.*|Iii|Jjj)$/.test(t)).map((n) => n.props.text))];
+  must(JSON.stringify(once) === JSON.stringify(["Claude", "Good One"]), "menu items: " + JSON.stringify(once));
 });
 
 console.log(failed === 0 ? "\nOK: all checks passed (runtime: " + path.basename(path.dirname(runtimePath)) + ")" : "\nFAILED: " + failed + " check(s)");

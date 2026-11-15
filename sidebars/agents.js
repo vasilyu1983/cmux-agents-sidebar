@@ -665,7 +665,6 @@ const PLAIN = { agy: "agy" };
 const STARTS = [...LAUNCH, ...Object.keys(PLAIN)];
 // A system menu draws no icon beside a label and no text colour (both tried with cmux 0.65, 2026-11-15), so a
 // coloured emoji dot is the mark of a tool there.
-const DOT = { term: "\u26AA", claude: "\u{1F7E0}", codex: "\u{1F7E2}", opencode: "\u{1F535}", grok: "\u{1F534}", agy: "\u{1F7E3}" };
 // Other tools: "@tools: gemini=gemini=Gemini CLI;kiro=kiro-cli=Kiro CLI" (id=command=label), written by label-tabs.py
 // from its list and from ~/.config/cmux/agents-tools. This text reaches a shell, so every part is checked here again:
 // the command is one word (a-z, 0-9, "-"; no path, no argument) that the login shell finds by name.
@@ -1072,19 +1071,19 @@ function addAccount(wsId, tool) {
 const bandMenu = (entry) => {
   const items = entry().launch ?? [], ws = () => entry().wsId;
   const tools = [...new Set(items.map((x) => x.tool))];
-  // A tool that is not one of the five has its label in the item and a neutral dot.
-  const name = (t) => TOOLS[t] ?? items.find((x) => x.tool === t).name, dot = (t) => DOT[t] ?? "\u26AB";
+  // Plain names, no colour marks: a colour per tool is used nowhere else in the panel. A tool that is not one of
+  // the five has its label in the item.
+  const name = (t) => TOOLS[t] ?? items.find((x) => x.tool === t).name;
   const start = tools.map((t) => {
     const mine = items.filter((x) => x.tool === t);
-    if (mine.length < 2) return Button(dot(t) + "  " + name(t), () => launch(ws(), mine[0]));
+    if (mine.length < 2) return Button(name(t), () => launch(ws(), mine[0]));
     const first = mine.filter((x) => !x.acct), rest = mine.filter((x) => x.acct);
-    return Menu(dot(t) + "  " + name(t), [...first.map((x) => Button(x.label, () => launch(ws(), x))), ...(first.length && rest.length ? [Divider()] : []),
+    return Menu(name(t), [...first.map((x) => Button(x.label, () => launch(ws(), x))), ...(first.length && rest.length ? [Divider()] : []),
       ...rest.map((x) => Button(x.label, () => launch(ws(), x)))]);
   });
-  const adds = tools.filter((t) => LAUNCH.includes(t)).map((t) => Button(DOT[t] + "  " + TOOLS[t] + "…", () => addAccount(ws(), t)));
-  return [Button(DOT.term + "  Terminal", () => newTab(ws())), ...(start.length ? [Divider(), Text("Agent session"), ...start] : []),
-    ...(adds.length ? [Divider(), Menu("Add account", adds)] : []),
-    Divider(), Button("Collapse all groups", () => foldAll(true)), Button("Expand all groups", () => foldAll(false))];
+  const adds = tools.filter((t) => LAUNCH.includes(t)).map((t) => Button(TOOLS[t] + "…", () => addAccount(ws(), t)));
+  return [Button("Terminal", () => newTab(ws())), ...(start.length ? [Divider(), ...start] : []),
+    ...(adds.length ? [Divider(), Menu("Add account", adds)] : [])];
 };
 const selectWs = (entry) => () => cmux("workspace.select", { workspace_id: entry().wsId });
 // "+" opens a plain terminal tab in the workspace, the first item of the right-click menu. A Menu() as the mark was
@@ -1253,15 +1252,19 @@ function limitRow(entry) {
 function rowMenu(entry) {
   const cmd = commandsOf(entry().agent);
   const items = [
-    Button("Go to session", () => jump(entry())),
-    Button(() => (openInfo()[entry().rowId] ? "Hide details" : "Show details"), () => flip(openInfo, setOpenInfo, entry().rowId)),
+    // A plain click on the row goes to the session, so the menu has no item for it. The name comes first: it is
+    // what a reader passes to another session.
     Button(() => "Copy name" + (entry().sessName ? ": " + entry().sessName : ""), () => clipboard.write(entry().sessName || entry().tabTitle)),
     Button("Copy folder", () => clipboard.write(entry().folder)),
-    Button("Show in timeline", () => openViews("timeline", entry().sessName)),
-    Button("Show inside the sessions", () => openViews("inside")),
-    Button("Show the setup", () => openViews("setup")),
-    Button(() => (entry().prText ? "Copy PR " + entry().prText.split(" ")[0] : "No PR for this session"),
-      () => { if (entry().prText) clipboard.write(entry().prText.split(" ")[0]); }),
+    // No item when the session has no PR: the menu cannot grey an item out.
+    ...(entry().prText ? [Button(() => "Copy PR " + String(entry().prText).split(" ")[0], () => clipboard.write(String(entry().prText).split(" ")[0]))] : []),
+    Button(() => (openInfo()[entry().rowId] ? "Hide details" : "Show details"), () => flip(openInfo, setOpenInfo, entry().rowId)),
+    Divider(),
+    Menu("Show in views", [
+      Button("Timeline", () => openViews("timeline", entry().sessName)),
+      Button("Inside the sessions", () => openViews("inside")),
+      Button("Setup", () => openViews("setup")),
+    ]),
   ];
   if (cmd.compact || cmd.usage) items.push(Divider());
   for (const text of [cmd.compact, cmd.usage]) {

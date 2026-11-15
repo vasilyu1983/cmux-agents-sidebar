@@ -32,18 +32,18 @@ All pictures in this file are renders with sample names and sample figures.
 | `✕ Reset` | Shows when the view is not the default. Back to the default view: no chip, no account, all workspaces, no ended rows, no `By state` grouping. The search text stays |
 | Subagents | `▸ 2 sub` on a row opens the subagent rows. The count comes from cmux, or from the Claude Code records when cmux reports none |
 | Details | `›` on a row opens state, tool, folder, branch, ports, first and last request |
-| Right-click menu | Go to session, copy name, copy folder, copy PR number, fast commands |
+| Right-click menu | On a session row: copy name, copy folder, copy the PR number (only when the session has a PR), show details, `Show in views` (Timeline, Inside the sessions, Setup), fast commands. A plain click on the row goes to the session, so the menu has no item for that |
 | `views ↗` | A page of pictures in a cmux browser tab, with a switch at the top: Hive, Timeline, Cost, Limits, Queue, Context, Inside, Rhythm, Setup (see "The views page"). The Hive view is a graph: workspace → session → subagent. It updates every 15 seconds. The open tab has a blue box. A click on a session goes to its tab, and the page follows you to another workspace |
 | Next waiting | `next-waiting.sh` goes to the Claude Code session that has waited for you the longest |
 | `Limits` | Next to `Sessions` in the first row: the rate limits of each agent tool on this Mac, per window (5 hours, week), with the reset time and the age of the figure. Grouped `by account`; `by tool` groups them per tool (see "The Limits view"). The panel remembers the choice |
 | Search | Type in `Search agents`: rows stay when the text is in the tab title (with the session name), the tool, the account, the workspace name or the folder. Capital letters do not matter. A search text looks in every workspace, also with `Here` on. A chip narrows the result further. While `Limits` is on, a search text shows the sessions again |
-| Fold all groups | The mark at the right of the search field: `▾▾` folds every listed group, `▸▸` opens them. With some groups open it folds. The same two actions are in the right-click menu of a workspace header (`Collapse all groups`, `Expand all groups`). A search looks inside folded groups; the folds come back when the search text is cleared |
+| Fold all groups | The mark at the right of the search field: `▾▾` folds every listed group, `▸▸` opens them. With some groups open it folds. A search looks inside folded groups; the folds come back when the search text is cleared |
 | Account chips | With sessions on two accounts or more, one chip per account under the filter chips, with its row count. A click shows only that account; a second click, or `✕ Reset`, shows all |
 | Account colour | Each account name has one fixed colour, the same on the row tag, on the hive page and at the start of the session's status line. There are six colours, so two names can share one |
 | Wrong-account mark | `≠ work` in orange on a row: the folder rules name `work` for that folder, and the session runs on another account. Needs `rule` lines |
 | Limit warning | One cmux notification when a limit window of any account passes 80% |
 | Next step | If the last reply of a Claude Code session ends with a line `Next: ...`, the row details show it. `→ you` in blue on the row when that line starts with `you` or `owner` |
-| New tab or new session | Click a workspace header's `+` for a plain terminal tab. Right-click the header for the start menu (see "The start menu"): `Terminal` first, then a grey `Agent session` header, then one item per tool found on your Mac, each with a coloured dot. A tool with 2 or more accounts is a submenu (`Claude` → `personal ★ default`, `work`), with the tool's normal folder first and marked `★ default`. A tool with one account is one item. `Add account` is a submenu: `Claude…` asks for a name in a new tab and makes the account folder. The list comes from your installed tools and your accounts file, so it has no fixed names |
+| New tab or new session | Click a workspace header's `+` for a plain terminal tab. Right-click the header for the start menu (see "The start menu"): `Terminal` first, then one item per tool found on your Mac. A tool with 2 or more accounts is a submenu (`Claude` → `personal ★ default`, `work`), with the tool's normal folder first and marked `★ default`. A tool with one account is one item. `Add account` is a submenu: `Claude…` asks for a name in a new tab and makes the account folder. The list comes from your installed tools and your accounts file, so it has no fixed names |
 | Asked or finished | A session that waits for your answer has an orange outline, shows `asked` and why it waits in orange on its second line, and also shows at the top of the panel. A session that ended its turn while you looked elsewhere has a purple fill and shows `finished · not seen`. The `✓` chip filters the finished ones |
 | Last prompt | The start of your last request to a Claude Code session, in the row details and in the search |
 | State from the screen | Codex, OpenCode, Grok and Antigravity tabs publish no state. The row says `working · from screen` or `asked · from screen`, read from the last 30 lines of the tab |
@@ -128,14 +128,13 @@ A row shows at most 2 pills. Their order of priority is: `≠`, a PR that needs 
 
 Right-click a workspace header. The menu has these parts, from top to bottom:
 
-1. `⚪ Terminal`: a plain terminal tab.
-2. A grey header, `Agent session`.
-3. One item per tool found on this Mac, each with a coloured dot. A tool with 2 or more accounts is a submenu: the tool's normal folder first, marked `★ default`, then the other accounts. A tool with one account is one item.
-4. `Add account`, a submenu with one item per tool that has accounts (`Claude…`). It opens a tab that asks for a name and runs `agents-account-add.sh`.
+1. `Terminal`: a plain terminal tab.
+2. One item per tool found on this Mac. A tool with 2 or more accounts is a submenu: the tool's normal folder first, marked `★ default`, then the other accounts. A tool with one account is one item.
+3. `Add account`, a submenu with one item per tool that has accounts (`Claude…`). It opens a tab that asks for a name and runs `agents-account-add.sh`.
 
-<img src="examples/start-menu.png" alt="Drawing of the start menu on a workspace header: Terminal, the grey header Agent session, tools with coloured dots, the Claude submenu open with personal (star default) and work, two extra tools with neutral dots, and Add account" width="420">
+<img src="examples/start-menu.png" alt="Drawing of the start menu on a workspace header: Terminal, the tools by name, the Claude submenu open with personal (star default) and work, two extra tools, and Add account" width="420">
 
-A drawing with sample names. The menu is a system menu: it cannot draw a logo or a text colour, so a coloured dot marks each tool. The tool names are text only.
+A drawing with sample names. The menu is a system menu: it cannot draw a logo or a text colour. The items are plain names with no colour mark, because a colour per tool is used nowhere else in the panel.
 
 Claude Code, Codex, OpenCode and Grok start through `agent-run.sh`, with the account you pick. Antigravity (`agy`) and the extra tools below have one account and start by their own command.
 
@@ -157,7 +156,7 @@ The watcher knows 11 more terminal agents. Each is listed only when two things a
 | Copilot CLI | `copilot` | `~/.copilot` |
 | Cursor Agent | `cursor-agent` | `~/.cursor` |
 
-These items get a neutral dot (⚫), one account, and start by their command word. They have no `Add account` item and no `Limits` line.
+These items get one account and start by their command word. They have no `Add account` item and no `Limits` line.
 
 To add a tool of your own, write one line in `~/.config/cmux/agents-tools`:
 
@@ -222,7 +221,7 @@ The pictures are renders of `scripts/hive.html` with sample data.
 - The history covers Claude Code sessions. Other tools publish no session state.
 - A gap in a lane is a time when the watcher did not run (the Mac slept, or the watcher was stopped).
 - The forecast is a straight line from the last readings. It knows nothing about your plans.
-- From the panel: right-click a row → `Show in timeline`; right-click a limit line → `Show the limit forecast`; right-click a cost line → `Show the cost map`; right-click a row → `Show inside the sessions` or `Show the setup`.
+- From the panel: right-click a row → `Show in views` → `Timeline`; right-click a limit line → `Show the limit forecast`; right-click a cost line → `Show the cost map`; right-click a row → `Show in views` → `Inside the sessions` or `Setup`.
 
 ### The Limits view in the panel
 
