@@ -538,7 +538,8 @@ const view = computed(() => {
         folder: String(a.directory ?? ""),
         // Why the session waits, and its context share when that is 80% or more (the row shows it in red).
         wait: agentsWait ? "agents running" : a.status === "needs_input" ? sess.wait ?? "" : "",
-        key: "a:" + w.id + ":" + a.id,
+        // The menu of the row is built with it, so the key also carries the files of "Open config".
+        key: "a:" + w.id + ":" + a.id + ":" + cfgKey(w.id),
         kind: "agent",
         focused: !earlier && Boolean(w.selected && tab?.focused),
         unread: !earlier && Boolean(tab?.hasUnread),
@@ -598,7 +599,7 @@ const view = computed(() => {
     out.push({
       // An empty workspace is a thin line, not a band: the key carries the form, as for the rows.
       // The start menu is built with the row, so the key also carries its items.
-      key: "h:" + w.id + (rows.length ? "" : ":e") + ":" + launchList().map((x) => x.tool + "." + x.acct + (x.cmd ?? "") + (x.name ?? "")).join(","),
+      key: "h:" + w.id + (rows.length ? "" : ":e") + ":" + launchList().map((x) => x.tool + "." + x.acct + (x.cmd ?? "") + (x.name ?? "")).join(",") + ":" + cfgKey(w.id),
       launch: launchList(),
       kind: "header",
       wsId: w.id,
@@ -958,8 +959,9 @@ function hiveUrl(mark, view, sel) {
 
 // Opens the views page (hive.html) as a browser tab inside cmux: it opens a local page and keeps the data after "#".
 // openURL did not open this link.
-function openViews(view, sel) {
-  const url = hiveUrl(undefined, view, sel);
+// mark: { ws, tab } of a session. The Hive view draws that tab as the open one and scrolls to it.
+function openViews(view, sel, mark) {
+  const url = hiveUrl(mark, view, sel);
   if (url) cmux("browser.open_split", { url, workspace_id: data.selectedId(), focus: true });
   else log("views: the description carries no home folder yet; the watcher writes it within 15 seconds");
 }
@@ -1107,7 +1109,7 @@ const bandMenu = (entry) => {
   });
   const adds = tools.filter((t) => LAUNCH.includes(t)).map((t) => Button(TOOLS[t] + "…", () => addAccount(ws(), t)));
   return [Button("Terminal", () => newTab(ws())), ...(start.length ? [Divider(), ...start] : []),
-    ...(adds.length ? [Divider(), Menu("Add account", adds)] : [])];
+    ...(adds.length ? [Divider(), Menu("Add account", adds)] : []), ...configMenu(entry)];
 };
 const selectWs = (entry) => () => cmux("workspace.select", { workspace_id: entry().wsId });
 // "+" opens a plain terminal tab in the workspace, the first item of the right-click menu. A Menu() as the mark was
@@ -1272,6 +1274,58 @@ function limitRow(entry) {
 }
 
 
+// Open config: opens a config file in your editor, in a new tab of the workspace. The files that exist come from
+// label-tabs.py ("@cfg: tool,account,folder,file;..." for the user level, "@proj: folder=file,file" in the description
+// of a workspace for the project), which only checks that a file exists and never reads it. Nothing here reads a file.
+// The path is built from a fixed table of file names and a folder of plain characters below $HOME; no part comes from
+// a title or any other free text. A name with auth, credentials, .key, .pem or .claude.json is never offered.
+const CFG_USER = { claude: ["Claude", ["settings.json", "CLAUDE.md"]], codex: ["Codex", ["config.toml", "AGENTS.md"]], grok: ["Grok", ["config.toml"]],
+  opencode: ["OpenCode", ["opencode.json", "opencode.jsonc"]], gemini: ["Gemini CLI", ["settings.json", "GEMINI.md"]] };
+const CFG_PROJECT = ["CLAUDE.md", ".claude/settings.json", ".claude/settings.local.json", ".mcp.json", "AGENTS.md", ".codex/config.toml"];
+const CFG_NAMES = new Set([...Object.values(CFG_USER).flatMap((t) => t[1]), ...CFG_PROJECT]);
+const CFG_DIR = /^[A-Za-z0-9._-]{1,64}(?:\/[A-Za-z0-9._-]{1,64}){0,5}$/, CFG_NEVER = /auth|credentials|\.key|\.pem|\.claude\.json/i;
+// The path below $HOME, or "" when the folder or the file name is not one of the fixed forms.
+const cfgPath = (dir, name) => (CFG_NAMES.has(name) && CFG_DIR.test(dir) && !dir.split("/").some((p) => /^\.{1,2}$/.test(p)) && !CFG_NEVER.test(dir + "/" + name) ? dir + "/" + name : "");
+const cfgItems = (wsId) => {
+  const user = [], project = [];
+  for (const w of data.workspaces() ?? []) {
+    const part = descOf(w).split(" | ").find((p) => p.startsWith("@cfg: "));
+    if (!part) continue;
+    for (const item of part.slice(6).split(";").slice(0, 60)) {
+      const m = /^([a-z]{1,12}),([a-z0-9-]{0,16}),([^,]{1,400}),([A-Za-z0-9._-]{1,24})$/.exec(item);
+      const t = m && CFG_USER[m[1]];
+      if (t && t[1].includes(m[4]) && cfgPath(m[3], m[4])) user.push({ tool: m[1], dir: m[3], name: m[4], label: t[0] + (m[2] ? " · " + m[2] : "") + " · " + m[4] });
+    }
+    break;
+  }
+  const here = (data.workspaces() ?? []).find((w) => w.id === wsId);
+  const part = here && descOf(here).split(" | ").find((p) => p.startsWith("@proj: "));
+  const m = part && /^@proj: ([^=,]{1,400})=([^=]{1,300})$/.exec(part);
+  for (const name of m ? m[2].split(",").slice(0, 6) : []) {
+    if (CFG_PROJECT.includes(name) && cfgPath(m[1], name)) project.push({ dir: m[1], name, label: "Project · " + name });
+  }
+  return { user, project };
+};
+// A new tab runs the user's editor on the file: EDITOR, else vi. The login shell reads your EDITOR (it may hold
+// arguments, "code -w"), and sh splits it. The path is the only variable text; its characters are a-z, A-Z, 0-9, ".", "-", "_", "/".
+// macOS "open -t" was not used: it starts the app for plain text, not your editor, and says nothing in the tab.
+function openConfig(wsId, dir, name) {
+  const rel = cfgPath(dir, name);
+  if (!wsId || !rel) return;
+  const run = 'sh -c "${EDITOR:-vi} \\"\\$1\\"" sh "$HOME/' + rel + '"';
+  cmux("surface.create", { workspace_id: wsId, focus: true, initial_command: '"$SHELL" -lic \'' + run + '; exec "$SHELL" -l\'' });
+}
+// The submenu "Open config": the user files by tool, then the files of this project. No item when nothing exists.
+// The menu is built with the row or the header, so their keys carry cfgKey().
+const configMenu = (entry) => {
+  const { user, project } = cfgItems(entry().wsId);
+  const items = [];
+  user.forEach((x, i) => items.push(...(i && user[i - 1].tool !== x.tool ? [Divider()] : []), Button(x.label, () => openConfig(entry().wsId, x.dir, x.name))));
+  if (user.length && project.length) items.push(Divider());
+  for (const x of project) items.push(Button(x.label, () => openConfig(entry().wsId, x.dir, x.name)));
+  return items.length ? [Divider(), Menu("Open config", items)] : [];
+};
+const cfgKey = (wsId) => { const c = cfgItems(wsId); return [...c.user, ...c.project].map((x) => x.label).join(","); };
 // Right-click menu of a session row. The command items type into the session's tab, and only while it is idle.
 function rowMenu(entry) {
   const cmd = commandsOf(entry().agent);
@@ -1286,11 +1340,15 @@ function rowMenu(entry) {
     ...(entry().prText ? [Button(() => "Copy PR " + String(entry().prText).split(" ")[0], () => clipboard.write(String(entry().prText).split(" ")[0]))] : []),
     Button(() => (openInfo()[entry().rowId] ? "Hide details" : "Show details"), () => flip(openInfo, setOpenInfo, entry().rowId)),
     Divider(),
+    // The page's tab order and tab names. Only a view that marks the session (Hive, Timeline) or shows the whole
+    // setup has an item; Cost, Queue and Context ignore the selection today, so they are not listed.
     Menu("Show in views", [
+      Button("Hive", () => openViews("hive", "", { ws: entry().wsId, tab: entry().agent.panelId })),
       Button("Timeline", () => openViews("timeline", entry().sessName)),
-      Button("Inside the sessions", () => openViews("inside")),
+      Button("Inside", () => openViews("inside")),
       Button("Setup", () => openViews("setup")),
     ]),
+    ...configMenu(entry),
   ];
   if (cmd.compact || cmd.usage) items.push(Divider());
   for (const text of [cmd.compact, cmd.usage]) {

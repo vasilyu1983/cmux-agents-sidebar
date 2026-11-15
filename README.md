@@ -47,7 +47,7 @@ All pictures in this file are renders with sample names and sample figures.
 | `✕ Reset` | Shows when the view is not the default. Back to the default view: no chip, no account, all workspaces, no ended rows, no `By state` grouping. The search text stays |
 | Subagents | `▸ 2 sub` on a row opens the subagent rows. The count comes from cmux, or from the Claude Code records when cmux reports none |
 | Details | `›` on a row opens state, tool, folder, branch, ports, first and last request |
-| Right-click menu | On a session row: `Pin to top` or `Unpin`, copy name, copy folder, copy the PR number (only when the session has a PR), show details, `Show in views` (Timeline, Inside the sessions, Setup), fast commands. A plain click on the row goes to the session, so the menu has no item for that |
+| Right-click menu | On a session row: `Pin to top` or `Unpin`, copy name, copy folder, copy the PR number (only when the session has a PR), show details, `Show in views` (Hive, Timeline, Inside, Setup), `Open config` (see "The start menu"), fast commands. A plain click on the row goes to the session, so the menu has no item for that |
 | Pin a session | Right-click a row → `Pin to top`. The session moves into a `PINNED` block at the top of the list and leaves its group, so it stays in view while that group is folded. `Unpin` puts it back. The pin is kept by session name in the description of its workspace (`@pin: name`), so it survives a reload; a session that gets a new name loses its pin. Only a session with a name can be pinned. `By state` does not show the block |
 | `views ↗` | A page of pictures in a cmux browser tab, with a switch at the top: Hive, Timeline, Cost, Limits, Queue, Context, Inside, Rhythm, Setup (see "The views page"). The Hive view is a graph: workspace → session → subagent. It updates every 15 seconds. The open tab has a blue box. A click on a session goes to its tab, and the page follows you to another workspace |
 | Next waiting | `next-waiting.sh` goes to the Claude Code session that has waited for you the longest |
@@ -147,6 +147,7 @@ Right-click a workspace header. The menu has these parts, from top to bottom:
 1. `Terminal`: a plain terminal tab.
 2. One item per tool found on this Mac. A tool with 2 or more accounts is a submenu: the tool's normal folder first, marked `★ default`, then the other accounts. A tool with one account is one item.
 3. `Add account`, a submenu with one item per tool that has accounts (`Claude…`). It opens a tab that asks for a name and runs `agents-account-add.sh`.
+4. `Open config`, a submenu that opens a config file in your editor, in a new tab of the workspace (see "Open config" below). It is also in the right-click menu of a session row.
 
 <img src="examples/start-menu.png" alt="Drawing of the start menu on a workspace header: Terminal, the tools by name, the Claude submenu open with personal (star default) and work, two extra tools, and Add account" width="420">
 
@@ -195,6 +196,21 @@ tool mytool mytool ~/.mytool My Tool
 
 ![Render of the hive page: workspaces, their sessions, and subagents, with a blue box on the open tab and the account name in its colour](examples/hive.png)
 
+#### Open config
+
+`Open config` lists the config files that exist on this Mac, by tool, then the files of the project of that workspace. An item reads `Claude · settings.json`, `Claude · work · settings.json` (an extra account) or `Project · .mcp.json`. A file that does not exist has no item, and a menu with no file is not shown. Click an item: a new tab opens and runs your editor on that file. The editor is `$EDITOR` of your login shell, else `vi`; `$EDITOR` may hold arguments (`code -w`). The panel never shows the content of a file, because these files can hold secrets.
+
+| Level | Tool | Files |
+|---|---|---|
+| User | Claude Code | `settings.json`, `CLAUDE.md` in `~/.claude` and in the folder of each account of your accounts file |
+| User | Codex | `config.toml`, `AGENTS.md` in `~/.codex` and in each account folder |
+| User | Grok Build | `config.toml` in `~/.grok` and in each account folder |
+| User | OpenCode | `opencode.json`, `opencode.jsonc` in `~/.config/opencode` (its account variable moves the data folder, not this one) |
+| User | Gemini CLI | `settings.json`, `GEMINI.md` in `~/.gemini` |
+| Project | any | `CLAUDE.md`, `.claude/settings.json`, `.claude/settings.local.json`, `.mcp.json`, `AGENTS.md`, `.codex/config.toml` in the folder of the workspace |
+
+Limits: a folder whose path holds a space or another character outside `a-z`, `A-Z`, `0-9`, `.`, `_`, `-` gets no item, and nothing outside your home folder is offered. A file name with `auth`, `credentials`, `.key`, `.pem` or `.claude.json` is never offered. Antigravity, Cursor and the extra tools of the start menu have no item: their config file names were not checked against their docs, and a config folder can hold login data. A tool whose config file name was not checked is left out.
+
 ### The views page
 
 `views ↗` opens one page with ten views. The page opens on the view that you used last. A click on a session, in any view, goes to its tab.
@@ -237,7 +253,7 @@ The pictures are renders of `scripts/hive.html` with sample data.
 - The history covers Claude Code sessions. Other tools publish no session state.
 - A gap in a lane is a time when the watcher did not run (the Mac slept, or the watcher was stopped).
 - The forecast is a straight line from the last readings. It knows nothing about your plans.
-- From the panel: right-click a row → `Show in views` → `Timeline`; right-click a limit line → `Show the limit forecast`; right-click a cost line → `Show the cost map`; right-click a row → `Show in views` → `Inside the sessions` or `Setup`.
+- From the panel: right-click a row → `Show in views` → `Timeline`; right-click a limit line → `Show the limit forecast`; right-click a cost line → `Show the cost map`; right-click a row → `Show in views` → `Hive` (the session is the open box), `Inside` or `Setup`. `Cost`, `Queue` and `Context` have no item: they do not mark one session.
 
 ### The Limits view in the panel
 
@@ -541,6 +557,7 @@ Without a watcher of your own the strip shows only the limit lines, one per tool
 - `label-tabs.py` reads the environment of your own agent processes to find two values, `CMUX_SURFACE_ID` and `CODEX_HOME`. It keeps nothing else from it.
 - The only message that the kit sends is a local cmux notification for a limit warning.
 - A start item of a workspace menu opens a tab with one fixed command: `agent-run.sh`, a tool from a fixed list of four (`claude`, `codex`, `opencode`, `grok`), and an account name that holds only `a-z`, `0-9` and `-`. For Antigravity the command is the fixed word `agy`. For an extra tool the command is one checked word (`a-z`, `0-9`, `-`; no path, no argument) that the login shell finds by name. An `Add account` item opens a tab that asks you for a name and passes it to `agents-account-add.sh`, which checks it. No other text reaches the shell. The launcher sets the tool's one folder variable and reads no login data.
+- An `Open config` item opens a tab with one fixed command: `sh -c` runs `${EDITOR:-vi}` on one path, `$HOME/<folder>/<file>`. The file name comes from a fixed table (the table above), and the folder is a path below your home folder of plain characters (`a-z`, `A-Z`, `0-9`, `.`, `_`, `-`; no `..`), from the accounts file or from the workspace folder. The watcher and the panel both check every part, and no title, PR text or other free text reaches the command. `label-tabs.py` only tests with `os.path.isfile` whether each file of the table exists. It opens no config file, reads no value, and publishes the folder and the file name in the workspace description (`@cfg:` for the user files, `@proj:` for the project files).
 - For the extra tools of the start menu, `label-tabs.py` does three things. It checks with `os.path.isdir` whether the data folder of each listed tool exists, and reads nothing inside it. It asks your login shell `command -v <name>` for the command names of the tools whose folder exists, at most once in 10 minutes, and keeps the answer (tool commands found or not) in `~/.cache/cmux-agents/tools-on-path` (mode 600). It reads your own file `~/.config/cmux/agents-tools`. The ids, commands and labels of the tools found go into the workspace description (`@tools:`), and the panel checks every part again before it builds a command.
 - `label-tabs.py` reads the transcripts of your live Claude Code sessions on disk. One line of the last reply, the `Next:` line, goes into the workspace description and the hive data file; no other reply text leaves the transcript.
 - From the same transcript `label-tabs.py` takes the title of the session (the one you set with `/rename`, else the one the tool gave it), cut to 48 characters. It goes into the workspace description and into `~/.cache/cmux-agents/<session id>.seen`, and the panel shows it on a tab with no title of its own.

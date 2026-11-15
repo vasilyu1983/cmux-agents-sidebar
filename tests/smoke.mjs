@@ -576,6 +576,25 @@ check("the Copy name menu item writes the session name to the clipboard", () => 
   tap(item);
   must(clipboard.includes("lead-1"), "clipboard holds " + JSON.stringify(clipboard));
 });
+check("a row menu opens the views page on the hive view with that session as the open tab, and lists only views that use it", () => {
+  // The Hive item of the lead-1 row: its menu (the "Show in views" submenu) sits in the row menu with "Copy name: lead-1".
+  // The lowest ancestor of an item that also holds "Copy name: lead-1" is the menu of that row.
+  const sub = (n) => { const out = []; const walk = (id) => { const x = node(id); if (!x) return; out.push(x); x.children.forEach(walk); }; walk(n.id); return out; };
+  const menuOf = (n) => { for (let c = parentOf(n.id); c; c = parentOf(c.id)) if (sub(c).some((x) => x.props.text === "Copy name: lead-1")) return c; return null; };
+  const item = withText((t) => t === "Hive").find((n) => menuOf(n) && !sub(menuOf(n)).some((x) => x.props.text === "Copy name: worker-2"));
+  must(item, "menu item Hive not found");
+  const before = cmuxCalls().length;
+  tap(item);
+  const calls = cmuxCalls().slice(before);
+  must(calls.length === 1 && calls[0].method === "browser.open_split", "got " + JSON.stringify(calls));
+  const sent = JSON.parse(decodeURIComponent(calls[0].params.url.split("#")[1]));
+  const open = sent.ws.flatMap((w) => w.a).filter((a) => a.f);
+  must(sent.v === "hive" && open.length === 1 && open[0].i === T(1), "the link carries " + JSON.stringify([sent.v, open.map((a) => a.i)]));
+  // Cost, Queue and Context do not mark a session today: no item, so no menu item that does nothing.
+  for (const label of ["Cost", "Queue", "Context", "Inside the sessions"]) {
+    must(!withText((t) => t === label).some((n) => parentOf(n.id).children.map(node).some((m) => m && m.props.text === "Timeline")), "the views submenu lists " + label);
+  }
+});
 check("the hive button asks cmux for a browser split with the hive page", () => {
   const btn = withText((t) => t === "views ↗")[0];
   must(btn, "hive button not found");
@@ -828,7 +847,7 @@ check("rows keep their height and their columns with and without the new fields"
   must(widths(27) === rows.length && widths(49) === rows.length, "the context and cost columns are not on every row");
 });
 check("a row menu opens the views page on the inside view and on the setup view", () => {
-  for (const [label, v] of [["Inside the sessions", "inside"], ["Setup", "setup"]]) {
+  for (const [label, v] of [["Inside", "inside"], ["Setup", "setup"]]) {
     const item = withText((t) => t === label)[0];
     must(item, "menu item " + JSON.stringify(label) + " not found");
     const before = cmuxCalls().length;
@@ -948,6 +967,49 @@ check("a tool in @tools with a command, id or label that is not plain gives no m
   }]));
   const once = [...new Set(withText((t) => t === "Claude" || t === "Good One" || /^(Aaa|Bbb|Ccc|Ddd|\$\(id\)|Fff.*|Claude2|Ggg|Hhh.*|Iii|Jjj)$/.test(t)).map((n) => n.props.text))];
   must(JSON.stringify(once) === JSON.stringify(["Claude", "Good One"]), "menu items: " + JSON.stringify(once));
+});
+
+// "Open config": the files come from "@cfg" (user level) and "@proj" (project) in the descriptions. The command is fixed
+// text and a path of plain parts from a fixed table of names; anything else gives no item.
+const cfgData = (...parts) => ctx.__setData("workspaces", JSON.stringify([{
+  id: "ws-bare", title: "ignored", directory: "/work/bare", color: "#336699", selected: true, unread: 0,
+  description: ["/work/bare", "@home: " + HOME, "@limits: claude,,,,0", ...parts, "b-one: sonnet"].join(" | "),
+  tabs: [tab(1, "[b-one] t", { id: B(5), focused: true })], agents: [agent("b-one", B(5), "idle", "claude")], prs: [],
+}]));
+const cfgLabels = () => [...new Set(withText((t) => /^(Claude|Codex|OpenCode|Grok|Gemini CLI|Project) · /.test(t)).map((n) => n.props.text))];
+const editorCommand = (rel) => "\"$SHELL\" -lic 'sh -c \"${EDITOR:-vi} \\\"\\$1\\\"\" sh \"$HOME/" + rel + "\"; exec \"$SHELL\" -l'";
+check("with no @cfg and no @proj there is no Open config menu", () => {
+  cfgData();
+  must(withText((t) => t === "Open config").length === 0, "an Open config menu shows with no file");
+});
+check("Open config lists the user files by tool and the project files, and opens one in the editor by a fixed command", () => {
+  cfgData("@cfg: claude,,.claude,settings.json;claude,work,.claude-work,settings.json;claude,,.claude,CLAUDE.md;codex,,.codex,config.toml;opencode,,.config/opencode,opencode.jsonc",
+    "@proj: Projects/app=CLAUDE.md,.claude/settings.json,.mcp.json");
+  const want = ["Claude · settings.json", "Claude · work · settings.json", "Claude · CLAUDE.md", "Codex · config.toml", "OpenCode · opencode.jsonc",
+    "Project · CLAUDE.md", "Project · .claude/settings.json", "Project · .mcp.json"];
+  must(withText((t) => t === "Open config").length >= 2, "the header menu and the row menu both need an Open config item");
+  must(JSON.stringify(cfgLabels()) === JSON.stringify(want), "items: " + JSON.stringify(cfgLabels()));
+  for (const [label, rel] of [["Claude · work · settings.json", ".claude-work/settings.json"], ["Project · .claude/settings.json", "Projects/app/.claude/settings.json"]]) {
+    const before = cmuxCalls().length;
+    tap(withText((t) => t === label)[0]);
+    const calls = cmuxCalls().slice(before);
+    must(calls.length === 1 && calls[0].method === "surface.create" && calls[0].params.workspace_id === "ws-bare", "got " + JSON.stringify(calls));
+    must(calls[0].params.initial_command === editorCommand(rel), "command: " + calls[0].params.initial_command);
+  }
+});
+check("a config item with an account, folder, file or project part that is not plain gives no menu item and no command", () => {
+  cfgData("@cfg: " + ["claude,wo rk,.claude,settings.json", "claude,a;b,.claude,settings.json", "claude,$(id),.claude,settings.json", "claude,,../etc,settings.json",
+    "claude,,.claude,auth.json", "claude,,.claude,settings.json$(id)", "claude,,.cl aude,settings.json", "claude,,.claude,.claude.json", "codex,,.codex/..,config.toml",
+    "claude,,.claude-auth,settings.json", "claude,,.claude,config.toml", "claude,,.claude,credentials.json", "claude,,.claude'x,settings.json", "claude,,/etc,settings.json",
+    "rm,,.claude,settings.json", "claude,,.claude,settings.json"].join(";"),
+    "@proj: Projects/a b=CLAUDE.md", "@proj: ../x=CLAUDE.md");
+  must(JSON.stringify(cfgLabels()) === JSON.stringify(["Claude · settings.json"]), "items: " + JSON.stringify(cfgLabels()));
+  cfgData("@proj: Projects/app=CLAUDE.md,auth.json,.claude.json,$(id),.mcp.json,x y,;id");
+  must(JSON.stringify(cfgLabels()) === JSON.stringify(["Project · CLAUDE.md", "Project · .mcp.json"]), "project items: " + JSON.stringify(cfgLabels()));
+  for (const bad of ["@proj: Projects/a b=CLAUDE.md", "@proj: ../x=CLAUDE.md", "@proj: Projects/x'y=CLAUDE.md", "@proj: /etc=CLAUDE.md", "@proj: Projects/auth-kit=CLAUDE.md"]) {
+    cfgData(bad);
+    must(cfgLabels().length === 0 && withText((t) => t === "Open config").length === 0, "an item for " + bad);
+  }
 });
 
 console.log(failed === 0 ? "\nOK: all checks passed (runtime: " + path.basename(path.dirname(runtimePath)) + ")" : "\nFAILED: " + failed + " check(s)");

@@ -114,6 +114,20 @@ SILENT_MAX = 2 * 3600  # after this time the subagent was stopped, not stuck: it
 LOOP_RUN = 5  # this many failed tool results in a row give the "loop" field
 SETUP_FILES = ("CLAUDE.md", "AGENTS.md", "GEMINI.md", ".claude/CLAUDE.md")
 SETUP_FOLDERS = ("skills", "agents", "commands", "rules")  # under .claude: only the entries are counted
+# The "Open config" menu of the Agents panel. The only check on these files is os.path.isfile: the watcher never opens
+# or reads them, and it publishes the folder and the file name from these tables, never a value. Each name was checked
+# on 2026-11-15 in the tool's docs (Claude Code settings page, Codex config page, OpenCode config page) or in a file
+# of that name on this Mac (Grok config.toml, Gemini CLI settings.json and GEMINI.md, AGENTS.md of Codex).
+CONFIG_USER = {  # tool -> (usual folder, file names); the tools of ACCOUNT_TOOLS also have the folders of the accounts file
+    "claude": ("~/.claude", ("settings.json", "CLAUDE.md")),
+    "codex": ("~/.codex", ("config.toml", "AGENTS.md")),
+    "grok": ("~/.grok", ("config.toml",)),
+    "opencode": ("~/.config/opencode", ("opencode.json", "opencode.jsonc")),
+    "gemini": ("~/.gemini", ("settings.json", "GEMINI.md")),
+}
+CONFIG_PROJECT = ("CLAUDE.md", ".claude/settings.json", ".claude/settings.local.json", ".mcp.json", "AGENTS.md", ".codex/config.toml")
+CONFIG_DIR = re.compile(r"[A-Za-z0-9._-]{1,64}(?:/[A-Za-z0-9._-]{1,64}){0,5}")  # a folder under the home folder, plain characters only
+CONFIG_NEVER = re.compile(r"auth|credentials|\.key|\.pem|\.claude\.json", re.IGNORECASE)  # never offered, whatever the name
 
 
 def run(args):
@@ -1165,11 +1179,46 @@ def general_marks():
     tools = tools_part()
     if tools:
         found.append(tools)
+    configs = config_part()
+    if configs:
+        found.append(configs)
     if ACCOUNTS and DEFAULT_ACCOUNT:
         found.append("@primary: " + DEFAULT_ACCOUNT[0])
     if TAB_ACCOUNTS:
         found.append("@accts: " + ",".join(f"{key}={name}" for key, name in sorted(TAB_ACCOUNTS.items())[:200]))
     return found
+
+
+def config_dir(folder):
+    """The folder as a path below the home folder ("Projects/app"), or "" when it is not below it, holds a part that is
+    not plain (a space, a quote, "$", ".."), or has a name that the menu never offers."""
+    folder = os.path.abspath(folder)
+    for home in {os.path.abspath(os.path.expanduser("~")), os.path.realpath(os.path.expanduser("~"))}:
+        if folder.startswith(home + "/"):
+            rel = folder[len(home) + 1:]
+            plain = CONFIG_DIR.fullmatch(rel) and not any(part in (".", "..") for part in rel.split("/"))
+            return rel if plain and not CONFIG_NEVER.search(rel) else ""
+    return ""
+
+
+def config_part():
+    """"@cfg: tool,account,folder,file;..." for the "Open config" menu: the user-level files that exist on this Mac, one
+    item per tool, account folder and file name of CONFIG_USER. Only os.path.isfile looks at a file."""
+    found = []
+    for tool, (usual, names) in CONFIG_USER.items():
+        for folder, account in homes(tool, usual) if tool in ACCOUNT_TOOLS else [(os.path.expanduser(usual), "")]:
+            rel = config_dir(folder)
+            found += [f"{tool},{account},{rel},{name}" for name in names if rel and os.path.isfile(os.path.join(folder, name))]
+    return "@cfg: " + ";".join(found[:60]) if found else ""
+
+
+def project_part(folder):
+    """"@proj: Projects/app=CLAUDE.md,.mcp.json" for one workspace: the project files of CONFIG_PROJECT that exist in its
+    folder (the first part of the description). Only os.path.isfile looks at a file. No part for a folder that is not plain."""
+    folder = os.path.expanduser(folder) if folder.startswith("~/") else folder  # the watcher writes the folder as "~/..."
+    rel = config_dir(folder) if folder.startswith("/") else ""
+    names = [name for name in CONFIG_PROJECT if rel and os.path.isfile(os.path.join(folder, name))]
+    return f"@proj: {rel}={','.join(names)}" if names else ""
 
 
 LIMIT_READINGS = []  # [tool, window, account, share used in %, reset time (epoch, 0 = unknown), time seen] of one pass
@@ -1418,15 +1467,16 @@ def set_models(tree, models, strip):
         # gets fresh general parts, and keeps its other "@" parts.
         target = next((ref for ref, old in found.items() if " | @home: " in old), next(iter(found)))
         kept = [part for part in found[target].split(" | ")[1:]
-                if part.startswith("@") and not part.startswith(("@home: ", "@week: ", "@limits: ", "@tools: ", "@primary: ", "@accts: "))]
+                if part.startswith("@") and not part.startswith(("@home: ", "@week: ", "@limits: ", "@tools: ", "@primary: ", "@accts: ", "@cfg: ", "@proj: "))]
         strip = {target: kept + general_marks()}
     for workspace, old in found.items():
         parts = old.split(" | ")
-        kept = [part for part in parts[1:] if part.startswith("@")]
+        kept = [part for part in parts[1:] if part.startswith("@") and not part.startswith("@proj: ")]
         # "@view" and "@pin" belong to the panel (the saved chips, sort, folds and pinned sessions): they stay when
         # the strip parts are replaced.
         marks = strip[workspace] + [part for part in kept if part.startswith(("@view: ", "@pin: "))] if workspace in strip else kept
-        wanted = " | ".join(parts[:1] + marks + sorted(models.get(workspace, [])))
+        project = project_part(parts[0].rstrip("/"))
+        wanted = " | ".join(parts[:1] + marks + sorted(models.get(workspace, []) + ([project] if project else [])))
         if wanted == old:
             continue
         done = run(["cmux", "workspace-action", "--action", "set-description", "--workspace", workspace,

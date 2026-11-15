@@ -72,6 +72,18 @@ const acctColor = (name) => {
   return ACCT_COLORS[h % ACCT_COLORS.length];
 };
 const cut = (text, n) => { const s = String(text ?? ""); return s.length > n ? s.slice(0, n - 1) + "…" : s; };
+// A workspace named by a folder path shows its last part.
+const lastPart = (name) => String(name ?? "").split(/[\\/]/).filter(Boolean).pop() || String(name ?? "");
+// Sessions of one list that share a name under different ids: id -> the first 4 characters of the id, else no entry.
+function clashTags(list) {
+  const ids = new Map();
+  for (const [name, id] of list) { if (!ids.has(name)) ids.set(name, new Set()); ids.get(name).add(id); }
+  const tags = new Map();
+  for (const set of ids.values()) if (set.size > 1) for (const id of set) tags.set(id, id.slice(0, 4));
+  return tags;
+}
+// Grey suffix on a name, only for a session whose name clashes.
+const withTag = (node, tag) => { if (tag) node.appendChild(el("tspan", { class: "sub", style: "font-size:11px;font-weight:400" }, " " + tag)); return node; };
 
 // Only known keys with the expected type pass. The link and the live file both go through here.
 const text = (v, n) => (typeof v === "string" ? v.slice(0, n) : "");
@@ -193,8 +205,10 @@ function drawHive(data) {
     nodes.push(node);
     for (const k of kids) links.push([node, k]);
   };
-  const root = { title: "hive", sub: data.ws.length + " workspaces", color: "#8E8E93", kids: data.ws.map((w) => ({
-    title: cut(w.n, 26), sub: (w.a || []).length + " session(s)" + (w.f ? " · current" : ""), here: w.f === true, color: /^#[0-9a-fA-F]{6,8}$/.test(w.c) ? w.c : "#8E8E93",
+  // A workspace with no session is not a box: all of them fold into one grey line under the tree.
+  const bare = data.ws.filter((w) => (w.a || []).length === 0);
+  const root = { title: "hive", sub: data.ws.length + " workspaces", color: "#8E8E93", kids: data.ws.filter((w) => (w.a || []).length > 0).map((w) => ({
+    title: cut(lastPart(w.n), 26), sub: plural((w.a || []).length, "session", "sessions") + (w.f ? " · current" : ""), here: w.f === true, color: /^#[0-9a-fA-F]{6,8}$/.test(w.c) ? w.c : "#8E8E93",
     kids: (w.a || []).map((a) => ({
       title: cut(a.n, 40), go: /^[0-9A-Fa-f-]{1,40}$/.test(a.i || "") && /^[0-9A-Fa-f-]{1,40}$/.test(a.w || "") ? a.w + ":" + a.i : "",
       sub: cut([a.u ? a.k + " " + a.u : a.k, a.m, a.x != null ? "ctx " + a.x + "%" : "", a.c, a.p].filter(Boolean).join(" · "), 52),
@@ -207,7 +221,12 @@ function drawHive(data) {
   })) };
   place(root, 0);
   svg.setAttribute("width", X[3] + W[3] + 8);
-  svg.setAttribute("height", Math.max(line, 1) * ROW + 8);
+  const base = Math.max(line, 1) * ROW + 8;
+  svg.setAttribute("height", base + (bare.length ? 26 : 0));
+  if (bare.length) {
+    const names = bare.slice(0, 6).map((w) => cut(lastPart(w.n) || "no name", 20)).join(", ") + (bare.length > 6 ? ", …" : "");
+    svg.appendChild(el("text", { class: "sub", x: 2, y: base + 16, style: "font-size:12px" }, plural(bare.length, "workspace", "workspaces") + " with no session: " + names));
+  }
   for (const [a, b] of links) {
     const x1 = X[a.depth] + W[a.depth], x2 = X[b.depth], mid = (x1 + x2) / 2;
     svg.appendChild(el("path", { d: `M${x1},${a.y} C${mid},${a.y} ${mid},${b.y} ${x2},${b.y}` }));
@@ -297,7 +316,7 @@ function closedToday() {
   day.setHours(0, 0, 0, 0);
   const from = day.getTime() / 1000, open = openOf();
   return [...lastSeen()].filter(([sid, t]) => t >= from && money(hist.s[sid].c) > 0 && !open(sid))
-    .map(([sid]) => { const v = hist.s[sid]; return { n: v.n, wn: v.w || "no workspace", m: v.m, c: v.c, u: v.u, k: "claude", closed: true }; });
+    .map(([sid]) => { const v = hist.s[sid]; return { sid, n: v.n, wn: v.w || "no workspace", m: v.m, c: v.c, u: v.u, k: "claude", closed: true }; });
 }
 const empty = (svg, lines) => {
   svg.setAttribute("width", 640); svg.setAttribute("height", 30 + lines.length * 20);
@@ -462,6 +481,7 @@ function drawTimeline(svg) {
   // In each workspace: the open sessions first, then the closed ones (thin lanes), then the short ones.
   const rank = (sid) => hist.s[sid].w + "\n" + (openBox(sid) ? 0 : short(sid) ? 2 : 1) + hist.s[sid].n;
   const order = [...lanes.keys()].sort((a, b) => rank(a).localeCompare(rank(b)));
+  const tags = clashTags(order.map((sid) => [hist.s[sid].n, sid]));
   const W = pageWidth(), LEFT = 210, RIGHT = 190, ROW = 36, GAP = 6, plot = W - LEFT - RIGHT;
   const x = (t) => LEFT + ((Math.max(t, from) - from) / span) * plot;
   const worked = [...sums.values()].reduce((s, v) => s + v[0], 0), waited = [...sums.values()].reduce((s, v) => s + v[1], 0);
@@ -533,7 +553,7 @@ function drawTimeline(svg) {
     const live = openBox(sid), go = goOf(live), [w, q] = sums.get(sid), h = live ? ROW : 24, mid = y + h / 2, bh = live ? 18 : 10;
     const g = el("g", go ? { class: "go", tabindex: 0, role: "link" } : {});
     g.appendChild(card(y, W, h, sel && sel === info.n));
-    g.appendChild(el("text", { x: 14, y: mid + 4.5, style: live ? "font-size:13px;font-weight:600" : "font-size:11px;opacity:.55" }, cut("[" + info.n + "]", 24)));
+    g.appendChild(withTag(el("text", { x: 14, y: mid + 4.5, style: live ? "font-size:13px;font-weight:600" : "font-size:11px;opacity:.55" }, cut("[" + info.n + "]", tags.has(sid) ? 18 : 24)), tags.get(sid)));
     g.appendChild(track(LEFT, mid - 3, plot, 6));
     for (const t of marks) g.appendChild(el("line", { class: "grid", x1: x(t), x2: x(t), y1: mid - bh / 2, y2: mid + bh / 2, style: "opacity:.5" }));
     for (const b of joined(lanes.get(sid))) {
@@ -637,6 +657,10 @@ function drawCost(svg) {
   y += 14;
   // The ranked list: every session is readable here, also the ones that are thin lines in the map.
   const ROW = 34, LEFT = 330, RIGHT = 150, max = all[0].v, shown = all.slice(0, 12), rest = all.slice(12);
+  // Two listed sessions with one name (a resume gives a new id): a grey id start tells them apart. An open session's id is the one of the history it matches.
+  const openBox = openOf();
+  const idOf = (a) => a.sid || Object.keys(hist.s).find((sid) => { const o = openBox(sid); return o && o.i === a.i; }) || "";
+  const tags = clashTags(all.map((x) => [sessName(x.a.n) || x.a.n, idOf(x.a)]).filter((p) => p[1]));
   svg.appendChild(el("text", { x: 2, y: y + 4, style: "font-size:12px;font-weight:700" }, "By session"));
   y += 14;
   for (const { a, v, ws } of shown) {
@@ -644,7 +668,8 @@ function drawCost(svg) {
     const g = el("g", go ? { class: "go", tabindex: 0, role: "link" } : {});
     g.appendChild(card(y, W, ROW));
     g.appendChild(el("circle", { cx: 16, cy: y + 17.5, r: 4.5, fill: model[1] }));
-    g.appendChild(el("text", { x: 30, y: y + 22, style: "font-size:13px;font-weight:600" }, cut(a.n, 26)));
+    const tag = tags.get(idOf(a));
+    g.appendChild(withTag(el("text", { x: 30, y: y + 22, style: "font-size:13px;font-weight:600" }, cut(a.n, tag ? 20 : 26)), tag));
     g.appendChild(el("text", { class: "sub", x: 222, y: y + 22, style: "font-size:11px" }, cut(a.closed ? ws + " · closed" : ws, 15)));
     g.appendChild(track(LEFT, y + 12, W - LEFT - RIGHT, 11));
     g.appendChild(el("rect", { x: LEFT, y: y + 12, width: Math.max(4, (v / max) * (W - LEFT - RIGHT)), height: 11, rx: 5.5, fill: model[1] }));
@@ -815,9 +840,15 @@ function drawLimits(svg) {
     svg.appendChild(head);
     svg.appendChild(el("text", { x: left + 18, y: top + 62, style: "font-size:30px;font-weight:700;fill:" + color }, last[3] + "%"));
     svg.appendChild(el("text", { class: "sub", x: left + 18, y: top + 78, style: "font-size:11px" }, "used · resets in " + dur(c.reset - now) + (now - last[5] > 600 ? " · last reading " + dayTime(last[5]) : "")));
-    const thin = !hot && Math.max(...c.pts.map((p) => p[3])) - Math.min(...c.pts.map((p) => p[3])) < 3;  // a move of 1 or 2 points is rounding, not a pace
+    // A forecast needs a pace, not rounding: the readings must move 5 points or more, show 3 or more different values and
+    // cover 10 minutes (5h window) or 2 hours (week window). A window about to hit 100% is never hidden.
+    const vals = c.pts.map((p) => p[3]), moved = Math.max(...vals) - Math.min(...vals), kinds = new Set(vals).size;
+    const seen = last[5] - c.pts[0][5], need = length <= 6 * 3600 ? 600 : 7200;
+    const why = c.pts.length < 2 ? "only one reading so far" : moved < 5 ? "the readings moved only " + plural(moved, "point", "points") + " (5 needed)" : kinds < 3 ? "only " + plural(kinds, "different reading", "different readings") + " (3 needed)"
+      : seen < need ? "the readings cover only " + dur(seen) + " (" + dur(need) + " needed)" : "";
+    const thin = !hot && why !== "";
     const verdict = hot ? "100% " + dayTime(hit) : thin ? "too early to forecast" : rate > 0 ? "about " + atReset + "% at the reset" : "no growth";
-    const note = hot ? dur(c.reset - hit) + " before the reset" : thin ? "the readings moved under 3 points" : (measured ? "pace of the last readings" : "average pace of this window");
+    const note = hot ? dur(c.reset - hit) + " before the reset" : thin ? why : (measured ? "pace of the last readings" : "average pace of this window");
     const vw = Math.max(verdict.length * 7.4 + 28, 150), vc = hot ? "#FF6B61" : thin ? "#98989d" : "#34C759";
     svg.appendChild(el("rect", { x: left + CW - vw - 16, y: top + 16, width: vw, height: 28, rx: 14, style: "fill:color-mix(in srgb, " + vc + " 20%, var(--card));stroke:" + vc + ";stroke-opacity:.6" }));
     svg.appendChild(el("text", { x: left + CW - 16 - vw / 2, y: top + 35, "text-anchor": "middle", style: "font-size:13px;font-weight:600;fill:" + vc }, verdict));
@@ -1298,6 +1329,7 @@ function show() {
   const tools = document.getElementById("tools"), svg = svgRoot(), legend = document.getElementById("legend");
   tools.replaceChildren();
   legendItems = Object.values(STATUS);
+  if (view === "hive") legendItems = [...legendItems, ["#8E8E93", "state not known yet"], ["#FF6B61", "red outline = context 80% and more"], ["#8E8E93", "grey text on the right = subagents finished"]];
   document.getElementById("head").textContent = "Agent hive" + (view === "hive" ? "" : " · " + VIEWS.find((v) => v[0] === view)[1]);
   if (view === "hive") {
     if (pic.ws.length === 0) {
