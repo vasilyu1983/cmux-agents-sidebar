@@ -1,7 +1,7 @@
 #!/bin/bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Adds one account folder for a coding-agent tool and its line in ~/.config/cmux/agents-accounts.
-#   agents-account-add.sh <claude|codex|opencode> <name> [--dry-run]
+#   agents-account-add.sh <claude|codex|opencode|grok> <name> [--dry-run]
 # For Claude Code and Codex it links the shared setup (settings, instructions, hooks, skills ...) from the
 # tool's normal folder, so every account follows the same rules. It links no session data, no project memory and no login data,
 # and it reads none of them. You log in yourself with the command that it prints.
@@ -12,9 +12,9 @@ dry=0; args=()
 for arg in "$@"; do
   if [ "$arg" = "--dry-run" ]; then dry=1; else args[${#args[@]}]="$arg"; fi
 done
-[ "${#args[@]}" -eq 2 ] || die "usage: agents-account-add.sh <claude|codex|opencode> <name> [--dry-run]"
+[ "${#args[@]}" -eq 2 ] || die "usage: agents-account-add.sh <claude|codex|opencode|grok> <name> [--dry-run]"
 tool="${args[0]}"; name="${args[1]}"
-case "$tool" in claude | codex | opencode) ;; *) die "the tool must be claude, codex or opencode" ;; esac
+case "$tool" in claude | codex | opencode | grok) ;; *) die "the tool must be claude, codex, opencode or grok" ;; esac
 [[ "$name" =~ ^[a-z0-9-]{1,16}$ ]] || die "an account name has 1 to 16 characters from a-z, 0-9 and -"
 [ "$name" != default ] || die "'default' means the tool's normal folder; choose another name"
 
@@ -83,6 +83,9 @@ elif [ "$tool" = codex ]; then
   link_shared .codex config.toml AGENTS.md instructions.md hooks.json rules skills agents plugins keybindings.json
   echo "Separate for this account: the login, sessions, memories, history."
   login="codex login"
+elif [ "$tool" = grok ]; then
+  echo "Nothing is linked for Grok. GROK_HOME moves its settings, login and sessions, so this account starts with its own settings."
+  login="grok login"
 else
   echo "Nothing is linked for OpenCode. Its settings stay shared in ~/.config/opencode; the login and the sessions are separate."
   login="opencode auth login"

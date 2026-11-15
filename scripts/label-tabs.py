@@ -43,7 +43,7 @@ SESSION_ID = r"[0-9a-f-]{8,64}"
 HIVE_STATUS = {"waiting": "needs_input", "busy": "working", "idle": "idle"}
 SURFACE_ENV = re.compile(r" CMUX_SURFACE_ID=([0-9A-Fa-f-]{36})(?: |$)")
 ACCOUNT_NAME = r"[a-z0-9-]{1,16}"
-ACCOUNT_TOOLS = ("claude", "codex", "opencode")
+ACCOUNT_TOOLS = ("claude", "codex", "opencode", "grok")
 # Other terminal coding agents for the start menu: (id, start command, data folder, label). A tool counts as present
 # when its folder exists and your login shell finds its command (see commands_found); nothing is read from the folder. Each line comes from the tool's own docs or repo (command and
 # folder), checked on 2026-11-15. The command is one word, run by name through your login shell PATH.
@@ -1359,9 +1359,11 @@ def all_limits():
     for home, account in homes("opencode", "~/.local/share/opencode"):
         if os.path.isdir(home):
             found.append("opencode,,,,0" + (f",{account}" if account else ""))
-    for tool, folder in (("grok", "~/.grok"), ("agy", "~/.antigravity")):
-        if os.path.isdir(os.path.expanduser(folder)):
-            found.append(f"{tool},,,,0")
+    for home, account in homes("grok", "~/.grok"):
+        if os.path.isdir(home):
+            found.append("grok,,,,0" + (f",{account}" if account else ""))
+    if os.path.isdir(os.path.expanduser("~/.antigravity")):
+        found.append("agy,,,,0")
     return [item for item in found if item]
 
 

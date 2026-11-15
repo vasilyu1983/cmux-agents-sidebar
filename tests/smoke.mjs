@@ -795,13 +795,13 @@ check("a tab title that the shell left (user@host, or a start command with a var
 check("the group menu starts a plain terminal first, then each tool with each account, by a fixed command", () => {
   ctx.__setData("workspaces", JSON.stringify([{
     id: "ws-bare", title: "ignored", directory: "/work/bare", color: "#336699", selected: true, unread: 0,
-    description: ["/work/bare", "@home: " + HOME, "@primary: main", "@limits: claude,week,4,Sat 09:39,1794600000;claude,,,,0,work;codex,,,,0;codex,,,,0,team;grok,,,,0", "b-one: sonnet"].join(" | "),
+    description: ["/work/bare", "@home: " + HOME, "@primary: main", "@limits: claude,week,4,Sat 09:39,1794600000;claude,,,,0,work;codex,,,,0;codex,,,,0,team;grok,,,,0;agy,,,,0", "b-one: sonnet"].join(" | "),
     tabs: [tab(1, "[b-one] t", { id: B(5), focused: true })], agents: [agent("b-one", B(5), "idle", "claude")], prs: [],
   }]));
-  const want = ["\u26AA  Terminal", "Agent session", "\u{1F7E0}  Claude", "main  \u2605 default", "work", "\u{1F7E2}  Codex", "team", "\u{1F534}  Grok", "Add account", "\u{1F7E0}  Claude…", "\u{1F7E2}  Codex…"];
+  const want = ["\u26AA  Terminal", "Agent session", "\u{1F7E0}  Claude", "main  \u2605 default", "work", "\u{1F7E2}  Codex", "team", "\u{1F534}  Grok", "\u{1F7E3}  Antigravity", "Add account", "\u{1F7E0}  Claude…", "\u{1F7E2}  Codex…", "\u{1F534}  Grok…"];
   const once = [...new Set(withText((t) => want.includes(t)).map((n) => n.props.text))];
   must(JSON.stringify(once) === JSON.stringify(want), "menu items: " + JSON.stringify(once));
-  must(withText((t) => t.endsWith("Grok…")).length === 0, "a tool with no account support got an add item");
+  must(withText((t) => t.endsWith("Antigravity…")).length === 0, "a tool with no account support got an add item");
   let before = cmuxCalls().length;
   tap(withText((t) => t === "team")[0]);
   let calls = cmuxCalls().slice(before);
@@ -814,7 +814,7 @@ check("the group menu starts a plain terminal first, then each tool with each ac
   before = cmuxCalls().length;
   tap(withText((t) => t.endsWith("  Grok"))[0]);
   calls = cmuxCalls().slice(before);
-  must(calls.length === 1 && calls[0].params.initial_command === "\"$SHELL\" -lic 'grok; exec \"$SHELL\" -l'", "grok command: " + JSON.stringify(calls));
+  must(calls.length === 1 && calls[0].params.initial_command === "\"$SHELL\" -lic 'AGENT_ACCOUNT=main \"$HOME/.config/cmux/scripts/agent-run.sh\" grok; exec \"$SHELL\" -l'", "grok command: " + JSON.stringify(calls));
   before = cmuxCalls().length;
   tap(withText((t) => t.endsWith("  Terminal"))[0]);
   calls = cmuxCalls().slice(before);

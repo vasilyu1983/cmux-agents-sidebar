@@ -646,8 +646,8 @@ const accountMarks = computed(() => {
 // The start menu of a group: one item per tool and account. The list is the tools and accounts of "@limits"
 // (label-tabs.py names there every installed tool and every account of your accounts file), so nothing is fixed here.
 // LAUNCH tools start through agent-run.sh, with an account. PLAIN tools keep one account, so their own command starts them.
-const LAUNCH = ["claude", "codex", "opencode"];
-const PLAIN = { grok: "grok", agy: "agy" };
+const LAUNCH = ["claude", "codex", "opencode", "grok"];
+const PLAIN = { agy: "agy" };
 const STARTS = [...LAUNCH, ...Object.keys(PLAIN)];
 // A system menu draws no icon beside a label and no text colour (both tried with cmux 0.65, 2026-11-15), so a
 // coloured emoji dot is the mark of a tool there.

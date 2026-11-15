@@ -13,13 +13,14 @@ name_ok() { [[ "$1" =~ ^[a-z0-9-]{1,16}$ ]]; }
 
 which_only=0
 if [ "${1:-}" = "--which" ]; then which_only=1; shift; fi
-[ $# -ge 1 ] || die "usage: agent-run.sh [--which] <claude|codex|opencode> [arguments...]"
+[ $# -ge 1 ] || die "usage: agent-run.sh [--which] <claude|codex|opencode|grok> [arguments...]"
 tool="$1"; shift
 case "$tool" in
   claude) var=CLAUDE_CONFIG_DIR ;;
   codex) var=CODEX_HOME ;;
   opencode) var=XDG_DATA_HOME ;;
-  *) die "no account support for this tool (supported: claude, codex, opencode)" ;;
+  grok) var=GROK_HOME ;;
+  *) die "no account support for this tool (supported: claude, codex, opencode, grok)" ;;
 esac
 
 choice=""
@@ -42,7 +43,7 @@ while IFS= read -r line || [ -n "$line" ]; do
   case "$kw" in
     '' | '#'*) continue ;;
     account)
-      case "$a" in claude | codex | opencode) ;; *) die "line $n: the tool must be claude, codex or opencode" ;; esac
+      case "$a" in claude | codex | opencode | grok) ;; *) die "line $n: the tool must be claude, codex, opencode or grok" ;; esac
       name_ok "$b" || die "line $n: an account name has 1 to 16 characters from a-z, 0-9 and -"
       [ -n "$rest" ] || die "line $n: an account line needs a folder"
       known="$known$b "

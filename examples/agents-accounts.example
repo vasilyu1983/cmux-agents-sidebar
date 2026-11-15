@@ -1,7 +1,7 @@
 # Accounts for coding-agent tools. Copy to ~/.config/cmux/agents-accounts and change the names.
 # scripts/agents-account-add.sh writes the account lines for you.
 #
-# account <tool> <name> <folder>    tool: claude, codex or opencode; name: a-z, 0-9 and -, up to 16 characters;
+# account <tool> <name> <folder>    tool: claude, codex, opencode or grok; name: a-z, 0-9 and -, up to 16 characters;
 #                                   folder: under your home folder, ~/ is allowed
 # rule <folder prefix> <name>       sessions started in this folder or below it use this account;
 #                                   the longest matching prefix wins
