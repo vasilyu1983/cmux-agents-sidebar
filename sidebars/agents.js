@@ -58,6 +58,8 @@ const showLimits = () => showLimitsS() ?? saved().l;
 const collapsed = () => ({ ...saved().folds, ...collapsedS() });
 // Rows grouped by state (needs you, running, finished, recent, idle) in place of by workspace. Not saved.
 const [byState, setByState] = signal(false);
+// The Limits view grouped per tool (which account of a tool has room) in place of per account. Not saved.
+const [limitsByTool, setLimitsByTool] = signal(false);
 const [openKids, setOpenKids] = signal({});
 const [openInfo, setOpenInfo] = signal({});
 // The account filter: "" = every account. Not saved; it lasts until the panel reloads.
@@ -751,6 +753,7 @@ const limitRows = computed(() => {
     else if (x.bar < 0 && x.value === "no limit data on this Mac") group(x.acct).none.push(x);
     else group(x.acct).wins.push(x);
   }
+  if (limitsByTool()) return limitRowsByTool(all);
   const primary = accountMarks().primary;
   const names = Object.keys(groups).filter(Boolean).sort((a, b) => (b === primary) - (a === primary) || (a < b ? -1 : a > b ? 1 : 0));
   const out = [];
@@ -770,6 +773,42 @@ const limitRows = computed(() => {
   }
   return out;
 });
+// The same lines per tool: a header with the tool name, under it each account with its windows (the account name
+// once), then the accounts of that tool with no data on one muted line. A tool with no window and no account name
+// goes to the last group "other". The cost lines, one per account, follow in a group "cost".
+// The keys start with "t:" because these rows have a wider name column, and a row's template is fixed per key.
+function limitRowsByTool(all) {
+  const primary = accountMarks().primary;
+  const order = (a, b) => (b.acct === primary) - (a.acct === primary) || (a.acct < b.acct ? -1 : a.acct > b.acct ? 1 : 0);
+  const none = (x) => x.bar < 0 && x.value === "no limit data on this Mac";
+  const lines = all.filter((x) => !x.key.startsWith("cost-"));
+  const out = [], bare = [];
+  const head = (label) => out.push({ key: "t:head-" + label, kind: "head", label, first: out.length === 0 });
+  for (const tool of [...new Set(lines.map((x) => x.tool))]) {
+    const mine = lines.filter((x) => x.tool === tool), name = TOOLS[Object.keys(TOOLS)[tool]];
+    const wins = mine.filter((x) => !none(x)).sort(order), named = mine.filter((x) => none(x) && x.acct).sort(order);
+    if (!wins.length && !named.length) { bare.push(mine[0]); continue; }
+    head(name);
+    let last = null;
+    for (const x of wins) {
+      out.push({ ...x, key: "t:" + x.key, kind: "win", wide: true, tname: x.acct === last ? "" : x.acct });
+      last = x.acct;
+    }
+    if (named.length) {
+      const text = named.map((x) => x.acct).join(", ");
+      out.push({ key: "t:limit-nodata-" + name, kind: "none", wide: true, tname: "no data", value: text, color: META, copy: "no limit data on this Mac: " + name + " " + text, bar: -1, wsId: named[0].wsId });
+    }
+  }
+  if (bare.length) {
+    const text = bare.map((x) => TOOLS[Object.keys(TOOLS)[x.tool]]).join(", ");
+    if (out.length) head("other");
+    out.push({ key: "t:limit-nodata-", kind: "none", wide: true, tname: "no data", value: text, color: META, copy: "no limit data on this Mac: " + text, bar: -1, wsId: bare[0].wsId });
+  }
+  const costs = all.filter((x) => x.key.startsWith("cost-")).sort(order);
+  if (costs.length) head("cost");
+  for (const x of costs) out.push({ ...x, key: "t:" + x.key, kind: "cost", wide: true, tname: x.acct });
+  return out;
+}
 
 // "merged #12; refused none; skipped none" reads "merged #12": a clause that only says "none" is left out.
 // A text with nothing but such clauses stays as it is.
@@ -1130,8 +1169,8 @@ const rowTitle = (t) => {
 // One line of the project strip: a dim label and its text on one line; the hover shows the whole text. A week
 // line that starts with a percent shows the percent, a bar, then the rest. A click opens the workspace that carries it.
 // The view of the views page that fits a strip or Limits line, with the text of its menu item.
-const VIEW_OF = (key) => (String(key).startsWith("cost-") ? ["cost", "Show the cost map"]
-  : String(key).startsWith("limit") ? ["limits", "Show the limit forecast"] : ["timeline", "Show the timeline"]);
+const VIEW_OF = (key) => (/^(t:)?cost-/.test(String(key)) ? ["cost", "Show the cost map"]
+  : /^(t:)?limit/.test(String(key)) ? ["limits", "Show the limit forecast"] : ["timeline", "Show the timeline"]);
 
 function stripRow(entry) {
   const value = entry().bar >= 0
@@ -1174,7 +1213,7 @@ function limitRow(entry) {
     ]
     : [Text(() => entry().value).font(10).monospaced().color(() => entry().color).lineLimit(3).truncation("tail").layoutPriority(1).help(() => entry().value)];
   return HStack({ spacing: 8, alignment: "top" }, [
-    cell(Text(() => entry().tname).font(10).monospaced().color(() => (entry().kind === "win" ? TEXT2 : META)).lineLimit(1), 66, "leading"),
+    cell(Text(() => entry().tname).font(10).monospaced().color(() => (entry().kind === "win" ? TEXT2 : META)).lineLimit(1).truncation("tail"), entry().wide ? 100 : 66, "leading"),
     ...cells,
     Spacer(),
   ])
@@ -1457,7 +1496,9 @@ sidebar(() =>
         Spacer(),
         // The attention sort, then the view by state in place of by workspace.
         toggleButton("↑", () => attention(), () => setView({ a: !attention() }), 4),
-        toggleButton("state", () => byState(), () => setByState(!byState()), 3),
+        // In the Limits view this place holds "tools": the limits per tool in place of per account.
+        toggleButton(() => (limitsShown() ? "tools" : "state"), () => (limitsShown() ? limitsByTool() : byState()),
+          () => (limitsShown() ? setLimitsByTool(!limitsByTool()) : setByState(!byState())), 3),
         toggleButton("Ended", () => showEnded(), () => setView({ e: !showEnded() }), 2),
         // Opens the views page in the browser: the hive tree, the timeline, cost, flow, limits, queue, context and rhythm.
         toggleButton("views ↗", () => false, () => openViews(), 1),

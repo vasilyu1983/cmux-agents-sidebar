@@ -583,7 +583,20 @@ check("the Limits view groups one account: its name once, the tool name once, th
   must(none.props.color === META, "the no-data line is not muted");
   // The bars keep their 60 x 5 size and the cost lines their menu.
   must(reachable().filter((n) => n.type === "capsule" && n.props.width === 60 && n.props.height === 5).length === 4, "not four 60 x 5 bars");
+  // "tools" turns the same lines around: which account of a tool has room. The costs follow in their own group.
+  must(withText((t) => t === "state").length === 0, "the state switch shows in the Limits view");
+  tap(withText((t) => t === "tools")[0]);
+  const texts = limitsTexts();
+  const turned = texts.slice(texts.indexOf("Claude")).filter((t) => /^(personal|work|team-a|other|Claude|Codex|no data|cost|\$.* session.*|OpenCode, Grok|\d+%|5h · .*|week · .*)$/.test(t));
+  must(JSON.stringify(turned) === JSON.stringify([
+    "Claude", "personal", "75%", "week · resets Wed 23:00", "work", "7%", "5h · resets 21:20", "1%", "week · resets Sun 10:00", "no data", "team-a",
+    "Codex", "personal", "4%", "week · resets Wed 10:19", "no data", "team-a",
+    "other", "no data", "OpenCode, Grok",
+    "cost", "personal", "$2.00 · 1 session", "work", "$15.91 · 1 session",
+  ]), "the view per tool reads " + JSON.stringify(turned));
+  tap(withText((t) => t === "tools")[0]);
   tap(withText((t) => t === "Limits")[0]);
+  must(withText((t) => t === "state").length === 1 && withText((t) => t === "tools").length === 0, "the state switch did not come back");
 });
 check("the Limits view of one account with no accounts file has no header and still names a tool with no data", () => {
   ctx.__setData("workspaces", limitsFixture("claude,5h,30,21:20,1794650000;claude,week,10,Sun 10:00,1794650000;codex,,,,0;grok,,,,0"));
