@@ -662,7 +662,7 @@ const launchList = computed(() => {
   const primary = accountMarks().primary;
   // The tool's normal folder first, then the other accounts by name.
   return Object.values(found).sort((a, b) => STARTS.indexOf(a.tool) - STARTS.indexOf(b.tool) || (a.acct < b.acct ? -1 : a.acct > b.acct ? 1 : 0))
-    .map((x) => ({ ...x, label: "New " + TOOLS[x.tool] + (!PLAIN[x.tool] && (x.acct || primary) ? " · " + (x.acct || primary) : "") }));
+    .map((x) => ({ ...x, label: PLAIN[x.tool] ? "" : (x.acct || primary || "default") + (x.acct ? "" : " · default") }));
 });
 const limits = computed(() => {
   const epoch = data.clock()?.epoch ?? 0;
@@ -958,11 +958,28 @@ const tint = (color, alpha) => (/^#[0-9A-Fa-f]{6}$/.test(color ?? "") ? seen(col
 // The rows of a workspace sit 12 pt inside its band. The top block and the view by state have no band above them.
 const inset = (entry) => () => (byState() || /^(?:[dc]:)?n:/.test(String(entry().key ?? "")) ? 0 : 12);
 // Right-click on a workspace band or line: "New tab here".
-// The menu of a group: a plain terminal first, then one start item per tool and account.
+// Opens a tab that asks for a name and then runs agents-account-add.sh of this kit, which checks the name itself.
+// The command is fixed text but for the tool, one of LAUNCH.
+function addAccount(wsId, tool) {
+  if (!wsId || !LAUNCH.includes(tool)) return;
+  const run = 'printf "New ' + TOOLS[tool] + ' account name (a-z, 0-9, -): "; read -r n; "$HOME/.config/cmux/scripts/agents-account-add.sh" ' + tool + ' "$n"';
+  cmux("surface.create", { workspace_id: wsId, focus: true, initial_command: '"$SHELL" -lic \'' + run + '; exec "$SHELL" -l\'' });
+}
+// The menu of a group: a plain terminal first, then the tools found on this Mac. A tool with several accounts is a
+// submenu with its normal folder first, marked "default"; a tool with one account is one item. Last: add an account.
 const bandMenu = (entry) => {
-  const items = entry().launch ?? [];
-  return [Button("New terminal", () => newTab(entry().wsId)), ...(items.length ? [Divider()] : []),
-    ...items.map((item) => Button(item.label, () => launch(entry().wsId, item)))];
+  const items = entry().launch ?? [], ws = () => entry().wsId;
+  const tools = STARTS.filter((t) => items.some((x) => x.tool === t));
+  const start = tools.map((t) => {
+    const mine = items.filter((x) => x.tool === t);
+    if (mine.length < 2) return Button("New " + TOOLS[t], () => launch(ws(), mine[0]));
+    const first = mine.filter((x) => !x.acct), rest = mine.filter((x) => x.acct);
+    return Menu("New " + TOOLS[t], [...first.map((x) => Button(x.label, () => launch(ws(), x))), ...(first.length && rest.length ? [Divider()] : []),
+      ...rest.map((x) => Button(x.label, () => launch(ws(), x)))]);
+  });
+  const adds = tools.filter((t) => LAUNCH.includes(t)).map((t) => Button(TOOLS[t] + " account…", () => addAccount(ws(), t)));
+  return [Button("New terminal", () => newTab(ws())), ...(start.length ? [Divider(), ...start] : []),
+    ...(adds.length ? [Divider(), Menu("Add account", adds)] : [])];
 };
 const selectWs = (entry) => () => cmux("workspace.select", { workspace_id: entry().wsId });
 // "+" opens a plain terminal tab in the workspace, the first item of the right-click menu. A Menu() as the mark was
