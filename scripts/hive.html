@@ -280,6 +280,17 @@ const agents = () => pic.ws.flatMap((w) => (w.a || []).map((a) => ({ ...a, wn: w
 const goOf = (a) => (a && /^[0-9A-Fa-f-]{1,40}$/.test(a.i || "") && /^[0-9A-Fa-f-]{1,40}$/.test(a.w || "") ? a.w + ":" + a.i : "");
 // The box of an open session with this name, for a jump from a view that knows names only.
 const agentNamed = (name) => (name ? agents().find((a) => sessName(a.n) === name) : null);
+// The sessions that closed today (since midnight), from the history, as rows like the open ones. A closed session has
+// no tab to go to. A name can come back (a new session takes it), so the open one is the newest session of that name.
+function closedToday() {
+  const day = new Date((hist.t || Math.floor(Date.now() / 1000)) * 1000);
+  day.setHours(0, 0, 0, 0);
+  const from = day.getTime() / 1000, end = new Map(), newest = new Map();
+  for (const b of hist.b) end.set(b[0], Math.max(end.get(b[0]) || 0, b[3]));
+  for (const [sid, t] of end) { const n = hist.s[sid].n; if (!newest.has(n) || t > end.get(newest.get(n))) newest.set(n, sid); }
+  return [...end].filter(([sid, t]) => t >= from && money(hist.s[sid].c) > 0 && !(agentNamed(hist.s[sid].n) && newest.get(hist.s[sid].n) === sid))
+    .map(([sid]) => { const v = hist.s[sid]; return { n: v.n, wn: v.w || "no workspace", m: v.m, c: v.c, u: v.u, k: "claude", closed: true }; });
+}
 const empty = (svg, lines) => {
   svg.setAttribute("width", 640); svg.setAttribute("height", 30 + lines.length * 20);
   lines.forEach((line, k) => svg.appendChild(el("text", { class: k ? "sub" : "", x: 4, y: 24 + k * 20, style: k ? "font-size:12px" : "" }, line)));
@@ -563,7 +574,10 @@ function drawTimeline(svg) {
 
 // ---- Cost: a map (workspace, then session; the area is the cost) and a ranked list ----
 function drawCost(svg) {
-  const groups = pic.ws.map((w) => ({ n: w.n, a: (w.a || []).map((a) => ({ a, v: money(a.c) })).filter((x) => x.v > 0).sort((p, q) => q.v - p.v) }))
+  // The open sessions and the ones closed today, by workspace name: a workspace with only closed sessions shows too.
+  const byName = new Map(pic.ws.map((w) => [w.n, [...(w.a || [])]]));
+  for (const a of closedToday()) byName.set(a.wn, [...(byName.get(a.wn) || []), a]);
+  const groups = [...byName].map(([n, list]) => ({ n, a: list.map((a) => ({ a, v: money(a.c) })).filter((x) => x.v > 0).sort((p, q) => q.v - p.v) }))
     .map((g) => ({ ...g, v: g.a.reduce((sum, x) => sum + x.v, 0) })).filter((g) => g.v > 0).sort((p, q) => q.v - p.v);
   const total = groups.reduce((sum, g) => sum + g.v, 0);
   if (total <= 0) {
@@ -572,7 +586,7 @@ function drawCost(svg) {
   }
   const all = groups.flatMap((g) => g.a.map((x) => ({ ...x, ws: g.n }))).sort((p, q) => q.v - p.v);
   const W = pageWidth(), H = 240, GAP = 4;
-  let y = tiles(svg, [["$" + total.toFixed(2), "open sessions, list price", ""], ["$" + all[0].v.toFixed(2), "top: " + cut(sessName(all[0].a.n) || all[0].a.n, 20), modelOf(all[0].a.m)[1]],
+  let y = tiles(svg, [["$" + total.toFixed(2), "open and closed today, list price", ""], ["$" + all[0].v.toFixed(2), "top: " + cut(sessName(all[0].a.n) || all[0].a.n, 20), modelOf(all[0].a.m)[1]],
     [Math.round((groups[0].v / total) * 100) + "%", "in " + cut(groups[0].n, 20), ""], [String(all.length), "sessions with a cost", ""]]);
   const widths = fit(groups.map((g) => g.v), W, 170);
   groups.forEach((g, k) => { g.gw = widths[k]; const hs = fit(g.a.map((x) => x.v), Math.min(H, Math.max(28 * g.a.length, (g.v / total) * W * H / g.gw)), 28); g.a.forEach((x, j) => { x.h = hs[j]; }); });
@@ -587,8 +601,8 @@ function drawCost(svg) {
       const model = modelOf(a.m), go = goOf(a), bw = Math.max(2, gw - GAP), bh = Math.max(2, h - GAP);
       const box = el("g", go ? { class: "go", tabindex: 0, role: "link" } : {});
       const rect = el("rect", { x: x0 + 0.5, y: y0 + 0.5, width: bw, height: bh, rx: Math.min(8, bh / 2),
-        style: "fill:color-mix(in srgb, " + model[1] + " 24%, var(--card));stroke:" + model[1] + ";stroke-opacity:.75" });
-      rect.appendChild(el("title", {}, a.n + " · " + (a.m || a.k) + " · " + a.c));
+        style: "fill:color-mix(in srgb, " + model[1] + (a.closed ? " 10%" : " 24%") + ", var(--card));stroke:" + model[1] + ";stroke-opacity:.75" + (a.closed ? ";stroke-dasharray:4 3" : "") });
+      rect.appendChild(el("title", {}, a.n + " · " + (a.m || a.k) + " · " + a.c + (a.closed ? " · closed" : "")));
       box.appendChild(rect);
       if (bh >= 58 && bw >= 120) {
         box.appendChild(el("text", { x: x0 + 12, y: y0 + 30, style: "font-size:22px;font-weight:600" }, a.c));
@@ -614,7 +628,7 @@ function drawCost(svg) {
     g.appendChild(card(y, W, ROW));
     g.appendChild(el("circle", { cx: 16, cy: y + 17.5, r: 4.5, fill: model[1] }));
     g.appendChild(el("text", { x: 30, y: y + 22, style: "font-size:13px;font-weight:600" }, cut(a.n, 26)));
-    g.appendChild(el("text", { class: "sub", x: 222, y: y + 22, style: "font-size:11px" }, cut(ws, 15)));
+    g.appendChild(el("text", { class: "sub", x: 222, y: y + 22, style: "font-size:11px" }, cut(a.closed ? ws + " · closed" : ws, 15)));
     g.appendChild(track(LEFT, y + 12, W - LEFT - RIGHT, 11));
     g.appendChild(el("rect", { x: LEFT, y: y + 12, width: Math.max(4, (v / max) * (W - LEFT - RIGHT)), height: 11, rx: 5.5, fill: model[1] }));
     g.appendChild(el("text", { x: W - RIGHT + 14, y: y + 22, style: "font-size:13px;font-weight:600" }, a.c));
@@ -664,13 +678,13 @@ function drawCost(svg) {
   size(svg, W, y + 6);
   const seen = new Set(all.map((x) => modelOf(x.a.m)));
   legendItems = MODELS.filter((m) => seen.has(m) && m[0] !== "mythos").map((m) => [m[1], m[2]]);
-  return "One column per workspace; the area of a box follows the cost of its session (a box under the readable size is enlarged). Costs are estimates at list price. Click a box or a line to go to its tab."
+  return "One column per workspace; the area of a box follows the cost of its session (a box under the readable size is enlarged). Open sessions and the ones closed today (dashed), each with its whole cost, at list price. Click a box or a line to go to its tab."
     + coverage(["Claude Code", ...all.map((x) => toolOf(x.a.k))]);
 }
 
 // ---- Flow: where the cost goes: account (when there is more than one), workspace, model ----
 function drawFlow(svg) {
-  const rows = agents().map((a) => ({ a, v: money(a.c) })).filter((r) => r.v > 0);
+  const rows = [...agents(), ...closedToday()].map((a) => ({ a, v: money(a.c) })).filter((r) => r.v > 0);
   const total = rows.reduce((sum, r) => sum + r.v, 0);
   if (total <= 0) {
     empty(svg, ["No cost figures yet.", "A Claude Code session reports its cost through the status line of this kit, after its first reply.", ...onlyOthers(["Claude Code"])]);
@@ -688,7 +702,7 @@ function drawFlow(svg) {
     c.nodes = [...sums].sort((p, q) => q[1] - p[1]).map(([k, v]) => ({ k, v, h: Math.max(3, v * scale), out: 0, in: 0 }));
   }
   const last = cols[cols.length - 1], top = cols[cols.length - 1].nodes[0];
-  let y = tiles(svg, [["$" + total.toFixed(2), "open sessions, list price", ""],
+  let y = tiles(svg, [["$" + total.toFixed(2), "open and closed today, list price", ""],
     [Math.round((top.v / total) * 100) + "%", "goes to " + top.k, last.color(top.k)],
     [String(cols[cols.length - 2].nodes.length), cols[cols.length - 2].nodes.length === 1 ? "workspace with a cost" : "workspaces with a cost", ""]]);
   cols.forEach((c, j) => {
@@ -723,7 +737,7 @@ function drawFlow(svg) {
   });
   size(svg, W, Math.max(...cols.map((c) => c.bottom)) + 24);
   legendItems = last.nodes.map((n) => [last.color(n.k), n.k]);
-  return "The width of a band is the cost. Open Claude Code sessions, at list price." + (several ? "" : " A column for accounts shows when the sessions run under more than one account.")
+  return "The width of a band is the cost. Open Claude Code sessions and the ones closed today, each with its whole cost, at list price." + (several ? "" : " A column for accounts shows when the sessions run under more than one account.")
     + coverage(["Claude Code", ...rows.map((r) => toolOf(r.a.k))]);
 }
 
