@@ -322,7 +322,7 @@ check("a tab with no title of its own shows the title of its session; the reques
   must(withText((t) => t === "next").some((n) => n.props.background === "clear" && n.props.color === "#D1D1D6"), "no bare next label on worker-2");
   must(withText((t) => t.endsWith("the lead merges")).length >= 1, "worker-2 does not show its next step");
   const widths = (w) => reachable().filter((n) => n.props.width === w).length;
-  must(widths(42) >= 6 && widths(42) === widths(27) && widths(27) === widths(49) && widths(49) === widths(29), "the four columns are not on every row");
+  must(widths(27) >= 6 && widths(27) === widths(49) && widths(49) === widths(29), "the three number columns are not on every row");
   must(withText((t) => t === "claude").some((n) => n.props.fixedSize === true && n.props.font === 10), "the strip line of the limit is not labelled claude");
   must(withText((t) => t === "week").length === 0, "the strip still has a line labelled week");
 });
@@ -687,7 +687,7 @@ check("rows keep their height and their columns with and without the new fields"
   const seconds = reachable().filter((n) => n.props.minHeight === 16 && n.props.paddingLeading === 19);
   must(seconds.length === rows.length, "second lines: " + seconds.length + " for " + rows.length + " rows");
   const widths = (w) => reachable().filter((n) => n.props.width === w).length;
-  must(widths(42) === rows.length && widths(49) === rows.length, "the model and cost columns are not on every row");
+  must(widths(27) === rows.length && widths(49) === rows.length, "the context and cost columns are not on every row");
 });
 check("a row menu opens the views page on the inside view and on the setup view", () => {
   for (const [label, v] of [["Show inside the sessions", "inside"], ["Show the setup", "setup"]]) {

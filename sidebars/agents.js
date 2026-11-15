@@ -1220,8 +1220,9 @@ function agentRow(entry) {
         .color(() => (hot() ? ORANGE : entry().done ? PURPLE_TEXT : META))
         .marginLeading(() => (entry().pills.length ? 5 : 0)),
       Spacer().layoutPriority(-2),
-      // Three columns with fixed widths, so model, context and cost line up down the list.
-      cell(Text(() => entry().model).font(10).monospaced().weight("medium").lineLimit(1).color(MODEL_INK), 42, "trailing").marginLeading(5),
+      // The model takes the width of its name, so the text before it gets the rest. Then three columns with
+      // fixed widths, so context, tokens and cost line up down the list.
+      Text(() => entry().model).font(10).monospaced().weight("medium").lineLimit(1).fixedSize().color(MODEL_INK).marginLeading(5),
       cell(Text(() => entry().ctxText).font(10).monospaced().lineLimit(1)
         .color(() => (entry().ctxWarm ? "#FFD60A" : CTX_INK)), 27, "trailing").marginLeading(5),
       cell(Text(() => entry().tokText).font(10).monospaced().lineLimit(1).color(CTX_INK), 29, "trailing").marginLeading(5),
