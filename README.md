@@ -87,6 +87,7 @@ From top to bottom of the picture. "You do" says what the mark asks of you.
 | `by state` | Row 2 of `Sessions`: groups the rows by state in place of by workspace | Click to turn on or off |
 | `attention first` | Row 2 of `Sessions`: sorts sessions that need attention first | Click to turn on or off |
 | `by account` `by tool` | Row 2 of `Limits`, its only control: the grouping of the limits. The search field and the chips belong to the session list and do not show here | Click one |
+| Chip colours | A filter chip carries the colour of its state on the rows: orange asks you, purple finished, blue works, yellow context, green idle, grey ended. An account chip and an account header in `Limits` carry the colour of that account. The active chip is white on a tint of its colour; `views ↗` is blue because it leaves the panel | — |
 | `ended` chip | Row 3 of `Sessions`, with the filter chips, with the number of ended sessions. Also shows sessions that ended. The ended runs of a tab that hosts a live session share one row, `3 earlier runs in this tab`, with no marks, no cost and no focus: those belong to the live session | Click to turn on or off |
 | `views ↗` | Opens the views page: the hive graph, and six more pictures of the same data | Click |
 | `you 2` chip | 2 sessions whose next step is yours | Click to see only those |

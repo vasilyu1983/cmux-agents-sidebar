@@ -402,7 +402,7 @@ check("the panel head, control row, chips and search field have their new form",
   // Only the selected segment has a fill: no box around the three, and no fill on the other two.
   must(!group.props.background && here.props.background === "clear" && all.props.background === "#FFFFFF2E", "a fill shows on more than the selected segment");
   const hive = withText((t) => t === "views ↗")[0];
-  must(hive.props.color === META && hive.props.minHeight === 24 && hive.props.hoverBackground === "#FFFFFF14", "views ↗ is not a META toggle at least 24 tall");
+  must(hive.props.color === "#5AA9FF" && hive.props.minHeight === 24 && hive.props.hoverBackground === "#FFFFFF14", "views ↗ is not a blue link at least 24 tall");
   // The needs and working chips left the row: the head counts filter them.
   must(withText((t) => t === "!" || t === "▶").length === 0, "the needs or working chip is still in the chip row");
   const done = withText((t) => t === "✓")[0];
@@ -613,6 +613,8 @@ check("a head count filters the list, a second tap clears it; the idle count has
   must(!tapTarget(withText((t) => t === "2 idle")[0]), "the idle count is tappable");
   tap(withText((t) => t === "1 need you")[0]);
   must(withText((t) => t === "!").some((n) => n.props.color === "primary"), "the needs chip does not show as the active filter");
+  // A chip carries the colour of its state on the rows; the active one is white on a tint of that colour.
+  must(withText((t) => t === "PR").every((n) => n.props.color === "#64D2FF"), "the PR chip does not carry its colour");
   must(withText((t) => t === "[worker-2]").length === 0, "an idle row shows under the needs filter");
   tap(withText((t) => t === "1 need you")[0]);
   must(withText((t) => t === "!").length === 0 && withText((t) => t === "[worker-2]").length === 1, "the second tap did not clear the filter");

@@ -759,7 +759,7 @@ const limitRows = computed(() => {
   const out = [];
   for (const who of groups[""] ? [...names, ""] : names) {
     const g = groups[who];
-    if (who || names.length) out.push({ key: "head-" + who, kind: "head", label: who || "other", first: out.length === 0 });
+    if (who || names.length) out.push({ key: "head-" + who, kind: "head", label: who || "other", acct: who, first: out.length === 0 });
     let last = -1;
     for (const x of g.wins) {
       out.push({ ...x, kind: "win", tname: x.tool === last ? "" : TOOLS[Object.keys(TOOLS)[x.tool]] });
@@ -1005,13 +1005,14 @@ const segment = (label, activeFn, onTapFn) =>
     .background(() => (activeFn() ? "#FFFFFF2E" : "clear"))
     .onTap(onTapFn);
 // A capsule chip: a label and its count.
-const chip = (labelFn, countFn, activeFn, onTapFn) =>
+// With a colour, the label carries it (the colour of that state or account on the rows); the active chip is white on a tint of it.
+const chip = (labelFn, countFn, activeFn, onTapFn, colorFn) =>
   HStack({ spacing: 4 }, [
-    Text(labelFn).font(11).monospaced().weight("medium").lineLimit(1).fixedSize().color(() => (activeFn() ? "primary" : TEXT2)),
+    Text(labelFn).font(11).monospaced().weight("medium").lineLimit(1).fixedSize().color(() => (activeFn() ? "primary" : colorFn?.() ?? TEXT2)),
     Text(countFn).font(10).monospaced().lineLimit(1).fixedSize().color(META),
   ])
     .paddingHorizontal(10).paddingVertical(4).cornerRadius(12)
-    .background(() => (activeFn() ? "#FFFFFF26" : "#FFFFFF0F"))
+    .background(() => (activeFn() ? (colorFn?.() ? colorFn() + "40" : "#FFFFFF26") : "#FFFFFF0F"))
     .hoverBackground("#FFFFFF1A")
     .onTap(onTapFn);
 // A used share as a bar on a grey track: green below 50%, orange from 50%, red from 80%. The fill is at least 3 pt.
@@ -1199,7 +1200,8 @@ function stripRow(entry) {
 // The account name of a group is a small muted header with space above it (no box, no rule).
 const limitHead = (entry) =>
   HStack({ spacing: 0 }, [
-    Text(() => entry().label).font(10).monospaced().weight("semibold").color(META).lineLimit(1).truncation("tail"),
+    // An account header carries the colour of that account, as its chip and its pills do.
+    Text(() => entry().label).font(10).monospaced().weight("semibold").color(() => (entry().acct ? acctColor(entry().acct) : META)).lineLimit(1).truncation("tail"),
     Spacer(),
   ]).paddingHorizontal(10).paddingTop(() => (entry().first ? 0 : 8));
 function limitRow(entry) {
@@ -1437,8 +1439,11 @@ const HEAD_CHIPS = ["needs", "working"];
 const chipItems = () => FILTERS
   .filter((f) => filter() === f[0] || (!HEAD_CHIPS.includes(f[0]) && (view().chips[f[0]] ?? 0) > 0))
   .map((f) => ({ id: f[0], label: f[1], help: f[2] }));
+// One colour per filter, the one that its state has on the rows: orange asks, purple finished, blue works, green idle.
+const CHIP_COLORS = { needs: ORANGE, you: ORANGE, push: ORANGE, done: PURPLE_TEXT, working: BLUE_TEXT, ctx: "#FFD60A", pr: "#64D2FF", idle: "#34C759" };
 const filterChip = (f) =>
-  chip(() => f().label, () => String(view().chips[f().id] ?? 0), () => filter() === f().id, () => setView({ c: filter() === f().id ? "" : f().id }))
+  chip(() => f().label, () => String(view().chips[f().id] ?? 0), () => filter() === f().id, () => setView({ c: filter() === f().id ? "" : f().id }),
+    () => CHIP_COLORS[f().id])
     .help(() => f().help)
     .opacity(() => ((view().chips[f().id] ?? 0) === 0 && filter() !== f().id ? 0.45 : 1));
 const resetChip = () =>
@@ -1495,7 +1500,7 @@ sidebar(() =>
           segment("Limits", () => showLimits(), () => setView({ l: !showLimits() })),  // a second click goes back to the sessions
         ]),
         Spacer(),
-        toggleButton("views ↗", () => false, () => openViews(), 1),
+        toggleButton("views ↗", () => false, () => openViews(), 1).color(BLUE_TEXT),
       ]).paddingHorizontal(10),
     ]),
 
@@ -1522,7 +1527,7 @@ sidebar(() =>
     optional("chips", () => !limitsShown() && (chipItems().length || viewChanged() || counts().ended > 0), () => HStack({ spacing: 4 }, [
       ForEach({ items: chipItems, key: (f) => f.id }, filterChip),
       optional("ended", () => counts().ended > 0 || showEnded(), () =>
-        chip("ended", () => String(counts().ended), () => showEnded(), () => setView({ e: !showEnded() }))
+        chip("ended", () => String(counts().ended), () => showEnded(), () => setView({ e: !showEnded() }), () => META)
           .help("Show the ended sessions too")),
       Spacer(),
       optional("reset", viewChanged, resetChip),
@@ -1531,7 +1536,8 @@ sidebar(() =>
     optional("accts", () => !limitsShown() && acctItems().length, () => HStack({ spacing: 4 }, [
       Text("account").font(10).monospaced().color(META).lineLimit(1).fixedSize(),
       ForEach({ items: acctItems, key: (a) => a.id },
-        (a) => chip(() => a().id, () => String(a().n), () => acctFilter() === a().id, () => setAcctFilter(acctFilter() === a().id ? "" : a().id))),
+        (a) => chip(() => a().id, () => String(a().n), () => acctFilter() === a().id, () => setAcctFilter(acctFilter() === a().id ? "" : a().id),
+          () => acctColor(a().id))),
       Spacer(),
     ]).paddingHorizontal(10)),
 
