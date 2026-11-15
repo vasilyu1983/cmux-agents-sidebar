@@ -618,7 +618,7 @@ const rowText = (name) => subtree(cardOf(name)).map((n) => n.props.text).filter(
 const lastAt = (name) => reachable().map((n) => n.props.text).lastIndexOf("[" + name + "]");
 const YELLOW = "#FFD60A";
 
-check("health marks: one per row, loop > overlap > silent > err, in red, yellow, yellow and dim", () => {
+check("health marks: one per row, loop > overlap > silent, in red, yellow and yellow; no err total on a row", () => {
   ctx.__setData("workspaces", JSON.stringify(newData("h-err", "working")));
   must(withText((t) => t === "[h-loop]").length === 1, "the new data did not render");
   const mark = (t) => withText((x) => x === t).filter((n) => n.props.cornerRadius === 4);
@@ -626,7 +626,8 @@ check("health marks: one per row, loop > overlap > silent > err, in red, yellow,
   must(rowText("h-loop").filter((t) => /^(loop|overlap|silent|err) \d/.test(t)).length === 1, "h-loop shows more than one health mark: " + rowText("h-loop").join(" | "));
   must(mark("overlap 2").length === 1 && mark("overlap 2")[0].props.color === YELLOW && rowText("h-over").includes("overlap 2"), "h-over has no yellow overlap 2 pill, or another row has one");
   must(mark("silent 1").length === 1 && mark("silent 1")[0].props.color === YELLOW && rowText("h-silent").includes("silent 1"), "h-silent has no yellow silent 1 pill, or another row has one");
-  must(mark("err 3").length === 1 && mark("err 3")[0].props.color === META && rowText("h-err").includes("err 3"), "h-err has no dim err 3 pill, or another row has one");
+  // The error count is a total of the whole session: every long session has one, so it is not a mark on the row.
+  must(mark("err 3").length === 0, "a row shows the err total as a pill");
 });
 check("health fields with a bad value are left out, and none is taken for the model", () => {
   must(!rowText("h-bad").some((t) => /^(loop|overlap|silent|err)\b/.test(t)), "h-bad shows a mark: " + rowText("h-bad").join(" | "));

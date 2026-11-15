@@ -50,6 +50,8 @@ if [ -n "$used" ]; then
   # Claude Code sends a whole number; the token counts of the last call give one decimal. Same formula: input only.
   exact=$(echo "$input" | jq -r '.context_window | select(.current_usage != null and (.context_window_size // 0) > 0)
     | (.current_usage | (.input_tokens // 0) + (.cache_creation_input_tokens // 0) + (.cache_read_input_tokens // 0)) * 1000 / .context_window_size | round / 10')
+  # Token counts that are all 0 (after /clear, before the first reply) are not a share of 0%: the share is not known.
+  [ "$exact" = "0" ] && exact=""
   ctx_seg=" ${exact:-$used}% ctx"
   if [ "$used_int" -ge 80 ]; then
     ctx_color="$RED"
@@ -74,6 +76,7 @@ sid=$(echo "$input" | jq -r '.session_id // "" | select(test("^[0-9a-f-]{8,64}$"
 if [ -n "$sid" ] && [ -n "$model" ]; then
   tokens=$(echo "$input" | jq -r '.context_window.current_usage // empty
     | (.input_tokens // 0) + (.cache_creation_input_tokens // 0) + (.cache_read_input_tokens // 0)' | LC_ALL=C tr -cd '0-9')
+  [ "$tokens" = "0" ] && tokens=""
   (umask 077; mkdir -p "$HOME/.cache/cmux-agents" \
     && printf '%s\t%s\t%s\t%s\t%s\t%s\t%s' "$model" "${exact:+$used_int}" "${cost_seg# \$}" "$(printf '%s' "${lane:-}" | LC_ALL=C tr -cd 'A-Za-z0-9._/-' | cut -c1-60)" \
       "$(echo "$input" | jq -r '[((.prompt_cache // {}) | if .caching_observed == true and .warm == false then (.recache_tokens_if_cold // 1 | tostring) else "" end), (.rate_limits.seven_day.used_percentage // "" | tostring), (.rate_limits.five_hour.used_percentage // "" | tostring), (.rate_limits.five_hour.resets_at // "" | tostring), (.rate_limits.seven_day.resets_at // "" | tostring)] | join("\t")')" \

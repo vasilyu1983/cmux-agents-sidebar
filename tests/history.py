@@ -298,14 +298,18 @@ tree = {"windows": [{"ref": "workspace:1", "id": "ws-1", "description": space, "
                      "panes": [{"ref": "surface:1", "id": "tab-1", "focused": True}, {"ref": "surface:2", "id": "tab-2"}]}]}
 live = [("TAB-1", "api-3f", None, False, names[101][3], "working", 0), ("TAB-2", "web-9c", None, False, names[102][3], "working", 0)]
 with contextlib.redirect_stderr(errors):
-    watcher.write_hive(tree, live, {}, None, {key: (watcher.INSIDE.get(sid, {}), watcher.FOLDERS.get(sid, ""))
-                                              for key, sid in (("TAB-1", SID), ("TAB-2", OTHER))})
+    watcher.write_hive(tree, live, {"TAB-2": "[web-9c] zsh"}, None, {
+        "TAB-1": (watcher.INSIDE.get(SID, {}), watcher.FOLDERS.get(SID, ""), "Fix the login test"),
+        "TAB-2": (watcher.INSIDE.get(OTHER, {}), watcher.FOLDERS.get(OTHER, ""))})
 with open(os.path.join(box, "scripts", "hive-data.js")) as fh:
     hive_text = fh.read()
 hive = json.loads(hive_text[hive_text.index("(", hive_text.index("hiveLive(")) + 1:hive_text.rindex(")")])
 first = hive["a"][0]
 check("the hive agent gets the counts", first.get("tn") == 5 and first.get("fo") == [["app.py", "web-9c"]] and first.get("sa") == 1
       and first.get("m") == "Fable 5.2 high")
+# The views name a session by its title, as the panel does; a session with no title keeps the title of its tab.
+check("the hive agent is named by the session title, else by its tab", first.get("n") == "[api-3f] Fix the login test"
+      and hive["a"][1].get("n") == "[web-9c] zsh")
 check("a workspace gets the inventory of the start folder of its first session", hive["ws"][0].get("inv") == inventory)
 
 with open(inside_file) as fh:

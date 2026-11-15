@@ -1040,8 +1040,9 @@ function drawInside(svg) {
     return "Inside: no data." + coverage(["Claude Code"]);
   }
   const W = pageWidth(), overlaps = new Set(rows.flatMap((a) => a.fo.map((f) => a.wn + "\n" + f[0]))).size;
-  const failing = rows.filter((a) => a.er + a.ea > 0).length, silent = rows.reduce((s, a) => s + a.sa, 0);
-  let y = tiles(svg, [[String(rows.reduce((s, a) => s + calls(a), 0)), "tool calls, open sessions", ""], [String(failing), failing === 1 ? "session with errors" : "sessions with errors", failing ? BAD : ""],
+  const failed = rows.reduce((s, a) => s + a.er, 0), all = rows.reduce((s, a) => s + calls(a), 0), silent = rows.reduce((s, a) => s + a.sa, 0);
+  // Failed calls are normal in a long session (a test that fails, a file that is not there): red only for a run of 5.
+  let y = tiles(svg, [[String(all), "tool calls, open sessions", ""], [String(failed), "failed tool calls" + (all ? ", " + Math.round(failed * 100 / all) + "% of all" : ""), rows.some((a) => a.lp >= 5) ? BAD : ""],
     [String(overlaps), overlaps === 1 ? "file edited by two sessions" : "files edited by two sessions", ""], [String(silent), "silent subagents", ""]]);
   y = grid(svg, y, W, rows, insideCard);
   size(svg, W, y + 6);

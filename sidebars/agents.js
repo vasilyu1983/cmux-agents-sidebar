@@ -307,14 +307,14 @@ function pillsOf(a, sess, w) {
   add("wrong", sess.wrong ? "≠ " + sess.wrong : "", ORANGE);
   const alert = PR_ALERT.test(sess.pr ?? "");
   if (alert) add("pr", sess.pr, ORANGE);
-  // One health mark at most, loop > overlap > silent > err. A loop is red, files that another session also edits and
-  // silent subagents are yellow: they come before the context pill. Errors are dim and come after the your-turn mark.
+  // One health mark at most, loop > overlap > silent. A loop is red, files that another session also edits and
+  // silent subagents are yellow: they come before the context pill. The error count is a total of the whole session,
+  // so every long session has one: it is in the row details and in the Inside view, not on the row.
   const health = sess.loop ? ["loop " + sess.loop, RED_TEXT] : sess.overlap ? ["overlap " + sess.overlap, "#FFD60A", NEUTRAL]
     : sess.silent ? ["silent " + sess.silent, "#FFD60A", NEUTRAL] : null;
   if (health) add("health", ...health);
   add("ctx", sess.ctx >= 80 ? sess.ctx + "%" : "", RED_TEXT);
   if (sess.look !== "working" && yours(sess.next)) add("you", "→ you", ORANGE);
-  if (!health) plain("health", sess.err ? "err " + sess.err : "");
   plain("ahead", sess.ahead > 0 ? "↑" + sess.ahead : "");
   plain("dup", sess.dup ? "dup" : "");
   // 10 compactions or more: yellow, a fresh session with a hand-over costs less.

@@ -66,6 +66,7 @@ TAILS = {}  # path -> (change time, lines) of a Codex session file, read once pe
 INSIDE = {}  # session id -> its hive keys of this pass (tl, tn, er, ea, lp, cm, fe, fo)
 EDITS = {}  # session id -> {absolute path of an edited file: time of its last edit}, for the overlap of this pass
 FOLDERS = {}  # session id -> its start folder, for the setup inventory of its workspace
+SESSION_TITLES = {}  # session id -> the title of the session, for the names on the views page
 KINDS = ("tool results", "your messages", "replies", "thinking", "attachments")  # parts of the context, in this order
 EDIT_TOOLS = ("Edit", "Write", "NotebookEdit")
 OVERLAP_SECONDS = 6 * 3600  # two sessions that edited one file in this time overlap on it
@@ -372,6 +373,8 @@ def transcript_marks(sid, home):
     except OSError as err:
         print(f"label-tabs: transcript of {sid}: {err}", file=sys.stderr)
     marks = []
+    if title:
+        SESSION_TITLES[sid] = title
     if state:
         INSIDE[sid] = inside_summary(state)
         EDITS[sid] = {path: at for path, (_count, at) in state["fe"].items()}
@@ -633,7 +636,8 @@ def write_hive(tree, live, titles, codex=None, inside=None):
     The hive page loads it every 15 seconds. It holds session titles, so it is readable by the owner only.
     codex: tab id -> (screen state, fields of codex_marks), for the Codex tabs that have a context figure. The page
     copies every key of a live agent over its picture, so a Codex tab comes in only with its title and its state.
-    inside: tab id -> (hive keys of INSIDE, start folder) per Claude Code tab. A workspace gets "inv", the
+    inside: tab id -> (hive keys of INSIDE, start folder, session title) per Claude Code tab; the title can be
+    absent. A session with a title is named "[name] title", else it has the title of its tab. A workspace gets "inv", the
     setup_inventory of the start folder of its first session in `live`."""
     tabs, spaces = hive_places(tree)
     agents, folders = [], {}
@@ -641,9 +645,10 @@ def write_hive(tree, live, titles, codex=None, inside=None):
         if key not in tabs:
             continue
         agent = hive_agent(model)
-        counts, folder = (inside or {}).get(key, ({}, ""))
+        counts, folder, *session_title = (inside or {}).get(key, ({}, ""))
         agent.update(counts)
-        agent.update(i=key, w=tabs[key][0], s=status, n=titles.get(key) or f"[{name}]", f=tabs[key][1])
+        agent.update(i=key, w=tabs[key][0], s=status, f=tabs[key][1],
+                     n=f"[{name}] {session_title[0]}" if session_title and session_title[0] else titles.get(key) or f"[{name}]")
         agents.append(agent)
         if folder:
             folders.setdefault(tabs[key][0], folder)
@@ -1311,7 +1316,7 @@ def main():
         else:
             print(f"label-tabs: rename failed for {ref}: {done.stderr.strip()}", file=sys.stderr)
     write_hive(tree, live, titles, {key: (states.get(key), fields) for key, fields in codex.items()},
-               {key: (INSIDE.get(sid, {}), FOLDERS.get(sid, "")) for key, sid, *_rest in past})
+               {key: (INSIDE.get(sid, {}), FOLDERS.get(sid, ""), SESSION_TITLES.get(sid, "")) for key, sid, *_rest in past})
     tabs, spaces = hive_places(tree)
     rows = []
     for key, sid, name, status, model in past:
