@@ -280,15 +280,22 @@ const agents = () => pic.ws.flatMap((w) => (w.a || []).map((a) => ({ ...a, wn: w
 const goOf = (a) => (a && /^[0-9A-Fa-f-]{1,40}$/.test(a.i || "") && /^[0-9A-Fa-f-]{1,40}$/.test(a.w || "") ? a.w + ":" + a.i : "");
 // The box of an open session with this name, for a jump from a view that knows names only.
 const agentNamed = (name) => (name ? agents().find((a) => sessName(a.n) === name) : null);
+// The end of each session of the history: session id -> the end of its last block.
+const lastSeen = () => { const end = new Map(); for (const b of hist.b) end.set(b[0], Math.max(end.get(b[0]) || 0, b[3])); return end; };
+// Which session of the history is an open one: gives a function from a session id to its open box, or null.
+// A name can come back (a new session takes it), so the open session is the newest one of that name.
+function openOf() {
+  const end = lastSeen(), newest = new Map();
+  for (const [sid, t] of end) { const n = hist.s[sid].n; if (!newest.has(n) || t > end.get(newest.get(n))) newest.set(n, sid); }
+  return (sid) => (newest.get(hist.s[sid].n) === sid ? agentNamed(hist.s[sid].n) || null : null);
+}
 // The sessions that closed today (since midnight), from the history, as rows like the open ones. A closed session has
-// no tab to go to. A name can come back (a new session takes it), so the open one is the newest session of that name.
+// no tab to go to.
 function closedToday() {
   const day = new Date((hist.t || Math.floor(Date.now() / 1000)) * 1000);
   day.setHours(0, 0, 0, 0);
-  const from = day.getTime() / 1000, end = new Map(), newest = new Map();
-  for (const b of hist.b) end.set(b[0], Math.max(end.get(b[0]) || 0, b[3]));
-  for (const [sid, t] of end) { const n = hist.s[sid].n; if (!newest.has(n) || t > end.get(newest.get(n))) newest.set(n, sid); }
-  return [...end].filter(([sid, t]) => t >= from && money(hist.s[sid].c) > 0 && !(agentNamed(hist.s[sid].n) && newest.get(hist.s[sid].n) === sid))
+  const from = day.getTime() / 1000, open = openOf();
+  return [...lastSeen()].filter(([sid, t]) => t >= from && money(hist.s[sid].c) > 0 && !open(sid))
     .map(([sid]) => { const v = hist.s[sid]; return { n: v.n, wn: v.w || "no workspace", m: v.m, c: v.c, u: v.u, k: "claude", closed: true }; });
 }
 const empty = (svg, lines) => {
@@ -449,9 +456,10 @@ function drawTimeline(svg) {
     sums.set(sid, [w, q]);
   }
   // A closed session with under a minute of work in the range is short: the short ones of a workspace fold into one row.
-  const short = (sid) => !agentNamed(hist.s[sid].n) && sums.get(sid)[0] < 60;
+  const openBox = openOf();
+  const short = (sid) => !openBox(sid) && sums.get(sid)[0] < 60;
   // In each workspace: the open sessions first, then the closed ones (thin lanes), then the short ones.
-  const rank = (sid) => hist.s[sid].w + "\n" + (agentNamed(hist.s[sid].n) ? 0 : short(sid) ? 2 : 1) + hist.s[sid].n;
+  const rank = (sid) => hist.s[sid].w + "\n" + (openBox(sid) ? 0 : short(sid) ? 2 : 1) + hist.s[sid].n;
   const order = [...lanes.keys()].sort((a, b) => rank(a).localeCompare(rank(b)));
   const W = pageWidth(), LEFT = 210, RIGHT = 190, ROW = 36, GAP = 6, plot = W - LEFT - RIGHT;
   const x = (t) => LEFT + ((Math.max(t, from) - from) / span) * plot;
@@ -460,7 +468,9 @@ function drawTimeline(svg) {
   // Agents at work: how many sessions worked at one time. Where the count is above 0, at least one agent worked.
   const inRange = hist.b.filter((b) => b[3] >= from), work = steps(inRange, "working", from, now), asks = steps(inRange, "needs_input", from, now);
   let y = tiles(svg, [[dur(busy(work)), "at least one agent at work", STATUS.working[0], dur(worked) + " agent-hours (sessions added up)"],
-    [dur(waited), "waited for you", waited ? STATUS.needs_input[0] : ""], [String(running), "working now", ""], [String(order.length), "sessions", ""]]);
+    [dur(waited), "waited for you", waited ? STATUS.needs_input[0] : ""], [String(running), "working now", ""],
+    // Short runs (helper runs that a hook starts, mostly) are not sessions that you opened: the tile names them apart.
+    [String(order.filter((sid) => !short(sid)).length), "sessions" + (order.some(short) ? ", and " + order.filter(short).length + " short runs" : ""), ""]]);
   // Time marks on round local times.
   const step = [60, 300, 600, 1800, 3600, 3 * 3600, 6 * 3600, 86400].find((s) => span / s <= 8) || 86400;
   const zone = new Date().getTimezoneOffset() * 60;
@@ -519,7 +529,7 @@ function drawTimeline(svg) {
       }
       if (!open) return;
     }
-    const live = agentNamed(info.n), go = goOf(live), [w, q] = sums.get(sid), h = live ? ROW : 24, mid = y + h / 2, bh = live ? 18 : 10;
+    const live = openBox(sid), go = goOf(live), [w, q] = sums.get(sid), h = live ? ROW : 24, mid = y + h / 2, bh = live ? 18 : 10;
     const g = el("g", go ? { class: "go", tabindex: 0, role: "link" } : {});
     g.appendChild(card(y, W, h, sel && sel === info.n));
     g.appendChild(el("text", { x: 14, y: mid + 4.5, style: live ? "font-size:13px;font-weight:600" : "font-size:11px;opacity:.55" }, cut("[" + info.n + "]", 24)));
