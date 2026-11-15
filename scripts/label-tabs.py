@@ -1229,13 +1229,14 @@ def all_limits():
     """Limit windows of the agent tools on this Mac, from local files only. A tool whose data folder exists
     but that leaves no limit data gets an empty item, and the panel says so."""
     found = []
-    for _home, account in homes("claude", "~/.claude"):
+    for home, account in homes("claude", "~/.claude"):
         week = WEEKS.get(account)
         if week:
             found.append(limit_item("claude", "5h", week.get("five"), week.get("five_reset"), week["at"], account))
             found.append(limit_item("claude", "week", week["used"], week.get("week_reset"), week["at"], account))
-        elif account:
-            found.append(f"claude,,,,0,{account}")
+        elif account or os.path.isdir(home):
+            # No limit reading yet (a new install): the tool is still here, and the start menu lists it.
+            found.append("claude,,,,0" + (f",{account}" if account else ""))
     for home, account in homes("codex", "~/.codex"):
         codex = codex_limits(home, account)
         if codex:
