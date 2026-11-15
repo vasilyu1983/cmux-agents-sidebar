@@ -263,9 +263,9 @@ check("a waiting session shows in the top block and in its workspace, in the sam
 });
 check("the title splits into the name and a dim rest", () => {
   const name = withText((t) => t === "[lead-1]")[0];
-  must(name.props.font === 12 && name.props.weight === "semibold", "name is not 12 semibold");
+  must(name.props.font === 11.5 && name.props.weight === "semibold", "name is not 11.5 semibold");
   const rest = withText((t) => t === "fix the login test");
-  must(rest.length > 0 && rest.every((n) => n.props.font === 12 && n.props.color === META), "rest is not a 12 pt META title part");
+  must(rest.length > 0 && rest.every((n) => n.props.font === 11.5 && n.props.color === META), "rest is not an 11.5 pt META title part");
 });
 check("times are short: no \"ago\", minutes without seconds", () => {
   must(withText((t) => t === "5m").length > 0, "no \"5m\" elapsed time");
@@ -313,7 +313,7 @@ check("a tool has no pill of its own: a session with no known model names its to
 });
 check("a tab with no title of its own shows the title of its session; the request, model, context and cost are on the second line", () => {
   // old-5: the tab title is only the tool name. Its description carries "title Release notes".
-  must(withText((t) => t === "Release notes").some((n) => n.props.font === 12 && n.props.color === META && n.props.layoutPriority === 2), "old-5 does not show its session title beside the name");
+  must(withText((t) => t === "Release notes").some((n) => n.props.font === 11.5 && n.props.color === META && n.props.layoutPriority === 2), "old-5 does not show its session title beside the name");
   must(withText((t) => t === "close the release notes").some((n) => n.props.font === 11 && n.props.color === META), "old-5 does not show its last request on the second line");
   // The end of the second line is three columns of fixed width, so the values line up down the list.
   must(withText((t) => t === "sonnet").some((n) => n.props.font === 10 && n.props.weight === "medium" && n.props.color === "#BDB2E8"), "old-5 has no lavender model column");

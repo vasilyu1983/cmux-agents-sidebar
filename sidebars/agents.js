@@ -1348,15 +1348,17 @@ const titleParts = (entry) => {
 };
 // The first line of a row: dot, name, unread mark, then subagents, time and the detail mark. An old settled row
 // shows its name dim.
+// 11.5 pt: the system monospaced font is wider than a terminal font, so 11.5 here reads as 12 pt in the terminal.
+const TITLE_PT = 11.5;
 const titleLine = (entry) => {
   const a = () => entry().agent;
   return HStack({ spacing: 6 }, [
     // Both parts are plain texts of the row and rank above the gap, so a title is cut only when the row is full.
     // A text inside a wrapper (a ForEach, an inner HStack) is cut while the row still has space.
     Text(() => titleParts(entry).name)
-      .font(12).monospaced().weight("semibold").lineLimit(1).truncation("tail").layoutPriority(3)
+      .font(TITLE_PT).monospaced().weight("semibold").lineLimit(1).truncation("tail").layoutPriority(3)
       .color(() => (a().status === "ended" || entry().old ? META : "primary")),
-    Text(() => titleParts(entry).rest).font(12).monospaced().lineLimit(1).truncation("tail").layoutPriority(2).color(META),
+    Text(() => titleParts(entry).rest).font(TITLE_PT).monospaced().lineLimit(1).truncation("tail").layoutPriority(2).color(META),
     unreadBadge(entry),
     Spacer(),
     kidsBadge(entry),
