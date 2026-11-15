@@ -286,6 +286,13 @@ with contextlib.redirect_stderr(errors):
 # The user folder holds the files with no ".claude" part in the path, and it has no MCP count.
 check("the user folder is read at its own level", watcher.setup_inventory(os.path.join(space, ".claude"), user=True)
       == {"files": [["CLAUDE.md", 1]], "skills": 2, "agents": 1, "hooks": 2})
+# An instruction file imports others with "@path": their sizes are summed, once each, also when they import
+# each other. A path in code, a path that is no file, and a word like a package name add nothing.
+space3 = os.path.join(box, "ws3")
+write(os.path.join(space3, "rules", "a.md"), "12345 @b.md @../CLAUDE.md")
+write(os.path.join(space3, "rules", "b.md"), "1234567")
+write(os.path.join(space3, "CLAUDE.md"), "See @rules/a.md and @rules/none.md and @scope/pkg, `@rules/b.md`\n```\n@rules/b.md\n```\n")
+check("imports are summed through the levels, once each", watcher.setup_inventory(space3).get("imp") == [["CLAUDE.md", 25 + 7]])
 check("a folder with no setup gives nothing", watcher.setup_inventory(os.path.join(box, "codex")) == {})
 
 with contextlib.redirect_stderr(errors):

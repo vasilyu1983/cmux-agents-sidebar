@@ -589,26 +589,60 @@ def hive_agent(fields):
     return agent
 
 
+IMPORT = re.compile(r"(?:^|\s)@([^\s`]+)")  # an import in an instruction file: "@path", not in code
+
+
+def import_bytes(start):
+    """The summed size of the files that an instruction file imports with "@path" lines, up to 5 levels deep and
+    50 files. A path counts only when it is a file; a relative path starts at the folder of the file that names it.
+    It reads the import paths of each file and keeps nothing but the sum. An unreadable file adds only its size."""
+    seen, total, level = {os.path.realpath(start)}, 0, [start]
+    for _ in range(5):
+        found = []
+        for name in level:
+            try:
+                with open(name, errors="replace") as fh:
+                    text = fh.read(1_000_000)
+            except OSError as err:
+                print(f"label-tabs: imports of {os.path.basename(name)} not read: {type(err).__name__}", file=sys.stderr)
+                continue
+            text = re.sub(r"`[^`\n]*`", " ", re.sub(r"(?ms)^```.*?^```", " ", text))  # code is not an import
+            for ref in IMPORT.findall(text):
+                target = os.path.realpath(os.path.join(os.path.dirname(name), os.path.expanduser(ref)))
+                if target in seen or len(seen) > 50 or not os.path.isfile(target):
+                    continue
+                seen.add(target)
+                total += os.path.getsize(target)
+                found.append(target)
+        level = found
+    return total
+
+
 def setup_inventory(folder, user=False):
-    """{"files": [[name, bytes], ...], "skills": 2, "agents": 1, "commands": n, "rules": n, "hooks": n, "mcp": n}
+    """{"files": [[name, bytes], ...], "imp": [[name, bytes of its imports], ...], "skills": 2, "agents": 1, "commands": n, "rules": n, "hooks": n, "mcp": n}
     for the setup of one start folder; a zero count is left out, and nothing found gives {}. It reads only sizes,
     folder listings (a name with a leading "." is not counted), the number of keys under "hooks" in
     .claude/settings.json and under "mcpServers" in .mcp.json: never a value. user: the folder is the user folder of
     Claude Code (~/.claude), which holds CLAUDE.md, the four folders and settings.json itself; no MCP count there. A missing file is left out; an
     unreadable one too, with one line on stderr that names the file only."""
-    found, sizes = {}, []
+    found, sizes, imports = {}, [], []
     sub = "" if user else ".claude"
     for name in ("CLAUDE.md",) if user else SETUP_FILES:
         try:
             info = os.stat(os.path.join(folder, name))
             if os.path.isfile(os.path.join(folder, name)):
                 sizes.append([name, info.st_size])
+                more = import_bytes(os.path.join(folder, name))
+                if more:
+                    imports.append([name, more])
         except FileNotFoundError:
             continue
         except OSError as err:
             print(f"label-tabs: setup file {name} not read: {type(err).__name__}", file=sys.stderr)
     if sizes:
         found["files"] = sizes
+    if imports:
+        found["imp"] = imports
     for name in SETUP_FOLDERS:
         try:
             count = sum(not entry.startswith(".") for entry in os.listdir(os.path.join(folder, sub, name)))

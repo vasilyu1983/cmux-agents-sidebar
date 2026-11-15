@@ -87,7 +87,7 @@ const CM = [["tool results"], ["your messages"], ["replies"], ["thinking"], ["at
 const SETUP = [["skills", "skills"], ["agents", "agents"], ["commands", "commands"], ["rules", "rules"], ["hooks", "hooks"], ["mcp", "MCP servers"]];
 const tidyInv = (v) => {
   if (!v || typeof v !== "object" || Array.isArray(v)) return null;
-  const out = { files: pairs(v.files, 20, 80, isCount) };
+  const out = { files: pairs(v.files, 20, 80, isCount), imp: new Map(pairs(v.imp, 20, 80, isCount)) };
   for (const [key] of SETUP) out[key] = count(v[key]);
   return out;
 };
@@ -1147,18 +1147,19 @@ function drawRhythm(svg) {
 // ---- Setup: what the folder of each workspace gives its agents ----
 const LONG_FILE = 40 * 1024;  // an instruction file over this size costs much context in every session
 function setupCard(w, CW) {
-  const g = el("g", {}), IW = CW - 32, R = 16 + IW, files = w.inv.files, total = files.reduce((s, f) => s + f[1], 0);
+  const g = el("g", {}), IW = CW - 32, R = 16 + IW, files = w.inv.files.map(([name, b]) => [name, b, w.inv.imp.get(name) || 0]), total = files.reduce((s, f) => s + f[1] + f[2], 0);
   g.appendChild(el("text", { x: 16, y: 26, style: "font-size:13px;font-weight:600" }, cut(w.n || "no name", Math.floor(IW / 8))));
   g.appendChild(el("text", { class: "sub", x: 16, y: 42, style: "font-size:11px" }, files.length ? plural(files.length, "instruction file", "instruction files") + " · " + kb(total) : "no instruction files"));
   let y = 56;
-  for (const [name, b] of files) {
-    const long = b > LONG_FILE;
+  for (const [name, own, more] of files) {
+    // A file can import others with "@path" lines: they load with it, so they count in its size.
+    const b = own + more, long = b > LONG_FILE, size = more ? kb(own) + " + " + kb(more) + " imports" : kb(own);
     const row = el("rect", { x: 10, y: y - 1, width: IW + 12, height: 18, rx: 4, style: long ? "fill:color-mix(in srgb, " + WARN + " 22%, var(--card))" : "fill:transparent" });
-    row.appendChild(el("title", {}, name + " · " + kb(b) + (long ? ": a long instruction file costs context in every session" : "")));
+    row.appendChild(el("title", {}, name + " · " + size + (long ? ": a long instruction file costs context in every session" : "")));
     g.appendChild(row);
     if (long) g.appendChild(el("rect", { x: 10, y: y - 1, width: 3, height: 18, rx: 1.5, fill: WARN }));
-    g.appendChild(el("text", { x: 16, y: y + 12, style: "font-size:12px;pointer-events:none" + (long ? ";font-weight:600" : "") }, cut(name, Math.floor((IW - 70) / 7))));
-    g.appendChild(el("text", { x: R, y: y + 12, "text-anchor": "end", style: "font-size:11px;pointer-events:none" + (long ? ";font-weight:600" : ";fill:var(--dim)") }, kb(b)));
+    g.appendChild(el("text", { x: 16, y: y + 12, style: "font-size:12px;pointer-events:none" + (long ? ";font-weight:600" : "") }, cut(name, Math.floor((IW - (more ? 170 : 70)) / 7))));
+    g.appendChild(el("text", { x: R, y: y + 12, "text-anchor": "end", style: "font-size:11px;pointer-events:none" + (long ? ";font-weight:600" : ";fill:var(--dim)") }, size));
     y += 19;
   }
   // The counts as chips in rows; a count of 0 shows no chip.
@@ -1190,9 +1191,9 @@ function drawSetup(svg) {
     empty(svg, ["No setup figures yet.", "The watcher reads the instruction files and agent folders of each workspace.", ...(none.length ? [cut(noneLine, 96)] : [])]);
     return "Setup: no data.";
   }
-  const W = pageWidth(), total = have.reduce((s, w) => s + w.inv.files.reduce((t, f) => t + f[1], 0), 0);
+  const W = pageWidth(), bytes = (inv) => inv.files.reduce((t, f) => t + f[1] + (inv.imp.get(f[0]) || 0), 0), total = have.reduce((s, w) => s + bytes(w.inv), 0);
   const shared = user.length ? ["skills", "agents", "commands", "rules"].reduce((s, key) => s + (pic.u[key] || 0), 0) : 0;
-  let y = tiles(svg, [[String(have.length), have.length === 1 ? "workspace with setup" : "workspaces with setup", ""], [kb(total), "instruction files, all workspaces", ""],
+  let y = tiles(svg, [[String(have.length), have.length === 1 ? "workspace with setup" : "workspaces with setup", ""], [kb(total), "instruction files with imports, all workspaces", ""],
     ...(user.length ? [[String(shared), "skills, agents, commands and rules in the user folder", ""]] : [])]);
   y = grid(svg, y, W, [...user, ...have], setupCard);
   if (none.length) {
