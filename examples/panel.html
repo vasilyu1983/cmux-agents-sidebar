@@ -29,12 +29,14 @@
   .band .sp { flex: 1; }
   .empty { display: flex; align-items: center; gap: 8px; padding: 12px 10px 12px 28px; border-top: 1px solid #3a3a3a; font-weight: 600; font-size: 12.5px; }
   .empty i { width: 4px; height: 12px; border-radius: 2px; display: inline-block; }
-  .row { margin: 3px 0 0 20px; padding: 4px 8px 5px 10px; border-left: 2px solid; border-radius: 0 8px 8px 0; }
+  .row { position: relative; margin: 3px 0 0 26px; padding: 4px 8px 5px 13px; border-left: 2px solid; border-radius: 0 8px 8px 0; }
   .row.on { background: #494949; border-radius: 8px; outline: 1px solid #6e6e6e; }
   .l1, .l2 { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
-  .l2 { margin-top: 4px; padding-left: 15px; font-size: 12px; height: 16px; }
-  .dot { width: 7px; height: 7px; border-radius: 50%; flex: none; margin-right: 2px; }
-  .l1 b { font-weight: 600; font-size: 13px; color: #f2f2f2; }
+  .l2 { margin-top: 4px; font-size: 12px; height: 16px; }
+  /* The status dot sits on the group line, as a node on a rail. */
+  .dot { position: absolute; left: -4.5px; top: 9px; width: 7px; height: 7px; border-radius: 50%; box-shadow: 0 0 0 1.5px #2b2b2b; }
+  .row.on .dot { box-shadow: none; }
+  .l1 b { font-weight: 600; font-size: 12.5px; color: #f2f2f2; }
   .l1 .t { color: #d1d1d6; overflow: hidden; text-overflow: ellipsis; flex: 1; }
   .kids { font: 11px ui-monospace, Menlo, monospace; color: #6ac4dc; }
   .time { font: 11px ui-monospace, Menlo, monospace; color: #b4b4ba; width: 34px; text-align: right; }
@@ -61,11 +63,11 @@
     <div><span class="k">claude</span><span class="p">36%</span><span class="m"><i style="width:36%"></i></span><span class="r">personal · week · resets Wed 23:00</span></div>
     <div><span class="k">codex</span><span class="p">12%</span><span class="m"><i style="width:12%"></i></span><span class="r">work · 5h · resets 21:40</span></div>
   </div>
-  <div class="search">⌕&nbsp; Search agents</div>
+  <div style="display:flex;align-items:center"><div class="search" style="flex:1;margin-right:0">⌕&nbsp; Search agents</div><span class="mono" style="width:30px;text-align:center;color:#d1d1d6;font-size:11px;margin-top:-2px">▾▾</span></div>
 
   <div class="band" style="background:#34c75926;color:#8fd9a0"><span class="mono" style="font-size:9px;color:#b4b4ba">▾</span><i style="background:#5ecb6b"></i>shop-api<span class="sp"></span><small>4 · $55</small><small>+</small></div>
   <div class="row" style="border-color:#4f9a5c">
-    <div class="l1"><span class="dot" style="background:#5ecb6b"></span><b>[api-3f]</b><span class="t">Payment client retry design</span><span class="kids">▸12</span><span class="time">2m</span></div>
+    <div class="l1"><span class="dot" style="background:#ff9f0a"></span><b>[api-3f]</b><span class="t">Payment client retry design</span><span class="kids">▸12</span><span class="time">2m</span></div>
     <div class="l2"><span class="pill you">→ you</span><span class="pill hot">⟳11</span><span class="nx">next</span><span class="txt">you approve the retry plan</span><span class="c model">Opus</span><span class="c ctx">42%</span><span class="c cost">$31.20</span></div>
   </div>
   <div class="row on" style="border-color:#4f9a5c">
@@ -86,7 +88,7 @@
 
   <div class="band" style="background:#3b8cff26;color:#8ab8ff"><span class="mono" style="font-size:9px;color:#b4b4ba">▾</span><i style="background:#5a9bff"></i>billing<span class="sp"></span><small>2 · $13</small><small>+</small></div>
   <div class="row" style="border-color:#4a78c2">
-    <div class="l1"><span class="dot" style="background:#5ecb6b"></span><b>[bill-1e]</b><span class="t">Invoice rounding fix</span><span class="kids">▸4</span><span class="time">6m</span></div>
+    <div class="l1"><span class="dot" style="background:#ff9f0a"></span><b>[bill-1e]</b><span class="t">Invoice rounding fix</span><span class="kids">▸4</span><span class="time">6m</span></div>
     <div class="l2"><span class="pill you">→ you</span><span class="pill">⟳6</span><span class="pill">+1</span><span class="txt">you run step 1.</span><span class="c model">Fable</span><span class="c ctx">20%</span><span class="c cost">$10.79</span></div>
   </div>
   <div class="row" style="border-color:#4a78c2">
