@@ -645,8 +645,10 @@ const accountMarks = computed(() => {
 });
 // The start menu of a group: one item per tool and account. The list is the tools and accounts of "@limits"
 // (label-tabs.py names there every installed tool and every account of your accounts file), so nothing is fixed here.
-// Only the tools that agent-run.sh starts get an item.
+// LAUNCH tools start through agent-run.sh, with an account. PLAIN tools keep one account, so their own command starts them.
 const LAUNCH = ["claude", "codex", "opencode"];
+const PLAIN = { grok: "grok", agy: "agy" };
+const STARTS = [...LAUNCH, ...Object.keys(PLAIN)];
 const launchList = computed(() => {
   const found = {};
   for (const w of data.workspaces() ?? []) {
@@ -654,12 +656,13 @@ const launchList = computed(() => {
     for (const item of part ? part.slice(9).split(";").slice(0, 60) : []) {
       const m = /^([a-z]{1,12}),[^,]*,[^,]*,[^,]*,[^,]*(?:,([a-z0-9-]{1,16}))?$/.exec(item);
       if (m && LAUNCH.includes(m[1])) found[m[1] + "," + (m[2] ?? "")] = { tool: m[1], acct: m[2] ?? "" };
+      else if (m && PLAIN[m[1]]) found[m[1] + ","] = { tool: m[1], acct: "" };
     }
   }
   const primary = accountMarks().primary;
   // The tool's normal folder first, then the other accounts by name.
-  return Object.values(found).sort((a, b) => LAUNCH.indexOf(a.tool) - LAUNCH.indexOf(b.tool) || (a.acct < b.acct ? -1 : a.acct > b.acct ? 1 : 0))
-    .map((x) => ({ ...x, label: "New " + TOOLS[x.tool] + (x.acct || primary ? " · " + (x.acct || primary) : "") }));
+  return Object.values(found).sort((a, b) => STARTS.indexOf(a.tool) - STARTS.indexOf(b.tool) || (a.acct < b.acct ? -1 : a.acct > b.acct ? 1 : 0))
+    .map((x) => ({ ...x, label: "New " + TOOLS[x.tool] + (!PLAIN[x.tool] && (x.acct || primary) ? " · " + (x.acct || primary) : "") }));
 });
 const limits = computed(() => {
   const epoch = data.clock()?.epoch ?? 0;
@@ -890,8 +893,8 @@ function newTab(wsId) {
 // (your PATH), and a shell stays in the tab when the tool ends. "initial_command" checked with `cmux rpc`, 2026-11-15.
 function launch(wsId, item) {
   const who = item.acct || accountMarks().primary;
-  if (!wsId || !LAUNCH.includes(item.tool) || !/^[a-z0-9-]{0,16}$/.test(who)) return;
-  const run = (who ? "AGENT_ACCOUNT=" + who + " " : "") + '"$HOME/.config/cmux/scripts/agent-run.sh" ' + item.tool;
+  if (!wsId || !STARTS.includes(item.tool) || !/^[a-z0-9-]{0,16}$/.test(who)) return;
+  const run = PLAIN[item.tool] ?? (who ? "AGENT_ACCOUNT=" + who + " " : "") + '"$HOME/.config/cmux/scripts/agent-run.sh" ' + item.tool;
   cmux("surface.create", { workspace_id: wsId, focus: true, initial_command: '"$SHELL" -lic \'' + run + '; exec "$SHELL" -l\'' });
 }
 

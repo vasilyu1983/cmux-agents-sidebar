@@ -442,7 +442,7 @@ Without a watcher of your own the strip shows only the limit lines, one per tool
 - Everything stays on your Mac. No script calls the network.
 - `label-tabs.py` reads the environment of your own agent processes to find two values, `CMUX_SURFACE_ID` and `CODEX_HOME`. It keeps nothing else from it.
 - The only message that the kit sends is a local cmux notification for a limit warning.
-- A start item of a workspace menu opens a tab with one fixed command: `agent-run.sh`, a tool from a fixed list of three, and an account name that holds only `a-z`, `0-9` and `-`. No other text reaches the shell. The launcher sets the tool's one folder variable and reads no login data.
+- A start item of a workspace menu opens a tab with one fixed command: `agent-run.sh`, a tool from a fixed list of three, and an account name that holds only `a-z`, `0-9` and `-`. For Grok and Antigravity the command is the fixed word `grok` or `agy`. No other text reaches the shell. The launcher sets the tool's one folder variable and reads no login data.
 - `label-tabs.py` reads the transcripts of your live Claude Code sessions on disk. One line of the last reply, the `Next:` line, goes into the workspace description and the hive data file; no other reply text leaves the transcript.
 - From the same transcript `label-tabs.py` takes the title of the session (the one you set with `/rename`, else the one the tool gave it), cut to 48 characters. It goes into the workspace description and into `~/.cache/cmux-agents/<session id>.seen`, and the panel shows it on a tab with no title of its own.
 - The start of your last request (60 characters) also goes into the workspace description.
@@ -495,7 +495,7 @@ Tab labels stay until you rename the tabs or close them.
 - The next step, the compaction count and the marks `dup` and `↑` were tested with sample data; on one Mac the next step and the count showed in the data. The new chips `you` and `push` were not seen on screen, and the chip row can be too wide for a narrow sidebar.
 - The compact layout, the top rows (counts, `Here | All | Limits`, chips, search field) and the limit bars were tested in the runtime with invented data; their look on screen (widths, cut text) was not checked by the author of the change.
 - `Clear filters` clears the search text that filters the list. The search field may still show the typed text; this was not checked on screen.
-- `New terminal` opens a plain tab. A start item such as `New Codex · team` opens a tab that runs `agent-run.sh` with that tool and account in your login shell; a shell stays open when the tool ends. The start menu needs `agent-run.sh` installed by `install.sh`. It lists only Claude Code, Codex and OpenCode, the tools the launcher starts.
+- `New terminal` opens a plain tab. A start item such as `New Codex · team` opens a tab that runs `agent-run.sh` with that tool and account in your login shell; a shell stays open when the tool ends. The start menu needs `agent-run.sh` installed by `install.sh`. Claude Code, Codex and OpenCode start through the launcher, one item per account. Grok and Antigravity keep one account, so each gets one item that runs its own command (`grok`, `agy`).
 - The state from the screen was tested with sample screens only, not with a live Codex or OpenCode tab. A tool that changes its interface lines breaks it. No documented cmux call for that was found.
 
 ## License

@@ -758,12 +758,16 @@ check("the group menu starts a plain terminal first, then each tool with each ac
   }]));
   const labels = withText((t) => t === "New terminal" || t.startsWith("New Claude") || t.startsWith("New Codex") || t.startsWith("New Grok")).map((n) => n.props.text);
   const once = [...new Set(labels)];
-  must(JSON.stringify(once) === JSON.stringify(["New terminal", "New Claude · main", "New Claude · work", "New Codex · main", "New Codex · team"]), "menu items: " + JSON.stringify(once));
+  must(JSON.stringify(once) === JSON.stringify(["New terminal", "New Claude · main", "New Claude · work", "New Codex · main", "New Codex · team", "New Grok"]), "menu items: " + JSON.stringify(once));
   let before = cmuxCalls().length;
   tap(withText((t) => t === "New Codex · team")[0]);
   let calls = cmuxCalls().slice(before);
   must(calls.length === 1 && calls[0].method === "surface.create" && calls[0].params.workspace_id === "ws-bare", "got " + JSON.stringify(calls));
   must(calls[0].params.initial_command === "\"$SHELL\" -lic 'AGENT_ACCOUNT=team \"$HOME/.config/cmux/scripts/agent-run.sh\" codex; exec \"$SHELL\" -l'", "command: " + calls[0].params.initial_command);
+  before = cmuxCalls().length;
+  tap(withText((t) => t === "New Grok")[0]);
+  calls = cmuxCalls().slice(before);
+  must(calls.length === 1 && calls[0].params.initial_command === "\"$SHELL\" -lic 'grok; exec \"$SHELL\" -l'", "grok command: " + JSON.stringify(calls));
   before = cmuxCalls().length;
   tap(withText((t) => t === "New terminal")[0]);
   calls = cmuxCalls().slice(before);
