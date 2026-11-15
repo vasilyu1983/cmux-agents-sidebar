@@ -1005,11 +1005,11 @@ function insideCard(a, CW) {
       y += 26;
     }
   }
-  // Hooks: how often the hooks of the harness ran in this session, how many runs blocked a step, and their time.
+  // Hooks: how often the hooks of the harness ran in this session, how many reported an error, and their time.
   if (a.hk > 0) {
     y += 8;
     head("Hooks", a.hm ? dur(a.hm / 1000) + " in total" : "");
-    g.appendChild(el("text", { x: 16, y: y + 11, style: "font-size:12px" + (a.hb ? "" : ";fill:var(--dim)") }, plural(a.hk, "run", "runs") + " · " + a.hb + " blocked"));
+    g.appendChild(el("text", { x: 16, y: y + 11, style: "font-size:12px" + (a.hb ? "" : ";fill:var(--dim)") }, plural(a.hk, "run", "runs") + " · " + plural(a.hb, "error", "errors")));
     y += 18;
   }
   // Files: the most edited ones, a file that another session also edited first and with the warning colour.
@@ -1048,13 +1048,15 @@ function drawInside(svg) {
   const urgent = (a) => (a.lp >= 5 ? 4 : 0) + (a.fo.length ? 2 : 0) + (a.er + a.ea ? 1 : 0);
   const rows = agents().filter(hasInside).sort((p, q) => urgent(q) - urgent(p) || calls(q) - calls(p));
   if (rows.length === 0) {
-    empty(svg, ["Nothing inside the sessions known yet.", "The watcher fills this view after the next reply of a Claude Code session.", ...onlyOthers(["Claude Code"])]);
-    return "Inside: no data." + coverage(["Claude Code"]);
+    empty(svg, ["Nothing inside the sessions known yet.", "The watcher fills this view after the next reply of a Claude Code session.", ...onlyOthers(["Claude Code", "Codex"])]);
+    return "Inside: no data." + coverage(["Claude Code", "Codex"]);
   }
   const W = pageWidth(), overlaps = new Set(rows.flatMap((a) => a.fo.map((f) => a.wn + "\n" + f[0]))).size;
+  // Codex cards carry no failure data, so the failed share is of the Claude Code calls.
+  const mine = rows.filter((a) => toolOf(a.k) !== "Codex").reduce((s, a) => s + calls(a), 0);
   const failed = rows.reduce((s, a) => s + a.er, 0), all = rows.reduce((s, a) => s + calls(a), 0), silent = rows.reduce((s, a) => s + a.sa, 0);
   // Failed calls are normal in a long session (a test that fails, a file that is not there): red only for a run of 5.
-  let y = tiles(svg, [[String(all), "tool calls, open sessions", ""], [String(failed), "failed tool calls" + (all ? ", " + Math.round(failed * 100 / all) + "% of all" : ""), rows.some((a) => a.lp >= 5) ? BAD : ""],
+  let y = tiles(svg, [[String(all), "tool calls, open sessions", ""], [String(failed), "failed tool calls" + (mine ? ", " + Math.round(failed * 100 / mine) + "% of Claude Code calls" : ""), rows.some((a) => a.lp >= 5) ? BAD : ""],
     [String(overlaps), overlaps === 1 ? "file edited by two sessions" : "files edited by two sessions", ""], [String(silent), "silent subagents", ""]]);
   y = grid(svg, y, W, rows, insideCard);
   size(svg, W, y + 6);

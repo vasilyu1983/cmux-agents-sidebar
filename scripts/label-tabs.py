@@ -196,7 +196,8 @@ def inside_line(state, line, now):
     times are kept, never text. now: the time of an edit whose line has no time (0 on a first read, so that an old
     edit does not look new)."""
     if b'"isSidechain":true' in line or not any(mark in line for mark in (
-            b'"type":"assistant"', b'"type":"user"', b'"type":"attachment"', b'"isApiErrorMessage":true')):
+            b'"type":"assistant"', b'"type":"user"', b'"type":"attachment"', b'"isApiErrorMessage":true',
+            b'"subtype":"stop_hook_summary"')):
         return
     try:
         record = json.loads(line)
@@ -212,16 +213,23 @@ def inside_line(state, line, now):
     if record.get("isApiErrorMessage") is True:
         state["ea"] += 1
         return
+    if record.get("subtype") == "stop_hook_summary":
+        # The summary of the hooks at the end of a turn: only the number of hooks that reported an error is kept.
+        errors = record.get("hookErrors")
+        state["hb"] += len(errors) if isinstance(errors, list) else 0
+        return
     if kind == "attachment":
         # A prompt snapshot is a copy of the prompt for the record, not a part of the context.
         attached = record.get("attachment") if isinstance(record.get("attachment"), dict) else {}
         if attached.get("type") != "prompt_snapshot":
             add("attachments", len(line.rstrip(b"\n")))
         # One record per run of a hook: its kind, exit code and run time are counted, never its command or output.
+        # A run with an exit code other than 0 is one hook error.
         kind = str(attached.get("type"))
         if kind.startswith("hook_") and kind != "hook_additional_context":
             state["hk"] += 1
-            state["hb"] += kind == "hook_blocking_error" or attached.get("exitCode") == 2
+            code = attached.get("exitCode")
+            state["hb"] += isinstance(code, int) and code != 0
             took = attached.get("durationMs")
             state["hm"] += took if isinstance(took, int) and 0 < took < 3_600_000 else 0
         return
@@ -272,7 +280,7 @@ def inside_save(path, state):
 
 
 def inside_summary(state):
-    """The hive keys of the counts: tl, tn, er, ea, lp, cm, fe, hk hook runs, hb hook blocks, hm hook time in ms,
+    """The hive keys of the counts: tl, tn, er, ea, lp, cm, fe, hk hook runs, hb hook errors, hm hook time in ms,
     sk the names of the skills called. A key with nothing to show is left out."""
     found = {}
     if state["tn"]:

@@ -309,14 +309,16 @@ check("a Codex folder is counted with its own names", watcher.setup_inventory(os
       == {"files": [["AGENTS.md", 4]], "skills": 1, "commands": 1, "mcp": 2})
 # Hook runs: one record per run with its kind, exit code and time; the command and the output are not kept.
 state = watcher.inside_new()
-for kind, code, took in (("hook_success", 0, 40), ("hook_success", 0, 60), ("hook_blocking_error", 2, 100), ("hook_additional_context", 0, 0)):
+for kind, code, took in (("hook_success", 0, 40), ("hook_success", 0, 60), ("hook_success", 2, 100), ("hook_additional_context", 0, 0)):
     watcher.inside_line(state, json.dumps({"type": "attachment", "attachment": {
         "type": kind, "exitCode": code, "durationMs": took, "command": SECRET, "stdout": SECRET}}, separators=(",", ":")).encode(), 0)
 watcher.inside_line(state, json.dumps({"type": "assistant", "message": {"content": [
     {"type": "tool_use", "name": "Skill", "input": {"skill": "api-design"}}]}}, separators=(",", ":")).encode(), 0)
+watcher.inside_line(state, json.dumps({"type": "system", "subtype": "stop_hook_summary", "hookErrors": [SECRET, SECRET]},
+                                     separators=(",", ":")).encode(), 0)
 summary = watcher.inside_summary(state)
-check("hook runs, blocks and time are counted, and the skills called are named",
-      (summary.get("hk"), summary.get("hb"), summary.get("hm"), summary.get("sk")) == (3, 1, 200, ["api-design"])
+check("hook runs, errors and time are counted, and the skills called are named",
+      (summary.get("hk"), summary.get("hb"), summary.get("hm"), summary.get("sk")) == (3, 3, 200, ["api-design"])
       and SECRET not in json.dumps(summary))
 # Codex tool calls: the names from the session file, nothing of the arguments.
 write(os.path.join(box, "cx", "sessions", "2026", "01", "01", "rollout-a.jsonl"), "".join(json.dumps(
