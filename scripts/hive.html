@@ -84,7 +84,7 @@ const pairs = (v, max, n, ok) => (Array.isArray(v) ? v : []).slice(0, max).filte
 // The kinds of content in a context window, in the fixed order of their colours (the order is part of the colour check).
 const CM = [["tool results"], ["your messages"], ["replies"], ["thinking"], ["attachments"]];
 // What the folder of a workspace holds for its agents, besides its instruction files.
-const SETUP = [["skills", "skills"], ["agents", "agents"], ["commands", "commands"], ["rules", "rules"], ["hooks", "hooks"], ["mcp", "MCP servers"]];
+const SETUP = [["skills", "skills"], ["agents", "agents"], ["commands", "commands"], ["rules", "rules"], ["hooks", "hooks"], ["mcp", "MCP servers"], ["mem", "memory files"]];
 const tidyInv = (v) => {
   if (!v || typeof v !== "object" || Array.isArray(v)) return null;
   const out = { files: pairs(v.files, 20, 80, isCount), imp: new Map(pairs(v.imp, 20, 80, isCount)) };
@@ -97,7 +97,8 @@ function tidyAgent(a) {
     m: text(a.m, 60), x: Number.isFinite(a.x) ? a.x : null, c: text(a.c, 20), p: text(a.p, 60), l: text(a.l, 60), u: text(a.u, 16),
     q: Number.isFinite(a.q) ? a.q : 0, z: Number.isFinite(a.z) && a.z > 0 ? a.z : null,
     // The inside of a session. Missing parts become empty, so a new live record also clears an old figure.
-    tl: pairs(a.tl, 12, 40, isCount), tn: count(a.tn), er: count(a.er), ea: count(a.ea), lp: count(a.lp), sa: count(a.sa),
+    tl: pairs(a.tl, 12, 40, isCount), tn: count(a.tn), er: count(a.er), ea: count(a.ea), lp: count(a.lp), sa: count(a.sa), hk: count(a.hk), hb: count(a.hb), hm: count(a.hm),
+    sk: (Array.isArray(a.sk) ? a.sk : []).slice(0, 40).map((s) => text(s, 40)).filter(Boolean),
     cm: pairs(a.cm, 5, 20, isCount).filter((p) => CM.some((c) => c[0] === p[0])), fe: pairs(a.fe, 8, 80, isCount),
     fo: pairs(a.fo, 5, 80, (v) => typeof v === "string" && v !== "") };
   if (Array.isArray(a.ch)) {
@@ -109,7 +110,7 @@ function tidy(raw) {
   if (!raw || typeof raw !== "object" || !Array.isArray(raw.ws)) return null;
   return {
     t: Number.isFinite(raw.t) ? raw.t : 0,
-    v: text(raw.v, 12), sel: text(raw.sel, 60), u: tidyInv(raw.u),
+    v: text(raw.v, 12), sel: text(raw.sel, 60), u: tidyInv(raw.u), uc: tidyInv(raw.uc),
     ws: raw.ws.slice(0, 200).filter((w) => w && typeof w === "object").map((w) => ({
       n: text(w.n, 120), c: text(w.c, 9), w: ident(w.w), f: w.f === true, inv: tidyInv(w.inv),
       a: (Array.isArray(w.a) ? w.a : []).slice(0, 300).map(tidyAgent).filter(Boolean),
@@ -134,6 +135,7 @@ function merge(pic, raw) {
   if (!live || !Array.isArray(raw.a) || !Array.isArray(raw.tabs)) return false;
   const tabs = new Set(raw.tabs.map(ident).filter(Boolean));
   pic.u = live.u;
+  pic.uc = live.uc;
   const agents = raw.a.slice(0, 300).map(tidyAgent).filter((a) => a && a.i && a.w);
   for (const lw of live.ws) {
     if (!lw.w) continue;
@@ -970,11 +972,13 @@ function insideCard(a, CW) {
   if (!bars.length) quiet("no tool calls yet");
   // Context, estimate: one bar per kind in the fixed order, all in one colour with the share beside it.
   // Five hues cannot stay apart for every colour vision when a kind is missing, so the name carries the kind.
+  const codex = toolOf(a.k) === "Codex";  // a Codex session file gives the tool calls of its last part only
+  if (codex) quiet("from the last part of the session file");
   y += 8;
-  head("Context, estimate", "by characters since the last compaction");
+  if (!codex) head("Context, estimate", "by characters since the last compaction");
   const parts = CM.map(([kind]) => [kind, (a.cm.find((c) => c[0] === kind) || [0, 0])[1]]).filter((p) => p[1] > 0);
   const sum = parts.reduce((s, p) => s + p[1], 0);
-  if (!sum) quiet("not known yet");
+  if (!sum && !codex) quiet("not known yet");
   for (const [kind, v] of parts) {
     const share = Math.round((v / sum) * 100);
     g.appendChild(el("text", { x: 16, y: y + 11, style: "font-size:11px" }, kind === "attachments" ? "setup, reminders" : kind));
@@ -986,9 +990,9 @@ function insideCard(a, CW) {
     y += 17;
   }
   // Errors: failed tool results and API errors; a run of 5 failures or more at the end gets a red pill.
-  y += 8;
-  head("Errors");
-  if (a.er + a.ea + a.lp === 0) quiet("no errors");
+  if (!codex) { y += 8; head("Errors"); }
+  if (codex) y -= 8;
+  else if (a.er + a.ea + a.lp === 0) quiet("no errors");
   else {
     g.appendChild(el("text", { x: 16, y: y + 11, style: "font-size:12px" }, plural(a.er, "failed tool call", "failed tool calls") + " · " + plural(a.ea, "API error", "API errors")));
     y += 18;
@@ -1000,6 +1004,13 @@ function insideCard(a, CW) {
       g.appendChild(el("text", { x: 16 + pw / 2, y: y + 15, "text-anchor": "middle", style: "font-size:11px;font-weight:700;fill:" + BAD + ";pointer-events:none" }, label));
       y += 26;
     }
+  }
+  // Hooks: how often the hooks of the harness ran in this session, how many runs blocked a step, and their time.
+  if (a.hk > 0) {
+    y += 8;
+    head("Hooks", a.hm ? dur(a.hm / 1000) + " in total" : "");
+    g.appendChild(el("text", { x: 16, y: y + 11, style: "font-size:12px" + (a.hb ? "" : ";fill:var(--dim)") }, plural(a.hk, "run", "runs") + " · " + a.hb + " blocked"));
+    y += 18;
   }
   // Files: the most edited ones, a file that another session also edited first and with the warning colour.
   const others = new Map(a.fo), counts = new Map(a.fe);
@@ -1049,8 +1060,8 @@ function drawInside(svg) {
   size(svg, W, y + 6);
   legendItems = [["var(--tool)", "tool calls (and other)"], ["var(--tool-ext)", "MCP servers and skills"], ["var(--cm)", "share of the context, by kind"],
     [WARN, "a file that another session also edited"], [BAD, "5 or more failed tool calls in a row"]];
-  return "What each open session does inside: the sessions to look at first come first. The context parts are an estimate. Click a card to go to its tab."
-    + coverage(["Claude Code"]);
+  return "What each open session does inside: the sessions to look at first come first. The context parts are an estimate. A Codex card has tool calls only. Click a card to go to its tab."
+    + coverage(["Claude Code", "Codex"]);
 }
 
 // ---- Rhythm: when the agents worked, by hour and day ----
@@ -1186,15 +1197,19 @@ function drawSetup(svg) {
   const have = pic.ws.filter(found), none = pic.ws.filter((w) => !found(w)).map((w) => w.n || "no name");
   const noneLine = "no setup files found: " + none.join(", ");
   // The user folder of Claude Code: every session loads it, in every workspace. Its card comes first.
-  const user = found({ inv: pic.u }) ? [{ n: "Every workspace · user folder", inv: pic.u }] : [];
+  const user = [...(found({ inv: pic.u }) ? [{ n: "Every workspace · user folder", inv: pic.u }] : []),
+    ...(found({ inv: pic.uc }) ? [{ n: "Every Codex session · Codex folder", inv: pic.uc }] : [])];
+  // The skills that the open sessions called, against the skills that the user folder holds.
+  const called = new Set(agents().flatMap((a) => a.sk)).size;
   if (have.length + user.length === 0) {
     empty(svg, ["No setup figures yet.", "The watcher reads the instruction files and agent folders of each workspace.", ...(none.length ? [cut(noneLine, 96)] : [])]);
     return "Setup: no data.";
   }
   const W = pageWidth(), bytes = (inv) => inv.files.reduce((t, f) => t + f[1] + (inv.imp.get(f[0]) || 0), 0), total = have.reduce((s, w) => s + bytes(w.inv), 0);
-  const shared = user.length ? ["skills", "agents", "commands", "rules"].reduce((s, key) => s + (pic.u[key] || 0), 0) : 0;
+  const shared = pic.u ? ["skills", "agents", "commands", "rules"].reduce((s, key) => s + (pic.u[key] || 0), 0) : 0;
   let y = tiles(svg, [[String(have.length), have.length === 1 ? "workspace with setup" : "workspaces with setup", ""], [kb(total), "instruction files with imports, all workspaces", ""],
-    ...(user.length ? [[String(shared), "skills, agents, commands and rules in the user folder", ""]] : [])]);
+    ...(shared ? [[String(shared), "skills, agents, commands, rules: user folder", ""]] : []),
+    ...(pic.u && pic.u.skills ? [[String(called), "skills called by open sessions", ""]] : [])]);
   y = grid(svg, y, W, [...user, ...have], setupCard);
   if (none.length) {
     const line = el("text", { class: "sub", x: 2, y: y + 24, style: "font-size:12px" }, cut(noneLine, Math.floor(W / 6.6)));
@@ -1204,7 +1219,7 @@ function drawSetup(svg) {
   }
   size(svg, W, y + 6);
   legendItems = [[WARN, "instruction file over 40 KB: it costs context in every session"], ["var(--line)", "chip = how many of a kind the folder holds"]];
-  return "What the user folder gives every session, and what the folder of each workspace adds: instruction files with their sizes, and counts of skills, agents, commands, rules, hooks and MCP servers."
+  return "What the user folder gives every session, and what the folder of each workspace adds: instruction files with their sizes, and counts of skills, agents, commands, rules, hooks, MCP servers and memory files."
     + " This shows what exists in the folder, not what was loaded into the window.";
 }
 

@@ -293,6 +293,37 @@ write(os.path.join(space3, "rules", "a.md"), "12345 @b.md @../CLAUDE.md")
 write(os.path.join(space3, "rules", "b.md"), "1234567")
 write(os.path.join(space3, "CLAUDE.md"), "See @rules/a.md and @rules/none.md and @scope/pkg, `@rules/b.md`\n```\n@rules/b.md\n```\n")
 check("imports are summed through the levels, once each", watcher.setup_inventory(space3).get("imp") == [["CLAUDE.md", 25 + 7]])
+# Project memory of Claude Code: the index is one more file with its size, the other notes are a count.
+slug = watcher.re.sub(r"[^A-Za-z0-9]", "-", os.path.abspath(space3))
+for note, body in (("MEMORY.md", "index"), ("one.md", "SECRET " + SECRET), ("two.md", ""), ("skip.txt", "")):
+    write(os.path.join(box, "home", "projects", slug, "memory", note), body)
+memory = watcher.setup_inventory(space3, claude_home=os.path.join(box, "home"))
+check("project memory gives the index size and a count of notes", memory.get("mem") == 2
+      and ["memory/MEMORY.md", 5] in memory["files"] and SECRET not in json.dumps(memory))
+# A Codex folder: AGENTS.md, prompts counted as commands, and the number of MCP tables in config.toml.
+write(os.path.join(box, "cx", "AGENTS.md"), "abcd")
+write(os.path.join(box, "cx", "prompts", "p.md"), "")
+write(os.path.join(box, "cx", "skills", "s", "SKILL.md"), "")
+write(os.path.join(box, "cx", "config.toml"), '[mcp_servers.db]\ncommand = "x"\nenv = { KEY = "' + SECRET + '" }\n[mcp_servers.web]\nurl = "u"\n')
+check("a Codex folder is counted with its own names", watcher.setup_inventory(os.path.join(box, "cx"), user="codex")
+      == {"files": [["AGENTS.md", 4]], "skills": 1, "commands": 1, "mcp": 2})
+# Hook runs: one record per run with its kind, exit code and time; the command and the output are not kept.
+state = watcher.inside_new()
+for kind, code, took in (("hook_success", 0, 40), ("hook_success", 0, 60), ("hook_blocking_error", 2, 100), ("hook_additional_context", 0, 0)):
+    watcher.inside_line(state, json.dumps({"type": "attachment", "attachment": {
+        "type": kind, "exitCode": code, "durationMs": took, "command": SECRET, "stdout": SECRET}}, separators=(",", ":")).encode(), 0)
+watcher.inside_line(state, json.dumps({"type": "assistant", "message": {"content": [
+    {"type": "tool_use", "name": "Skill", "input": {"skill": "api-design"}}]}}, separators=(",", ":")).encode(), 0)
+summary = watcher.inside_summary(state)
+check("hook runs, blocks and time are counted, and the skills called are named",
+      (summary.get("hk"), summary.get("hb"), summary.get("hm"), summary.get("sk")) == (3, 1, 200, ["api-design"])
+      and SECRET not in json.dumps(summary))
+# Codex tool calls: the names from the session file, nothing of the arguments.
+write(os.path.join(box, "cx", "sessions", "2026", "01", "01", "rollout-a.jsonl"), "".join(json.dumps(
+    {"type": "response_item", "payload": {"type": kind, "name": name, "arguments": SECRET, "input": SECRET}}) + "\n"
+    for kind, name in (("custom_tool_call", "exec"), ("custom_tool_call", "exec"), ("function_call", "spawn_agent"), ("message", "no"))))
+tools = watcher.codex_tools(os.path.join(box, "cx"))
+check("Codex tool calls are counted by name", tools == {"tl": [["exec", 2], ["spawn_agent", 1]], "tn": 3})
 check("a folder with no setup gives nothing", watcher.setup_inventory(os.path.join(box, "codex")) == {})
 
 with contextlib.redirect_stderr(errors):

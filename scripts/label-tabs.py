@@ -32,6 +32,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import tomllib
 
 DERIVED_NAME = r"[a-z0-9]+-[0-9a-f]{2}"
 QUIET_SECONDS = 20 * 60
@@ -66,6 +67,7 @@ TAILS = {}  # path -> (change time, lines) of a Codex session file, read once pe
 INSIDE = {}  # session id -> its hive keys of this pass (tl, tn, er, ea, lp, cm, fe, fo)
 EDITS = {}  # session id -> {absolute path of an edited file: time of its last edit}, for the overlap of this pass
 FOLDERS = {}  # session id -> its start folder, for the setup inventory of its workspace
+CODEX_INSIDE = {}  # tab id -> the tool counts of its Codex session (codex_tools), for the Inside view
 SESSION_TITLES = {}  # session id -> the title of the session, for the names on the views page
 KINDS = ("tool results", "your messages", "replies", "thinking", "attachments")  # parts of the context, in this order
 EDIT_TOOLS = ("Edit", "Write", "NotebookEdit")
@@ -162,7 +164,7 @@ def tool_label(name, skill=None):
 
 
 def inside_new():
-    return {"o": 0, "tools": {}, "tn": 0, "er": 0, "ea": 0, "lp": 0, "cm": {}, "fe": {}}
+    return {"o": 0, "tools": {}, "tn": 0, "er": 0, "ea": 0, "lp": 0, "hk": 0, "hb": 0, "hm": 0, "cm": {}, "fe": {}}
 
 
 def inside_load(path, offset):
@@ -175,7 +177,7 @@ def inside_load(path, offset):
             return None
         state = inside_new()
         state["o"] = offset
-        for key in ("tn", "er", "ea", "lp"):
+        for key in ("tn", "er", "ea", "lp", "hk", "hb", "hm"):
             state[key] = int(old[key])
         state["tools"] = {str(label): int(count) for label, count in old["tools"].items()}
         state["cm"] = {kind: int(chars) for kind, chars in old["cm"].items() if kind in KINDS}
@@ -212,8 +214,16 @@ def inside_line(state, line, now):
         return
     if kind == "attachment":
         # A prompt snapshot is a copy of the prompt for the record, not a part of the context.
-        if (record.get("attachment") or {}).get("type") != "prompt_snapshot":
+        attached = record.get("attachment") if isinstance(record.get("attachment"), dict) else {}
+        if attached.get("type") != "prompt_snapshot":
             add("attachments", len(line.rstrip(b"\n")))
+        # One record per run of a hook: its kind, exit code and run time are counted, never its command or output.
+        kind = str(attached.get("type"))
+        if kind.startswith("hook_") and kind != "hook_additional_context":
+            state["hk"] += 1
+            state["hb"] += kind == "hook_blocking_error" or attached.get("exitCode") == 2
+            took = attached.get("durationMs")
+            state["hm"] += took if isinstance(took, int) and 0 < took < 3_600_000 else 0
         return
     if kind not in ("assistant", "user"):
         return  # "api-request" and "api-request-blob" lines repeat content that is counted already
@@ -262,12 +272,16 @@ def inside_save(path, state):
 
 
 def inside_summary(state):
-    """The hive keys of the counts: tl, tn, er, ea, lp, cm, fe. A key with nothing to show is left out."""
+    """The hive keys of the counts: tl, tn, er, ea, lp, cm, fe, hk hook runs, hb hook blocks, hm hook time in ms,
+    sk the names of the skills called. A key with nothing to show is left out."""
     found = {}
     if state["tn"]:
         found["tl"] = [[label, count] for label, count in sorted(state["tools"].items(), key=lambda item: (-item[1], item[0]))[:12]]
         found["tn"] = state["tn"]
-    found.update({key: state[key] for key in ("er", "ea", "lp") if state[key]})
+    found.update({key: state[key] for key in ("er", "ea", "lp", "hk", "hb", "hm") if state[key]})
+    skills = sorted(label[6:] for label in state["tools"] if label.startswith("skill:") and len(label) > 6)[:40]
+    if skills:
+        found["sk"] = skills
     parts = [[kind, state["cm"][kind]] for kind in KINDS if state["cm"].get(kind)]
     if parts:
         found["cm"] = parts
@@ -618,34 +632,80 @@ def import_bytes(start):
     return total
 
 
-def setup_inventory(folder, user=False):
+def codex_tools(home):
+    """{"tl": [[label, calls], ...], "tn": calls} of the tool calls in the read part (the last CODEX_TAIL bytes) of
+    the newest Codex session file of one Codex folder; {} when there is none. Only the tool names are kept."""
+    files = codex_files(home)[:1]
+    try:
+        _seen, lines = codex_tail(files[0]) if files else (0, [])
+    except OSError as error:
+        print(f"label-tabs: codex tools: cannot read a session file: {type(error).__name__}", file=sys.stderr)
+        return {}
+    tools = {}
+    for line in lines:
+        if '"response_item"' not in line or "_call\"" not in line:
+            continue
+        try:
+            payload = json.loads(line).get("payload")
+        except (ValueError, AttributeError):
+            continue
+        if isinstance(payload, dict) and payload.get("type") in ("function_call", "custom_tool_call", "local_shell_call"):
+            name = payload.get("name") if isinstance(payload.get("name"), str) else "shell"
+            label = tool_label(name)
+            tools[label] = tools.get(label, 0) + 1
+    if not tools:
+        return {}
+    return {"tl": [[label, count] for label, count in sorted(tools.items(), key=lambda item: (-item[1], item[0]))[:12]],
+            "tn": sum(tools.values())}
+
+
+def setup_inventory(folder, user=False, claude_home=None):
     """{"files": [[name, bytes], ...], "imp": [[name, bytes of its imports], ...], "skills": 2, "agents": 1, "commands": n, "rules": n, "hooks": n, "mcp": n}
     for the setup of one start folder; a zero count is left out, and nothing found gives {}. It reads only sizes,
     folder listings (a name with a leading "." is not counted), the number of keys under "hooks" in
     .claude/settings.json and under "mcpServers" in .mcp.json: never a value. user: the folder is the user folder of
-    Claude Code (~/.claude), which holds CLAUDE.md, the four folders and settings.json itself; no MCP count there. A missing file is left out; an
+    Claude Code (~/.claude), which holds CLAUDE.md, the four folders and settings.json itself; no MCP count there.
+    user="codex": the folder is a Codex folder: AGENTS.md, skills, agents, prompts (counted as commands), rules, and
+    the number of tables under "mcp_servers" in config.toml. A workspace folder also gets its project memory of
+    Claude Code (claude_home/projects/<folder with "-" for other characters>/memory): "mem" is the number of
+    memory files, and the index MEMORY.md, which every session loads, is one more file with its size. A missing file is left out; an
     unreadable one too, with one line on stderr that names the file only."""
     found, sizes, imports = {}, [], []
+    codex = user == "codex"
     sub = "" if user else ".claude"
-    for name in ("CLAUDE.md",) if user else SETUP_FILES:
+    for name in ("AGENTS.md",) if codex else ("CLAUDE.md",) if user else SETUP_FILES:
         try:
             info = os.stat(os.path.join(folder, name))
             if os.path.isfile(os.path.join(folder, name)):
                 sizes.append([name, info.st_size])
-                more = import_bytes(os.path.join(folder, name))
+                more = 0 if codex else import_bytes(os.path.join(folder, name))
                 if more:
                     imports.append([name, more])
         except FileNotFoundError:
             continue
         except OSError as err:
             print(f"label-tabs: setup file {name} not read: {type(err).__name__}", file=sys.stderr)
+    if not user:
+        memory = os.path.join(claude_home or os.path.join(os.path.expanduser("~"), ".claude"), "projects",
+                              re.sub(r"[^A-Za-z0-9]", "-", os.path.abspath(folder)), "memory")
+        try:
+            notes = [entry for entry in os.listdir(memory) if entry.endswith(".md")]
+            if "MEMORY.md" in notes:
+                sizes.append(["memory/MEMORY.md", os.path.getsize(os.path.join(memory, "MEMORY.md"))])
+            if len(notes) > ("MEMORY.md" in notes):
+                found["mem"] = len(notes) - ("MEMORY.md" in notes)
+        except (FileNotFoundError, NotADirectoryError):
+            pass
+        except OSError as err:
+            print(f"label-tabs: project memory not read: {type(err).__name__}", file=sys.stderr)
     if sizes:
         found["files"] = sizes
     if imports:
         found["imp"] = imports
     for name in SETUP_FOLDERS:
         try:
-            count = sum(not entry.startswith(".") for entry in os.listdir(os.path.join(folder, sub, name)))
+            count = sum(not entry.startswith(".") for entry in os.listdir(
+                os.path.join(folder, sub, "prompts" if codex and name == "commands" else name)))
         except (FileNotFoundError, NotADirectoryError):
             continue
         except OSError as err:
@@ -653,10 +713,11 @@ def setup_inventory(folder, user=False):
             continue
         if count:
             found[name] = count
-    for key, name, part in (("hooks", os.path.join(sub, "settings.json"), "hooks"),) + (() if user else (("mcp", ".mcp.json", "mcpServers"),)):
+    for key, name, part in ((("mcp", "config.toml", "mcp_servers"),) if codex else
+                            (("hooks", os.path.join(sub, "settings.json"), "hooks"),) + (() if user else (("mcp", ".mcp.json", "mcpServers"),))):
         try:
             with open(os.path.join(folder, name)) as fh:
-                keys = json.loads(fh.read(1_000_000)).get(part)
+                keys = (tomllib.loads if codex else json.loads)(fh.read(1_000_000)).get(part)
         except FileNotFoundError:
             continue
         except (OSError, ValueError, AttributeError) as err:
@@ -692,6 +753,7 @@ def write_hive(tree, live, titles, codex=None, inside=None):
         if key not in tabs or state not in SCREEN_HIVE:
             continue
         agent = hive_agent(fields)
+        agent.update(CODEX_INSIDE.get(key, {}))
         agent.update(k="codex", i=key, w=tabs[key][0], s=SCREEN_HIVE[state], n=titles.get(key) or "codex", f=tabs[key][1])
         agents.append(agent)
     inventories = {space: setup_inventory(folder) for space, folder in folders.items()}
@@ -699,6 +761,7 @@ def write_hive(tree, live, titles, codex=None, inside=None):
             "ws": [dict({"w": space, "n": name, "f": selected}, **({"inv": inventories[space]} if inventories.get(space) else {}))
                    for space, (name, selected) in spaces.items()], "a": agents,
             "u": setup_inventory(os.path.join(os.path.expanduser("~"), ".claude"), user=True),
+            "uc": setup_inventory(os.path.join(os.path.expanduser("~"), ".codex"), user="codex"),
             "tabs": sorted(tabs)}
     folder = os.path.dirname(os.path.abspath(__file__))
     # The change time of the page file: an open page reloads itself when this value changes (after an install).
@@ -1064,6 +1127,7 @@ def codex_marks(tabs, claude_keys):
     for home, keys in tabs.items():
         if len(keys) != 1 or keys & claude_keys:
             continue
+        CODEX_INSIDE[next(iter(keys))] = codex_tools(home)
         figure = codex_context(home)
         if figure:
             found[next(iter(keys))] = [f"ctx {figure[0]}%", f"tok {figure[1]}"]
