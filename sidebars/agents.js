@@ -51,6 +51,21 @@ const saved = computed(() => {
   }
   return { c: best.c ?? "", a: best.a === "1", s: best.s !== "0", e: best.e === "1", l: best.l === "1", folds };
 });
+// Pinned sessions: "@pin: api-3f,lead-1" in the description of their workspace, by session name. A pinned row shows
+// in the "PINNED" block at the top of the list in place of in its group. A click changes pinsS at once; the
+// description follows.
+const PIN_NAME = /^[A-Za-z0-9._-]{1,40}$/;
+const [pinsS, setPinsS] = signal({});
+const pinsOf = (w) => pinsS()[w.id] ?? (descOf(w).split(" | ").find((p) => p.startsWith("@pin: ")) ?? "").slice(6).split(",").filter((n) => PIN_NAME.test(n));
+function togglePin(row) {
+  const w = (data.workspaces() ?? []).find((x) => x.id === row.wsId);
+  if (!w || !PIN_NAME.test(row.sessName)) return;
+  const now = pinsOf(w);
+  const next = now.includes(row.sessName) ? now.filter((n) => n !== row.sessName) : [...now, row.sessName];
+  setPinsS({ ...pinsS(), [w.id]: next });
+  const parts = descOf(w).split(" | ").filter((p) => !p.startsWith("@pin: "));
+  cmux("workspace.action", { workspace_id: w.id, action: "set_description", description: [...parts, ...(next.length ? ["@pin: " + next.join(",")] : [])].join(" | ") });
+}
 const scopeAll = () => scopeAllS() ?? saved().s;
 const showEnded = () => showEndedS() ?? saved().e;
 const showLimits = () => showLimitsS() ?? saved().l;
@@ -407,6 +422,7 @@ const view = computed(() => {
   const out = [];
   const flat = [];  // every row of every workspace, for the view by state
   const waiting = [];
+  const pinned = [];
   // A row, then its detail lines and its subagent rows when the owner opened them.
   const expand = (r, into) => {
     into.push(r);
@@ -600,10 +616,13 @@ const view = computed(() => {
     // A folded group still reports its waiting sessions to the top block.
     for (const r of rows) if (r.look === "needs_input") waiting.push({ ...r, key: "n:" + r.key });
     for (const r of rows) flat.push({ ...r, age: epoch - (r.agent.lastActivityAt ?? epoch) });
+    // A pinned session shows in the top block, also while its group is folded, and not a second time in the group.
+    const pins = pinsOf(w);
+    for (const r of rows) if (pins.includes(r.sessName)) { r.pinned = true; pinned.push({ ...r, key: "p:" + r.key }); }
     // A search looks inside folded groups too: a match in a folded group must show.
     if (collapsed()[w.id] && !query().trim()) continue;
     // A waiting session also shows in the top block; its copy in the workspace has its own key.
-    for (const r of rows) expand(r.look === "needs_input" ? { ...r, key: r.key + ":w" } : r, out);
+    for (const r of rows) if (!r.pinned) expand(r.look === "needs_input" ? { ...r, key: r.key + ":w" } : r, out);
   }
   // "Needs you": every waiting session of every workspace, longest wait first, above the groups.
   waiting.sort((x, y) => (x.agent.sinceEpoch ?? 0) - (y.agent.sinceEpoch ?? 0));
@@ -626,8 +645,13 @@ const view = computed(() => {
     }
     return { rows: list, chips, accts };
   }
-  if (waiting.length === 0) return { rows: out, chips, accts };
-  return { chips, accts, rows: [{ key: "h:needs-you", kind: "header", needsYou: true, wsTitle: "NEEDS YOU", wsColor: ORANGE, count: waiting.length }, ...waiting, ...out] };
+  const top = [];
+  if (waiting.length) top.push({ key: "h:needs-you", kind: "header", needsYou: true, wsTitle: "NEEDS YOU", wsColor: ORANGE, count: waiting.length }, ...waiting);
+  if (pinned.length) {
+    top.push({ key: "h:pinned", kind: "header", needsYou: true, wsTitle: "PINNED", wsColor: "#8E8E93", count: pinned.length });
+    for (const r of pinned) expand(r, top);
+  }
+  return { rows: [...top, ...out], chips, accts };
 });
 // A search text brings the session list back, also while Limits is on: a search must always find sessions.
 const limitsShown = () => showLimits() && !query().trim();
@@ -1252,6 +1276,8 @@ function limitRow(entry) {
 function rowMenu(entry) {
   const cmd = commandsOf(entry().agent);
   const items = [
+    // Only a session with a name can be pinned: the name is the key of the pin.
+    ...(PIN_NAME.test(entry().sessName) ? [Button(() => (entry().pinned ? "Unpin" : "Pin to top"), () => togglePin(entry())), Divider()] : []),
     // A plain click on the row goes to the session, so the menu has no item for it. The name comes first: it is
     // what a reader passes to another session.
     Button(() => "Copy name" + (entry().sessName ? ": " + entry().sessName : ""), () => clipboard.write(entry().sessName || entry().tabTitle)),

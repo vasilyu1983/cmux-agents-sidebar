@@ -1423,8 +1423,9 @@ def set_models(tree, models, strip):
     for workspace, old in found.items():
         parts = old.split(" | ")
         kept = [part for part in parts[1:] if part.startswith("@")]
-        # "@view" belongs to the panel (the saved chips, sort and folds): it stays when the strip parts are replaced.
-        marks = strip[workspace] + [part for part in kept if part.startswith("@view: ")] if workspace in strip else kept
+        # "@view" and "@pin" belong to the panel (the saved chips, sort, folds and pinned sessions): they stay when
+        # the strip parts are replaced.
+        marks = strip[workspace] + [part for part in kept if part.startswith(("@view: ", "@pin: "))] if workspace in strip else kept
         wanted = " | ".join(parts[:1] + marks + sorted(models.get(workspace, [])))
         if wanted == old:
             continue

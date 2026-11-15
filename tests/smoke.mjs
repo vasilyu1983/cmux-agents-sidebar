@@ -554,6 +554,22 @@ check("the menus hold no item that does nothing or repeats a click", () => {
   }
   must(withText((t) => t === "Timeline").length >= 1 && withText((t) => t === "Setup").length >= 1, "the views submenu lost an item");
 });
+check("Pin to top moves a session into a PINNED block, once, and saves the name; Unpin puts it back", () => {
+  const cards = () => withText((x) => x === "[worker-2]").length;
+  const item = () => withText((x) => x === "Pin to top" || x === "Unpin")
+    .find((n) => parentOf(n.id).children.map(node).some((m) => m && m.props.text === "Copy name: worker-2"));
+  const before = cards();
+  must(before >= 1 && item() && item().props.text === "Pin to top", "no Pin to top item in the worker-2 menu");
+  must(withText((x) => x === "PINNED").length === 0, "a PINNED block shows with no pin");
+  const calls = cmuxCalls().length;
+  tap(item());
+  must(withText((x) => x === "PINNED").length === 1, "no PINNED block after the pin");
+  must(cards() === before, "the pinned session shows " + cards() + " times, was " + before);
+  must(cmuxCalls().slice(calls).some((c) => /(^| \| )@pin: worker-2$/.test(String(c.params?.description ?? ""))), "the pin was not saved: " + JSON.stringify(cmuxCalls().slice(calls)).slice(0, 300));
+  must(item().props.text === "Unpin", "the item did not change to Unpin");
+  tap(item());
+  must(withText((x) => x === "PINNED").length === 0 && cards() === before, "Unpin did not put the row back");
+});
 check("the Copy name menu item writes the session name to the clipboard", () => {
   const item = withText((t) => t === "Copy name: lead-1")[0];
   must(item, "menu item not found");
