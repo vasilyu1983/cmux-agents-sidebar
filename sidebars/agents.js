@@ -568,7 +568,9 @@ const view = computed(() => {
     rows.sort((x, y) => (attention() ? x.rank - y.rank : 0) || x.tabIndex - y.tabIndex);
     out.push({
       // An empty workspace is a thin line, not a band: the key carries the form, as for the rows.
-      key: "h:" + w.id + (rows.length ? "" : ":e"),
+      // The start menu is built with the row, so the key also carries its items.
+      key: "h:" + w.id + (rows.length ? "" : ":e") + ":" + launchList().map((x) => x.tool + "." + x.acct).join(","),
+      launch: launchList(),
       kind: "header",
       wsId: w.id,
       // The project folder names the group. w.title is the title of the focused tab, which reads like one more session.
@@ -640,6 +642,24 @@ const accountMarks = computed(() => {
     }
   }
   return out;
+});
+// The start menu of a group: one item per tool and account. The list is the tools and accounts of "@limits"
+// (label-tabs.py names there every installed tool and every account of your accounts file), so nothing is fixed here.
+// Only the tools that agent-run.sh starts get an item.
+const LAUNCH = ["claude", "codex", "opencode"];
+const launchList = computed(() => {
+  const found = {};
+  for (const w of data.workspaces() ?? []) {
+    const part = descOf(w).split(" | ").find((p) => p.startsWith("@limits: "));
+    for (const item of part ? part.slice(9).split(";").slice(0, 60) : []) {
+      const m = /^([a-z]{1,12}),[^,]*,[^,]*,[^,]*,[^,]*(?:,([a-z0-9-]{1,16}))?$/.exec(item);
+      if (m && LAUNCH.includes(m[1])) found[m[1] + "," + (m[2] ?? "")] = { tool: m[1], acct: m[2] ?? "" };
+    }
+  }
+  const primary = accountMarks().primary;
+  // The tool's normal folder first, then the other accounts by name.
+  return Object.values(found).sort((a, b) => LAUNCH.indexOf(a.tool) - LAUNCH.indexOf(b.tool) || (a.acct < b.acct ? -1 : a.acct > b.acct ? 1 : 0))
+    .map((x) => ({ ...x, label: "New " + TOOLS[x.tool] + (x.acct || primary ? " · " + (x.acct || primary) : "") }));
 });
 const limits = computed(() => {
   const epoch = data.clock()?.epoch ?? 0;
@@ -864,6 +884,16 @@ function jump(row) {
 function newTab(wsId) {
   if (wsId) cmux("surface.create", { workspace_id: wsId, focus: true });
 }
+// Opens a new tab that starts a tool with an account, through agent-run.sh of this kit (it sets the one folder
+// variable of the tool and reads no login data). The command has a fixed form: the tool is one of LAUNCH and the
+// account name holds only a-z, 0-9 and "-", so no text from a description reaches the shell. The login shell runs it
+// (your PATH), and a shell stays in the tab when the tool ends. "initial_command" checked with `cmux rpc`, 2026-11-15.
+function launch(wsId, item) {
+  const who = item.acct || accountMarks().primary;
+  if (!wsId || !LAUNCH.includes(item.tool) || !/^[a-z0-9-]{0,16}$/.test(who)) return;
+  const run = (who ? "AGENT_ACCOUNT=" + who + " " : "") + '"$HOME/.config/cmux/scripts/agent-run.sh" ' + item.tool;
+  cmux("surface.create", { workspace_id: wsId, focus: true, initial_command: '"$SHELL" -lic \'' + run + '; exec "$SHELL" -l\'' });
+}
 
 // A plain toggle of the control row: dim when off, primary on a light fill when on. At least 24 pt tall.
 // In a narrow sidebar the toggle with the lowest rank loses its text first.
@@ -925,9 +955,15 @@ const tint = (color, alpha) => (/^#[0-9A-Fa-f]{6}$/.test(color ?? "") ? seen(col
 // The rows of a workspace sit 12 pt inside its band. The top block and the view by state have no band above them.
 const inset = (entry) => () => (byState() || /^(?:[dc]:)?n:/.test(String(entry().key ?? "")) ? 0 : 12);
 // Right-click on a workspace band or line: "New tab here".
-const bandMenu = (entry) => [Button("New tab here", () => newTab(entry().wsId))];
+// The menu of a group: a plain terminal first, then one start item per tool and account.
+const bandMenu = (entry) => {
+  const items = entry().launch ?? [];
+  return [Button("New terminal", () => newTab(entry().wsId)), ...(items.length ? [Divider()] : []),
+    ...items.map((item) => Button(item.label, () => launch(entry().wsId, item)))];
+};
 const selectWs = (entry) => () => cmux("workspace.select", { workspace_id: entry().wsId });
-// "+" opens a new tab in the workspace, as the right-click menu does.
+// "+" opens a plain terminal tab in the workspace, the first item of the right-click menu. A Menu() as the mark was
+// tried: the host draws it as a system pull-down button that ignores the frame and covers the cost.
 const plusMark = (entry) => Text("+").font(11).monospaced().color(TEXT2).frame({ width: 22, height: 22 }).onTap(() => newTab(entry().wsId));
 
 // A header: a section of the view by state (and the "NEEDS YOU" block), an empty workspace, or a workspace band.

@@ -43,7 +43,7 @@ All pictures in this file are renders with sample names and sample figures.
 | Wrong-account mark | `≠ work` in orange on a row: the folder rules name `work` for that folder, and the session runs on another account. Needs `rule` lines |
 | Limit warning | One cmux notification when a limit window of any account passes 80% |
 | Next step | If the last reply of a Claude Code session ends with a line `Next: ...`, the row details show it. `→ you` in blue on the row when that line starts with `you` or `owner` |
-| New tab | Right-click a workspace header, or click its `+`: `New tab here` opens a tab in that workspace |
+| New tab or new session | Click a workspace header's `+` for a plain terminal tab. Right-click the header for the start menu: `New terminal` first, then one item per tool and account, such as `New Claude · work` or `New Codex · team`. The list comes from your installed tools and your accounts file, so it has no fixed names |
 | Asked or finished | A session that waits for your answer has an orange outline, shows `asked` and why it waits in orange on its second line, and also shows at the top of the panel. A session that ended its turn while you looked elsewhere has a purple fill and shows `finished · not seen`. The `✓` chip filters the finished ones |
 | Last prompt | The start of your last request to a Claude Code session, in the row details and in the search |
 | State from the screen | Codex, OpenCode, Grok and Antigravity tabs publish no state. The row says `working · from screen` or `asked · from screen`, read from the last 30 lines of the tab |
@@ -90,7 +90,7 @@ From top to bottom of the picture. "You do" says what the mark asks of you.
 | `you 2` chip | 2 sessions whose next step is yours | Click to see only those |
 | `train` line | One line of project state from a watcher of your own (optional) | Read |
 | `claude 36% ▬ personal · week · resets Wed 23:00` | The fullest limit window of that tool over all your accounts: share used, account, window, reset time. Red from 80% | Slow down or change account before 100% |
-| Tinted band `shop-api  4 · $55  +` | A workspace: name, session count, summed cost. A purple `●1` is 1 tab with unread output | Click to fold. `+` opens a new tab there |
+| Tinted band `shop-api  4 · $55  +` | A workspace: name, session count, summed cost. A purple `●1` is 1 tab with unread output | Click to fold. `+` opens a new terminal tab there; right-click for the start menu |
 | Flat line `docs-site` | A workspace with no agent session | Click to go to it |
 | Green dot | The session is idle: it ended its turn | Read the row to see whose step is next |
 | Blue dot | The session works now | Nothing |
@@ -442,6 +442,7 @@ Without a watcher of your own the strip shows only the limit lines, one per tool
 - Everything stays on your Mac. No script calls the network.
 - `label-tabs.py` reads the environment of your own agent processes to find two values, `CMUX_SURFACE_ID` and `CODEX_HOME`. It keeps nothing else from it.
 - The only message that the kit sends is a local cmux notification for a limit warning.
+- A start item of a workspace menu opens a tab with one fixed command: `agent-run.sh`, a tool from a fixed list of three, and an account name that holds only `a-z`, `0-9` and `-`. No other text reaches the shell. The launcher sets the tool's one folder variable and reads no login data.
 - `label-tabs.py` reads the transcripts of your live Claude Code sessions on disk. One line of the last reply, the `Next:` line, goes into the workspace description and the hive data file; no other reply text leaves the transcript.
 - From the same transcript `label-tabs.py` takes the title of the session (the one you set with `/rename`, else the one the tool gave it), cut to 48 characters. It goes into the workspace description and into `~/.cache/cmux-agents/<session id>.seen`, and the panel shows it on a tab with no title of its own.
 - The start of your last request (60 characters) also goes into the workspace description.
@@ -494,7 +495,7 @@ Tab labels stay until you rename the tabs or close them.
 - The next step, the compaction count and the marks `dup` and `↑` were tested with sample data; on one Mac the next step and the count showed in the data. The new chips `you` and `push` were not seen on screen, and the chip row can be too wide for a narrow sidebar.
 - The compact layout, the top rows (counts, `Here | All | Limits`, chips, search field) and the limit bars were tested in the runtime with invented data; their look on screen (widths, cut text) was not checked by the author of the change.
 - `Clear filters` clears the search text that filters the list. The search field may still show the typed text; this was not checked on screen.
-- `New tab here` opens a plain tab; it does not start an agent in it. The call was not tested against a running cmux.
+- `New terminal` opens a plain tab. A start item such as `New Codex · team` opens a tab that runs `agent-run.sh` with that tool and account in your login shell; a shell stays open when the tool ends. The start menu needs `agent-run.sh` installed by `install.sh`. It lists only Claude Code, Codex and OpenCode, the tools the launcher starts.
 - The state from the screen was tested with sample screens only, not with a live Codex or OpenCode tab. A tool that changes its interface lines breaks it. No documented cmux call for that was found.
 
 ## License

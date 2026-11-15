@@ -749,6 +749,35 @@ check("a tab title that the shell left (user@host, or a start command with a var
   must(rowText("b-two").includes("Fix the login form"), "the session title does not replace the start command: " + rowText("b-two").join(" | "));
   must(rowText("b-three").includes("Review the diff"), "a real tab title was dropped");
 });
+// The start menu of a group: its items come from the tools and accounts in "@limits", never from a list in the panel.
+check("the group menu starts a plain terminal first, then each tool with each account, by a fixed command", () => {
+  ctx.__setData("workspaces", JSON.stringify([{
+    id: "ws-bare", title: "ignored", directory: "/work/bare", color: "#336699", selected: true, unread: 0,
+    description: ["/work/bare", "@home: " + HOME, "@primary: main", "@limits: claude,week,4,Sat 09:39,1794600000;claude,,,,0,work;codex,,,,0;codex,,,,0,team;grok,,,,0", "b-one: sonnet"].join(" | "),
+    tabs: [tab(1, "[b-one] t", { id: B(5), focused: true })], agents: [agent("b-one", B(5), "idle", "claude")], prs: [],
+  }]));
+  const labels = withText((t) => t === "New terminal" || t.startsWith("New Claude") || t.startsWith("New Codex") || t.startsWith("New Grok")).map((n) => n.props.text);
+  const once = [...new Set(labels)];
+  must(JSON.stringify(once) === JSON.stringify(["New terminal", "New Claude · main", "New Claude · work", "New Codex · main", "New Codex · team"]), "menu items: " + JSON.stringify(once));
+  let before = cmuxCalls().length;
+  tap(withText((t) => t === "New Codex · team")[0]);
+  let calls = cmuxCalls().slice(before);
+  must(calls.length === 1 && calls[0].method === "surface.create" && calls[0].params.workspace_id === "ws-bare", "got " + JSON.stringify(calls));
+  must(calls[0].params.initial_command === "\"$SHELL\" -lic 'AGENT_ACCOUNT=team \"$HOME/.config/cmux/scripts/agent-run.sh\" codex; exec \"$SHELL\" -l'", "command: " + calls[0].params.initial_command);
+  before = cmuxCalls().length;
+  tap(withText((t) => t === "New terminal")[0]);
+  calls = cmuxCalls().slice(before);
+  must(calls.length === 1 && calls[0].method === "surface.create" && !("initial_command" in calls[0].params), "a plain terminal got a command: " + JSON.stringify(calls));
+});
+check("an account name that is not plain (it could carry shell text) gives no menu item", () => {
+  ctx.__setData("workspaces", JSON.stringify([{
+    id: "ws-bare", title: "ignored", directory: "/work/bare", color: "#336699", selected: true, unread: 0,
+    description: ["/work/bare", "@home: " + HOME, "@limits: claude,,,,0,a;rm -rf x;codex,,,,0,$(id);claude,,,,0,ok-1", "b-one: sonnet"].join(" | "),
+    tabs: [tab(1, "[b-one] t", { id: B(5), focused: true })], agents: [agent("b-one", B(5), "idle", "claude")], prs: [],
+  }]));
+  const once = [...new Set(withText((t) => t.startsWith("New ")).map((n) => n.props.text))];
+  must(JSON.stringify(once) === JSON.stringify(["New terminal", "New Claude · a", "New Claude · ok-1"]), "menu items: " + JSON.stringify(once));
+});
 
 console.log(failed === 0 ? "\nOK: all checks passed (runtime: " + path.basename(path.dirname(runtimePath)) + ")" : "\nFAILED: " + failed + " check(s)");
 process.exit(failed === 0 ? 0 : 1);
