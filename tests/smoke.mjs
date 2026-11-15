@@ -240,8 +240,8 @@ check("a narrow sidebar: pills, toggles and head counts can shrink, so the panel
   // the parts that are not in a fixed cell must not have one.
   const pills = reachable().filter((n) => n.props.cornerRadius === 4 && typeof n.props.text === "string");
   must(pills.some((n) => n.props.text) && pills.every((n) => n.props.fixedSize !== true), "a pill has a fixed size");
-  const toggles = withText((t) => ["↑", "state", "Ended", "views ↗"].includes(t));
-  must(toggles.length === 4 && toggles.every((n) => n.props.fixedSize !== true), "a toggle of the control row has a fixed size");
+  const toggles = withText((t) => ["attention first", "by state", "views ↗"].includes(t));
+  must(toggles.length === 3 && toggles.every((n) => n.props.fixedSize !== true), "a toggle of the control row has a fixed size");
   const counts = withText((t) => /^\d+ (need you|working|idle)$/.test(t));
   must(counts.length > 0 && counts.every((n) => n.props.fixedSize !== true), "a count of the panel head has a fixed size");
 });
@@ -483,7 +483,7 @@ check("the sub badge opens the subagent rows, from cmux data and from the descri
   mustContain(after, "Review diff");
 });
 check("the state button groups the rows into sections by state, and a second click restores the workspaces", () => {
-  const btn = () => withText((t) => t === "state")[0];
+  const btn = () => withText((t) => t === "by state")[0];
   must(btn(), "state button not found");
   tap(btn());
   const grouped = textOf();
@@ -584,8 +584,9 @@ check("the Limits view groups one account: its name once, the tool name once, th
   // The bars keep their 60 x 5 size and the cost lines their menu.
   must(reachable().filter((n) => n.type === "capsule" && n.props.width === 60 && n.props.height === 5).length === 4, "not four 60 x 5 bars");
   // "tools" turns the same lines around: which account of a tool has room. The costs follow in their own group.
-  must(withText((t) => t === "state").length === 0, "the state switch shows in the Limits view");
-  tap(withText((t) => t === "tools")[0]);
+  // The Limits view shows only its own control: the controls of the session list are not there.
+  must(withText((t) => ["by state", "attention first", "Here", "All", "ended", "account"].includes(t)).length === 0, "a control of the session list shows in the Limits view");
+  tap(withText((t) => t === "by tool")[0]);
   const texts = limitsTexts();
   const turned = texts.slice(texts.indexOf("Claude")).filter((t) => /^(personal|work|team-a|other|Claude|Codex|no data|cost|\$.* session.*|OpenCode, Grok|\d+%|5h · .*|week · .*)$/.test(t));
   must(JSON.stringify(turned) === JSON.stringify([
@@ -594,9 +595,9 @@ check("the Limits view groups one account: its name once, the tool name once, th
     "other", "no data", "OpenCode, Grok",
     "cost", "personal", "$2.00 · 1 session", "work", "$15.91 · 1 session",
   ]), "the view per tool reads " + JSON.stringify(turned));
-  tap(withText((t) => t === "tools")[0]);
+  tap(withText((t) => t === "by account")[0]);
   tap(withText((t) => t === "Limits")[0]);
-  must(withText((t) => t === "state").length === 1 && withText((t) => t === "tools").length === 0, "the state switch did not come back");
+  must(withText((t) => t === "by state").length === 1 && withText((t) => t === "by tool").length === 0, "the controls of the session list did not come back");
 });
 check("the Limits view of one account with no accounts file has no header and still names a tool with no data", () => {
   ctx.__setData("workspaces", limitsFixture("claude,5h,30,21:20,1794650000;claude,week,10,Sun 10:00,1794650000;codex,,,,0;grok,,,,0"));
@@ -617,7 +618,7 @@ check("a head count filters the list, a second tap clears it; the idle count has
   must(withText((t) => t === "!").length === 0 && withText((t) => t === "[worker-2]").length === 1, "the second tap did not clear the filter");
 });
 check("the Reset chip restores the default view and turns the view by state off", () => {
-  tap(withText((t) => t === "state")[0]);
+  tap(withText((t) => t === "by state")[0]);
   tap(withText((t) => t === "Here")[0]);
   // Here shows the api workspace only: its finished-not-seen session gets its own section in the view by state.
   mustContain(textOf(), "FINISHED · NOT SEEN");
@@ -626,7 +627,7 @@ check("the Reset chip restores the default view and turns the view by state off"
   tap(reset);
   must(!textOf().includes("FINISHED · NOT SEEN"), "the view by state stayed on");
   must(withText((t) => t === "All")[0].props.background === "#FFFFFF2E", "the scope did not go back to All");
-  must(withText((t) => t === "Ended")[0].props.color === META, "ended rows stayed on");
+  must(withText((t) => t === "ended").every((n) => n.props.color !== "primary"), "ended rows stayed on");
   must(withText((t) => t === "✕ Reset").length === 0, "the Reset chip stayed in the default view");
 });
 check("a folded band that holds the matching session is not \"Nothing matches\"", () => {
@@ -718,11 +719,11 @@ check("a turn that ends in a tab without the focus is \"finished, not seen\"; a 
   must(cardOf("h-bad").props.background === "clear", "h-bad was idle from the start and is marked");
 });
 check("the attention sort puts a loop just under the sessions that ask", () => {
-  tap(withText((t) => t === "↑")[0]);
+  tap(withText((t) => t === "attention first")[0]);
   const ask = lastAt("h-ask");
   const loop = lastAt("h-loop");
   must(ask < loop && loop < lastAt("h-seen") && loop < lastAt("h-over"), "order: " + NAMES.map((n) => n + "@" + lastAt(n)).join(", "));
-  tap(withText((t) => t === "↑")[0]);
+  tap(withText((t) => t === "attention first")[0]);
 });
 check("the unseen mark clears when the owner focuses the tab, and stays clear after the focus moves on", () => {
   must(rowText("h-seen").includes("finished · not seen"), "h-seen is not marked unseen before the focus");

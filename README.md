@@ -29,14 +29,14 @@ All pictures in this file are renders with sample names and sample figures.
 | `NEEDS YOU` block | All sessions that wait for your input, at the top, with the reason when it is known |
 | Filter chips | `80%` context nearly full, `PR` has a pull request, `1h+` idle for an hour, `you` the next step is yours, `push` commits that no remote holds. Each chip shows its count and names its filter on hover |
 | Head counts | `1 need you` and `2 working` at the top filter the list to those sessions; a second tap shows all. The `idle` count has no tap, because the `1h+` chip counts only sessions idle for an hour |
-| `↑` sort | Sessions that need attention first; the default order is the tab order |
-| `✕ Reset` | Shows when the view is not the default. Back to the default view: no chip, no account, tab order, all workspaces, no ended rows, no `state` grouping. The search text stays |
+| `attention first` | Sort: sessions that need attention first; the default order is the tab order |
+| `✕ Reset` | Shows when the view is not the default. Back to the default view: no chip, no account, tab order, all workspaces, no ended rows, no `by state` grouping. The search text stays |
 | Subagents | `▸ 2 sub` on a row opens the subagent rows. The count comes from cmux, or from the Claude Code records when cmux reports none |
 | Details | `›` on a row opens state, tool, folder, branch, ports, first and last request |
 | Right-click menu | Go to session, copy name, copy folder, copy PR number, fast commands |
 | `views ↗` | A page of pictures in a cmux browser tab, with a switch at the top: Hive, Timeline, Cost, Limits, Queue, Context, Inside, Rhythm, Setup (see "The views page"). The Hive view is a graph: workspace → session → subagent. It updates every 15 seconds. The open tab has a blue box. A click on a session goes to its tab, and the page follows you to another workspace |
 | Next waiting | `next-waiting.sh` goes to the Claude Code session that has waited for you the longest |
-| `Limits` | Next to `Here` and `All`: the rate limits of each agent tool on this Mac, per window (5 hours, week), with the reset time and the age of the figure. Grouped per account; the `tools` switch groups them per tool (see "The Limits view"). The panel remembers the choice |
+| `Limits` | Next to `Sessions` in the first row: the rate limits of each agent tool on this Mac, per window (5 hours, week), with the reset time and the age of the figure. Grouped `by account`; `by tool` groups them per tool (see "The Limits view"). The panel remembers the choice |
 | Search | Type in `Search agents`: rows stay when the text is in the tab title (with the session name), the tool, the account, the workspace name or the folder. Capital letters do not matter. A search text looks in every workspace, also with `Here` on. A chip narrows the result further. While `Limits` is on, a search text shows the sessions again |
 | Account chips | With sessions on two accounts or more, one chip per account under the filter chips, with its row count. A click shows only that account; a second click, or `✕ Reset`, shows all |
 | Account colour | Each account name has one fixed colour, the same on the row tag, on the hive page and at the start of the session's status line. There are six colours, so two names can share one |
@@ -59,7 +59,7 @@ All pictures in this file are renders with sample names and sample figures.
 | Health | One mark per row, the worst first: `loop 6` (red: 6 failed tool calls in a row), `overlap 2` (yellow: 2 files also edited by another session), `silent 1` (yellow: a subagent with no output for 10 minutes to 2 hours). The row details list all of them, with the total of failed tool calls and API errors; that total is not a mark, because every long session has one |
 | On its agents | A session that ended its turn while its subagents still run shows `agents running` and is not counted in `NEEDS YOU` until they end. A permission or a question always counts |
 | Not seen | A session that ended its turn in a tab without focus is `finished · not seen` until you open the tab (kept until the panel reloads) |
-| `state` | Next to `↑`: groups the rows by state in place of by workspace: `NEEDS YOU`, `FINISHED · NOT SEEN`, `RUNNING`, `RECENT` (idle under 1 hour), `IDLE`. Each row then carries its workspace as a pill. Not saved across reloads |
+| `by state` | Next to `attention first`: groups the rows by state in place of by workspace: `NEEDS YOU`, `FINISHED · NOT SEEN`, `RUNNING`, `RECENT` (idle under 1 hour), `IDLE`. Each row then carries its workspace as a pill. Not saved across reloads |
 | Limit bars | Each live limit window has a bar and its percent in fixed columns: green, orange from 50%, red from 80%. Each limit line of the strip has a small bar too. The `train` line leaves out clauses such as `refused none` |
 | Empty list | `No sessions yet` when no session runs. `Nothing matches` when a chip, an account, `Here` or the search hides every session; `Clear filters` resets the view and the search |
 | Work marks | In orange on a row: `dup` when two live sessions work in one folder on one work branch, `↑2` for 2 commits that no remote holds, `⟳3` from the third context compaction |
@@ -82,10 +82,12 @@ From top to bottom of the picture. "You do" says what the mark asks of you.
 | Mark | Meaning | You do |
 |---|---|---|
 | `2 working` `4 idle` `$68` | Sessions that work now, sessions that wait, summed cost of the open sessions | Click a count to filter the list to those sessions |
-| `Here` `All` `Limits` | `Here`: the sessions of the open workspace. `All`: every workspace. `Limits`: the rate limits per tool and account | Click one; the panel remembers it |
-| `↑` | Sort: sessions that need attention first | Click to turn on or off |
-| `state` | Groups the rows by state in place of by workspace | Click to turn on or off |
-| `Ended` | Also shows sessions that ended. The ended runs of a tab that hosts a live session share one row, `3 earlier runs in this tab`, with no marks, no cost and no focus: those belong to the live session | Click to turn on or off |
+| `Sessions` `Limits` | Row 1, what you look at: the session list, or the rate limits per tool and account. A control with no effect in a view is not shown there | Click one; the panel remembers it |
+| `Here` `All` | Row 2 of `Sessions`: the sessions of the open workspace, or every workspace | Click one; the panel remembers it |
+| `by state` | Row 2 of `Sessions`: groups the rows by state in place of by workspace | Click to turn on or off |
+| `attention first` | Row 2 of `Sessions`: sorts sessions that need attention first | Click to turn on or off |
+| `by account` `by tool` | Row 2 of `Limits`, its only control: the grouping of the limits. The search field and the chips belong to the session list and do not show here | Click one |
+| `ended` chip | Row 3 of `Sessions`, with the filter chips, with the number of ended sessions. Also shows sessions that ended. The ended runs of a tab that hosts a live session share one row, `3 earlier runs in this tab`, with no marks, no cost and no focus: those belong to the live session | Click to turn on or off |
 | `views ↗` | Opens the views page: the hive graph, and six more pictures of the same data | Click |
 | `you 2` chip | 2 sessions whose next step is yours | Click to see only those |
 | `train` line | One line of project state from a watcher of your own (optional) | Read |
@@ -222,9 +224,9 @@ The pictures are renders of `scripts/hive.html` with sample data.
 
 ### The Limits view in the panel
 
-The `Limits` view of the panel (the third segment next to `Here` and `All`) has two groupings. Both show a bar and a percent per window: green, orange from 50%, red from 80%. The `tools` switch in the top bar, where `state` sits in the other views, changes the grouping. It is off by default, and it is not saved: after a panel reload it is off again.
+The `Limits` view of the panel (the segment next to `Sessions`) has two groupings. Both show a bar and a percent per window: green, orange from 50%, red from 80%. The pair `by account` / `by tool` under the first row changes the grouping, and it is the only control in this view. `by account` is the default, and the choice is not saved: after a panel reload it is `by account` again.
 
-**Per account** (`tools` off). Each account is a group.
+**Per account** (`by account`). Each account is a group.
 
 - The account name is a small muted header. The account of the tool's normal folder (the `default` line) comes first, the other accounts follow by name.
 - Under it, each tool with its windows. The tool name shows once; the 5-hour and the week window are separate lines.
@@ -235,7 +237,7 @@ The `Limits` view of the panel (the third segment next to `Here` and `All`) has 
 
 <img src="examples/limits.png" alt="Drawing of the Limits view grouped per account: personal, team-a, work and other, each with its tools, bars, windows, no-data tools and cost" width="420">
 
-**Per tool** (`tools` on). Each tool is a group.
+**Per tool** (`by tool`). Each tool is a group.
 
 - The tool name is the header. Under it, each account once with its windows, then the accounts of that tool with no data on one muted `no data` line.
 - Tools with no window and no account come last, under `other`.

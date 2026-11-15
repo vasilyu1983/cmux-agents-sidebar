@@ -1487,32 +1487,49 @@ sidebar(() =>
       // No text: this view reads the tab titles, so it runs again when one changes, and serves the hive page's jumps.
       // It sits under the control row, so it adds no gap to a row.
       Text(() => hiveGo()).font(1),
+      // Row 1, what you look at: the sessions or the limits. The link at the right leaves the panel: it opens the
+      // views page in the browser (the hive tree, the timeline, cost, flow, limits, queue, context and rhythm).
       HStack({ spacing: 4 }, [
         HStack({ spacing: 0 }, [
-          segment("Here", () => !scopeAll() && !showLimits(), () => setView({ s: false, l: false })),
-          segment("All", () => scopeAll() && !showLimits(), () => setView({ s: true, l: false })),
-          segment("Limits", () => showLimits(), () => setView({ l: !showLimits() })),
+          segment("Sessions", () => !showLimits(), () => setView({ l: false })),
+          segment("Limits", () => showLimits(), () => setView({ l: !showLimits() })),  // a second click goes back to the sessions
         ]),
         Spacer(),
-        // The attention sort, then the view by state in place of by workspace.
-        toggleButton("↑", () => attention(), () => setView({ a: !attention() }), 4),
-        // In the Limits view this place holds "tools": the limits per tool in place of per account.
-        toggleButton(() => (limitsShown() ? "tools" : "state"), () => (limitsShown() ? limitsByTool() : byState()),
-          () => (limitsShown() ? setLimitsByTool(!limitsByTool()) : setByState(!byState())), 3),
-        toggleButton("Ended", () => showEnded(), () => setView({ e: !showEnded() }), 2),
-        // Opens the views page in the browser: the hive tree, the timeline, cost, flow, limits, queue, context and rhythm.
         toggleButton("views ↗", () => false, () => openViews(), 1),
       ]).paddingHorizontal(10),
     ]),
 
-    // Filter chips (a second click on the active chip shows all rows again), then the Reset chip.
-    optional("chips", () => chipItems().length || viewChanged(), () => HStack({ spacing: 4 }, [
+    // Row 2, how it is arranged. A control with no effect in a view is not shown there.
+    // Sessions: this workspace or all, then the grouping by state and the attention sort.
+    optional("arrange", () => !limitsShown(), () => HStack({ spacing: 4 }, [
+      HStack({ spacing: 0 }, [
+        segment("Here", () => !scopeAll(), () => setView({ s: false })),
+        segment("All", () => scopeAll(), () => setView({ s: true })),
+      ]),
+      Spacer(),
+      toggleButton("by state", () => byState(), () => setByState(!byState()), 2),
+      toggleButton("attention first", () => attention(), () => setView({ a: !attention() }), 1),
+    ]).paddingHorizontal(10)),
+    // Limits: per account (what one account uses and costs) or per tool (which account of a tool has room).
+    optional("limits-group", limitsShown, () => HStack({ spacing: 0 }, [
+      segment("by account", () => !limitsByTool(), () => setLimitsByTool(false)),
+      segment("by tool", () => limitsByTool(), () => setLimitsByTool(true)),
+      Spacer(),
+    ]).paddingHorizontal(10)),
+
+    // Row 3, what is filtered (sessions only). A second click on the active chip shows all rows again. The chip
+    // "ended" adds the ended sessions to the list. Then the Reset chip.
+    optional("chips", () => !limitsShown() && (chipItems().length || viewChanged() || counts().ended > 0), () => HStack({ spacing: 4 }, [
       ForEach({ items: chipItems, key: (f) => f.id }, filterChip),
+      optional("ended", () => counts().ended > 0 || showEnded(), () =>
+        chip("ended", () => String(counts().ended), () => showEnded(), () => setView({ e: !showEnded() }))
+          .help("Show the ended sessions too")),
       Spacer(),
       optional("reset", viewChanged, resetChip),
     ]).paddingHorizontal(10)),
-    // One chip per account. A second click shows all again.
-    optional("accts", () => acctItems().length, () => HStack({ spacing: 4 }, [
+    // One chip per account, after the word "account". A second click shows all again.
+    optional("accts", () => !limitsShown() && acctItems().length, () => HStack({ spacing: 4 }, [
+      Text("account").font(10).monospaced().color(META).lineLimit(1).fixedSize(),
       ForEach({ items: acctItems, key: (a) => a.id },
         (a) => chip(() => a().id, () => String(a().n), () => acctFilter() === a().id, () => setAcctFilter(acctFilter() === a().id ? "" : a().id))),
       Spacer(),
@@ -1522,7 +1539,8 @@ sidebar(() =>
     // The Limits view takes the place of the session list.
     optional("limits", limitsShown, () => VStack({ spacing: 3 }, [ForEach({ items: limitRows, key: (s) => s.key }, (s) => limitRow(s))])),
 
-    HStack({ spacing: 0 }, [
+    // The search looks in the session list, so the Limits view does not show it.
+    optional("search", () => !limitsShown(), () => HStack({ spacing: 0 }, [
       HStack({ spacing: 6 }, [
         Image("magnifyingglass").font(10).monospaced().color(META),
         TextField("", {
@@ -1532,7 +1550,7 @@ sidebar(() =>
           onSubmit: (t) => setQuery(t ?? ""),
         }),
       ]).paddingHorizontal(8).paddingVertical(5).background("#FFFFFF0F").cornerRadius(8),
-    ]).paddingHorizontal(10),
+    ]).paddingHorizontal(10)),
   ]),
 
     VStack({ spacing: 3 }, [ForEach(
