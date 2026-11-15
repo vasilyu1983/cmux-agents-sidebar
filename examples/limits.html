@@ -14,26 +14,41 @@
   .bar .link { color: #3b8cff; }
   .chips { display: flex; gap: 16px; margin: 12px 4px 0; font-weight: 600; color: #a8a8a8; }
   .chips .sp { flex: 1; }
-  .rows { margin-top: 16px; display: grid; grid-template-columns: 124px 1fr; row-gap: 6px; column-gap: 12px; font-size: 11.5px; }
-  .rows .l { text-align: center; color: #8a8a8a; font-family: ui-monospace, Menlo, monospace; }
-  .rows .none { color: #7a7a7a; }
-  .rows .hot { color: #ff453a; }
-  .gap { grid-column: 1 / 3; height: 4px; }
+  .rows { margin-top: 14px; font-size: 11px; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .grp { margin: 10px 10px 3px; font-size: 10px; font-weight: 600; color: #b4b4ba; }
+  .grp:first-child { margin-top: 0; }
+  .ln { display: flex; align-items: center; gap: 8px; padding: 0 10px 0 18px; height: 17px; font-size: 10px; color: #b4b4ba; }
+  .ln .t { width: 66px; color: #d1d1d6; white-space: nowrap; }
+  .ln .t.m { color: #b4b4ba; }
+  .trk { width: 60px; height: 5px; border-radius: 3px; background: #7f7f7f40; flex: none; }
+  .trk i { display: block; height: 5px; border-radius: 3px; }
+  .ln .p { width: 34px; text-align: right; }
+  .ln .p.hot { color: #fff; }
+  .ln .cost { color: #d1d1d6; }
   .search { margin-top: 14px; color: #a0a0a0; font-size: 13px; }
 </style></head>
 <body>
   <div class="head"><h1>Agents</h1><span class="mono dim" style="font-size:11px">● 1 working · 5 idle</span></div>
-  <div class="bar"><span>Here</span><span>All</span><span class="on">Limits</span><span class="sp"></span><span class="link">hive ↗</span><span>Ended</span></div>
+  <div class="bar"><span>Here</span><span>All</span><span class="on">Limits</span><span class="sp"></span><span>tools</span><span>Ended</span><span class="link">views ↗</span></div>
   <div class="chips"><span class="dim">! 0</span><span>▶ 1</span><span class="dim">80% 0</span><span>PR 2</span><span>1h+ 1</span><span class="sp"></span><span>✕</span><span>↑</span></div>
   <div class="rows">
-    <span class="l">Claude personal</span><span>week 42% · resets Wed 23:00 · seen 9s ago</span>
-    <span class="l">Claude work</span><span>week 18% · resets Mon 09:00 · seen 2m ago</span>
-    <span class="l">Claude client</span><span class="hot">week 86% · resets Fri 08:00 · seen 5m ago</span>
-    <span class="l">Codex personal</span><span>week 4% · resets Wed 10:19 · seen 21h ago</span>
-    <span class="l">Codex work</span><span class="none">no limit data on this Mac</span>
-    <span class="l">OpenCode</span><span class="none">no limit data on this Mac</span>
-    <span class="l">Grok</span><span class="none">no limit data on this Mac</span>
-    <span class="l">Antigravity</span><span class="none">no limit data on this Mac</span>
+    <div class="grp">personal</div>
+    <div class="ln"><span class="t">Claude</span><span class="trk"><i style="width:7px;background:#34c759"></i></span><span class="p">12%</span><span>5h · resets 21:20</span></div>
+    <div class="ln"><span class="t"></span><span class="trk"><i style="width:25px;background:#34c759"></i></span><span class="p">42%</span><span>week · resets Wed 23:00</span></div>
+    <div class="ln"><span class="t">Codex</span><span class="trk"><i style="width:3px;background:#34c759"></i></span><span class="p">4%</span><span>week · resets Wed 10:19</span></div>
+    <div class="ln"><span class="t m">cost</span><span class="cost">$2.00 · 1 session</span></div>
+    <div class="grp">team-a</div>
+    <div class="ln"><span class="t">Claude</span><span class="trk"><i style="width:36px;background:#ff9f0a"></i></span><span class="p">61%</span><span>5h · resets 21:20</span></div>
+    <div class="ln"><span class="t"></span><span class="trk"><i style="width:51px;background:#ff453a"></i></span><span class="p hot">86%</span><span>week · resets Fri 08:00</span></div>
+    <div class="ln"><span class="t m">no data</span><span>Codex</span></div>
+    <div class="ln"><span class="t m">cost</span><span class="cost">$9.40 · 2 sessions</span></div>
+    <div class="grp">work</div>
+    <div class="ln"><span class="t">Claude</span><span class="trk"><i style="width:4px;background:#34c759"></i></span><span class="p">7%</span><span>5h · resets 21:20</span></div>
+    <div class="ln"><span class="t"></span><span class="trk"><i style="width:10px;background:#34c759"></i></span><span class="p">18%</span><span>week · resets Mon 09:00</span></div>
+    <div class="ln"><span class="t m">no data</span><span>Codex</span></div>
+    <div class="ln"><span class="t m">cost</span><span class="cost">$15.91 · 1 session</span></div>
+    <div class="grp">other</div>
+    <div class="ln"><span class="t m">no data</span><span>OpenCode, Grok, Antigravity</span></div>
   </div>
   <div class="search">Search agents</div>
 </body></html>

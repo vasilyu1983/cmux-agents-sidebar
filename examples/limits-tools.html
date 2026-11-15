@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Limits view per tool, sample names</title>
+<style>
+  html, body { margin: 0; background: #2b2b2b; }
+  body { width: 420px; padding: 16px 14px 22px; box-sizing: border-box; font: 13px -apple-system, "Helvetica Neue", Arial, sans-serif; color: #d6d6d6; }
+  .head { display: flex; align-items: baseline; justify-content: space-between; }
+  h1 { font-size: 15px; margin: 0; color: #f2f2f2; }
+  .mono { font-family: ui-monospace, Menlo, monospace; }
+  .dim { color: #8a8a8a; }
+  .bar { display: flex; align-items: center; gap: 4px; margin-top: 12px; font-weight: 600; color: #9a9a9a; }
+  .bar span { padding: 4px 9px; border-radius: 7px; }
+  .bar .on { background: #474747; color: #fff; }
+  .bar .sp { flex: 1; padding: 0; }
+  .bar .link { color: #3b8cff; }
+  .chips { display: flex; gap: 16px; margin: 12px 4px 0; font-weight: 600; color: #a8a8a8; }
+  .chips .sp { flex: 1; }
+  .rows { margin-top: 14px; font-size: 11px; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .grp { margin: 10px 10px 3px; font-size: 10px; font-weight: 600; color: #b4b4ba; }
+  .grp:first-child { margin-top: 0; }
+  .ln { display: flex; align-items: center; gap: 8px; padding: 0 10px 0 18px; height: 17px; font-size: 10px; color: #b4b4ba; }
+  .ln .t { width: 66px; color: #d1d1d6; white-space: nowrap; }
+  .ln .t.m { color: #b4b4ba; }
+  .trk { width: 60px; height: 5px; border-radius: 3px; background: #7f7f7f40; flex: none; }
+  .trk i { display: block; height: 5px; border-radius: 3px; }
+  .ln .p { width: 34px; text-align: right; }
+  .ln .p.hot { color: #fff; }
+  .ln .cost { color: #d1d1d6; }
+  .search { margin-top: 14px; color: #a0a0a0; font-size: 13px; }
+</style></head>
+<body>
+  <div class="head"><h1>Agents</h1><span class="mono dim" style="font-size:11px">● 1 working · 5 idle</span></div>
+  <div class="bar"><span>Here</span><span>All</span><span class="on">Limits</span><span class="sp"></span><span class="on">tools</span><span>Ended</span><span class="link">views ↗</span></div>
+  <div class="chips"><span class="dim">! 0</span><span>▶ 1</span><span class="dim">80% 0</span><span>PR 2</span><span>1h+ 1</span><span class="sp"></span><span>✕</span><span>↑</span></div>
+  <div class="rows">
+    <div class="grp">Claude</div>
+    <div class="ln"><span class="t" style="width:100px">personal</span><span class="trk"><i style="width:7px;background:#34c759"></i></span><span class="p">12%</span><span>5h · resets 21:20</span></div>
+    <div class="ln"><span class="t" style="width:100px"></span><span class="trk"><i style="width:25px;background:#34c759"></i></span><span class="p">42%</span><span>week · resets Wed 23:00</span></div>
+    <div class="ln"><span class="t" style="width:100px">team-a</span><span class="trk"><i style="width:36px;background:#ff9f0a"></i></span><span class="p">61%</span><span>5h · resets 21:20</span></div>
+    <div class="ln"><span class="t" style="width:100px"></span><span class="trk"><i style="width:51px;background:#ff453a"></i></span><span class="p hot">86%</span><span>week · resets Fri 08:00</span></div>
+    <div class="ln"><span class="t" style="width:100px">work</span><span class="trk"><i style="width:4px;background:#34c759"></i></span><span class="p">7%</span><span>5h · resets 21:20</span></div>
+    <div class="ln"><span class="t" style="width:100px"></span><span class="trk"><i style="width:10px;background:#34c759"></i></span><span class="p">18%</span><span>week · resets Mon 09:00</span></div>
+    <div class="grp">Codex</div>
+    <div class="ln"><span class="t" style="width:100px">personal</span><span class="trk"><i style="width:3px;background:#34c759"></i></span><span class="p">4%</span><span>week · resets Wed 10:19</span></div>
+    <div class="ln"><span class="t m" style="width:100px">no data</span><span>team-a, work</span></div>
+    <div class="grp">other</div>
+    <div class="ln"><span class="t m" style="width:100px">no data</span><span>OpenCode, Grok, Antigravity</span></div>
+    <div class="grp">cost</div>
+    <div class="ln"><span class="t m" style="width:100px">personal</span><span class="cost">$2.00 · 1 session</span></div>
+    <div class="ln"><span class="t m" style="width:100px">team-a</span><span class="cost">$9.40 · 2 sessions</span></div>
+    <div class="ln"><span class="t m" style="width:100px">work</span><span class="cost">$15.91 · 1 session</span></div>
+  </div>
+  <div class="search">Search agents</div>
+</body></html>

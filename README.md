@@ -36,14 +36,14 @@ All pictures in this file are renders with sample names and sample figures.
 | Right-click menu | Go to session, copy name, copy folder, copy PR number, fast commands |
 | `views ↗` | A page of pictures in a cmux browser tab, with a switch at the top: Hive, Timeline, Cost, Limits, Queue, Context, Inside, Rhythm, Setup (see "The views page"). The Hive view is a graph: workspace → session → subagent. It updates every 15 seconds. The open tab has a blue box. A click on a session goes to its tab, and the page follows you to another workspace |
 | Next waiting | `next-waiting.sh` goes to the Claude Code session that has waited for you the longest |
-| `Limits` | Next to `Here` and `All`: the rate limits of each agent tool on this Mac, per window (5 hours, week), with the reset time and the age of the figure. With an accounts file: one line per tool and account. The panel remembers the choice |
+| `Limits` | Next to `Here` and `All`: the rate limits of each agent tool on this Mac, per window (5 hours, week), with the reset time and the age of the figure. Grouped per account; the `tools` switch groups them per tool (see "The Limits view"). The panel remembers the choice |
 | Search | Type in `Search agents`: rows stay when the text is in the tab title (with the session name), the tool, the account, the workspace name or the folder. Capital letters do not matter. A search text looks in every workspace, also with `Here` on. A chip narrows the result further. While `Limits` is on, a search text shows the sessions again |
 | Account chips | With sessions on two accounts or more, one chip per account under the filter chips, with its row count. A click shows only that account; a second click, or `✕ Reset`, shows all |
 | Account colour | Each account name has one fixed colour, the same on the row tag, on the hive page and at the start of the session's status line. There are six colours, so two names can share one |
 | Wrong-account mark | `≠ work` in orange on a row: the folder rules name `work` for that folder, and the session runs on another account. Needs `rule` lines |
 | Limit warning | One cmux notification when a limit window of any account passes 80% |
 | Next step | If the last reply of a Claude Code session ends with a line `Next: ...`, the row details show it. `→ you` in blue on the row when that line starts with `you` or `owner` |
-| New tab or new session | Click a workspace header's `+` for a plain terminal tab. Right-click the header for the start menu: `Terminal` first, then one entry per tool found on your Mac, each with a coloured dot. Under `Agent session`, a tool with several accounts is a submenu (`Claude` → `personal ★ default`, `work`), with the tool's normal folder first and marked `★ default`. A tool with one account is one item (`Grok`). `Add account` → `Claude…` asks for a name in a new tab and makes the account folder. The list comes from your installed tools and your accounts file, so it has no fixed names |
+| New tab or new session | Click a workspace header's `+` for a plain terminal tab. Right-click the header for the start menu (see "The start menu"): `Terminal` first, then a grey `Agent session` header, then one item per tool found on your Mac, each with a coloured dot. A tool with 2 or more accounts is a submenu (`Claude` → `personal ★ default`, `work`), with the tool's normal folder first and marked `★ default`. A tool with one account is one item. `Add account` is a submenu: `Claude…` asks for a name in a new tab and makes the account folder. The list comes from your installed tools and your accounts file, so it has no fixed names |
 | Asked or finished | A session that waits for your answer has an orange outline, shows `asked` and why it waits in orange on its second line, and also shows at the top of the panel. A session that ended its turn while you looked elsewhere has a purple fill and shows `finished · not seen`. The `✓` chip filters the finished ones |
 | Last prompt | The start of your last request to a Claude Code session, in the row details and in the search |
 | State from the screen | Codex, OpenCode, Grok and Antigravity tabs publish no state. The row says `working · from screen` or `asked · from screen`, read from the last 30 lines of the tab |
@@ -51,7 +51,7 @@ All pictures in this file are renders with sample names and sample figures.
 | Groups | A workspace band is tinted in the workspace colour and carries its name in that colour. Its sessions sit 12 pt inside it, and subagent rows one step further. A workspace with no session is a flat line in its own colour. A settled session row is flat too: only the focused row, a row that asks and a row that finished unseen have a fill. A dark workspace colour is lightened so it shows on a dark panel |
 | Row | Every session takes the same two lines, whatever its state, so the list does not jump when a session starts or ends a turn. Line 1: `[name]`, the title, the subagent count and the time. Line 2: at most 2 pills of at most 10 characters and a `+N` pill that names the rest on hover (a row must never be wider than the panel), then why it waits, the next step (after a `next` label) or your last request. Line 2 ends with three columns that line up down the list: the model in lavender (the tool when no model is known), the context share in slate blue (yellow from 50%) and the cost in sand. The time stays grey, and orange for a session that waits |
 | Title | `[name]` then the title of the tab. A tab with no title of its own shows the title of its session in Claude Code: the one you set with `/rename`, else the one the tool gave it |
-| Limits | One line per tool and account that has data: bar, percent, window and reset time; the age shows on hover. Tools with no data share one `no data` line. The strip of the session list shows one limit line per tool that reports a live window (`claude`, `codex`, …): the highest window of that tool over all its accounts, with the account, the window and the reset time |
+| Limits | One group per account: the account name once as a small header, then each tool with its windows (5 hours and week on separate lines, the tool name once): bar, percent, window and reset time; the age shows on hover. The tools of that account with no data share one muted `no data` line, and the cost of the account ends its group. Tools with no account name come last, under `other`. With one account and no accounts file there is no header. The `tools` switch (where `state` sits in the other views) groups by tool instead. The strip of the session list shows one limit line per tool that reports a live window (`claude`, `codex`, …): the highest window of that tool over all its accounts, with the account, the window and the reset time |
 | Focus and hover | The session of the focused tab has a fill and a thin outline. A row under the pointer has a faint fill only |
 | Request | The last request that you typed, with `…` when it is cut, on the second line of a session that works. A notice that the tool added (a text that starts with `<`) is never shown as a request |
 | Cards and pills | Each session is a rounded card: orange tint when it asks, purple when it finished and you did not look. Its marks are small coloured pills under the name, by priority: the wrong-account mark `≠ work`, a PR that needs you, `83%`, `→ you`, `↑2`, `dup`, `⟳3`, `❄190K`, PR, account, folder. A row shows the first 2; `+N` names the rest on hover, and the row details list all of them. The tool has no pill: the model column names it |
@@ -63,7 +63,7 @@ All pictures in this file are renders with sample names and sample figures.
 | Limit bars | Each live limit window has a bar and its percent in fixed columns: green, orange from 50%, red from 80%. Each limit line of the strip has a small bar too. The `train` line leaves out clauses such as `refused none` |
 | Empty list | `No sessions yet` when no session runs. `Nothing matches` when a chip, an account, `Here` or the search hides every session; `Clear filters` resets the view and the search |
 | Work marks | In orange on a row: `dup` when two live sessions work in one folder on one work branch, `↑2` for 2 commits that no remote holds, `⟳3` from the third context compaction |
-| Cost per account | In `Limits`, under the limit lines: the summed cost estimate of the open Claude Code sessions per account |
+| Cost per account | In `Limits`, at the end of the group of each account (in the per-tool grouping: the group `cost`): the summed cost estimate of the open Claude Code sessions per account. It needs an accounts file |
 
 With the optional Claude Code status line, each Claude Code row also shows the model and effort, the context share (red from 80%), the session cost estimate, a `cold` mark when the prompt cache went cold, and the count line shows the summed cost.
 
@@ -120,6 +120,60 @@ From top to bottom of the picture. "You do" says what the mark asks of you.
 
 A row shows at most 2 pills. Their order of priority is: `≠`, a PR that needs you, `83%`, `→ you`, `↑2`, `dup`, `⟳`, `❄`, PR, account, folder.
 
+### The start menu
+
+Right-click a workspace header. The menu has these parts, from top to bottom:
+
+1. `⚪ Terminal`: a plain terminal tab.
+2. A grey header, `Agent session`.
+3. One item per tool found on this Mac, each with a coloured dot. A tool with 2 or more accounts is a submenu: the tool's normal folder first, marked `★ default`, then the other accounts. A tool with one account is one item.
+4. `Add account`, a submenu with one item per tool that has accounts (`Claude…`). It opens a tab that asks for a name and runs `agents-account-add.sh`.
+
+<img src="examples/start-menu.png" alt="Drawing of the start menu on a workspace header: Terminal, the grey header Agent session, tools with coloured dots, the Claude submenu open with personal (star default) and work, two extra tools with neutral dots, and Add account" width="420">
+
+A drawing with sample names. The menu is a system menu: it cannot draw a logo or a text colour, so a coloured dot marks each tool. The tool names are text only.
+
+Claude Code, Codex, OpenCode and Grok start through `agent-run.sh`, with the account you pick. Antigravity (`agy`) and the extra tools below have one account and start by their own command.
+
+#### More terminal agents
+
+The watcher knows 11 more terminal agents. Each is listed only when two things are true: its data folder exists, and your login shell finds its command. A folder alone is not enough, because an editor of the same vendor can leave one.
+
+| Tool | Command | Data folder |
+|------|---------|-------------|
+| Gemini CLI | `gemini` | `~/.gemini` |
+| Qwen Code | `qwen` | `~/.qwen` |
+| Kimi Code | `kimi` | `~/.kimi-code` |
+| Auggie | `auggie` | `~/.augment` |
+| Cline | `cline` | `~/.cline` |
+| Droid | `droid` | `~/.factory` |
+| Kiro CLI | `kiro-cli` | `~/.kiro` |
+| Crush | `crush` | `~/.local/share/crush` |
+| Goose | `goose` | `~/.config/goose` |
+| Copilot CLI | `copilot` | `~/.copilot` |
+| Cursor Agent | `cursor-agent` | `~/.cursor` |
+
+These items get a neutral dot (⚫), one account, and start by their command word. They have no `Add account` item and no `Limits` line.
+
+To add a tool of your own, write one line in `~/.config/cmux/agents-tools`:
+
+```
+tool <id> <command> <folder> <Label words>
+```
+
+| Part | Rule |
+|------|------|
+| `id` | `a-z`, `0-9` and `-`, at most 12 characters, a letter first. The ids of the five main tools (`claude`, `codex`, `opencode`, `grok`, `agy`) are refused. An id of an extra tool in the table above replaces that entry |
+| `command` | One word of `a-z`, `0-9` and `-`, at most 24 characters. The login shell runs it by name through your `PATH`: no path, no arguments |
+| `folder` | Starts with `~/` or `/` and must be inside your home folder. The tool counts as present when the folder exists and the command is found |
+| `Label words` | The name in the menu: letters, digits, spaces, `.` and `-`, at most 20 characters |
+
+A line that breaks a rule is skipped. The watcher names it by its number only (on standard error); it does not print the text. Lines that start with `#` and empty lines are ignored. The file is read up to 20000 characters. At most 20 extra tools reach the menu. An example with an invented tool:
+
+```
+tool mytool mytool ~/.mytool My Tool
+```
+
 ![Render of the hive page: workspaces, their sessions, and subagents, with a blue box on the open tab and the account name in its colour](examples/hive.png)
 
 ### The views page
@@ -166,9 +220,30 @@ The pictures are renders of `scripts/hive.html` with sample data.
 - The forecast is a straight line from the last readings. It knows nothing about your plans.
 - From the panel: right-click a row → `Show in timeline`; right-click a limit line → `Show the limit forecast`; right-click a cost line → `Show the cost map`; right-click a row → `Show inside the sessions` or `Show the setup`.
 
-The `Limits` view with several accounts: one line per tool and account, red from 80%. A drawing with sample names, made from `examples/limits.html`.
+### The Limits view in the panel
 
-<img src="examples/limits.png" alt="Drawing of the Limits view: one rate limit line per tool and account (personal, work, client), with reset times and the age of each figure" width="420">
+The `Limits` view of the panel (the third segment next to `Here` and `All`) has two groupings. Both show a bar and a percent per window: green, orange from 50%, red from 80%. The `tools` switch in the top bar, where `state` sits in the other views, changes the grouping. It is off by default, and it is not saved: after a panel reload it is off again.
+
+**Per account** (`tools` off). Each account is a group.
+
+- The account name is a small muted header. The account of the tool's normal folder (the `default` line) comes first, the other accounts follow by name.
+- Under it, each tool with its windows. The tool name shows once; the 5-hour and the week window are separate lines.
+- The tools of that account with no limit data share one muted `no data` line.
+- The cost of that account ends its group.
+- Tools that have no account name come last, under `other` (for example OpenCode or Grok on its normal folder).
+- With one account and no accounts file there is no header.
+
+<img src="examples/limits.png" alt="Drawing of the Limits view grouped per account: personal, team-a, work and other, each with its tools, bars, windows, no-data tools and cost" width="420">
+
+**Per tool** (`tools` on). Each tool is a group.
+
+- The tool name is the header. Under it, each account once with its windows, then the accounts of that tool with no data on one muted `no data` line.
+- Tools with no window and no account come last, under `other`.
+- The cost lines, one per account, follow in a group `cost`.
+
+<img src="examples/limits-tools.png" alt="Drawing of the Limits view grouped per tool: Claude with personal, team-a and work, Codex, other, and a cost group with one line per account" width="420">
+
+Both are drawings with sample names, made from `examples/limits.html` and `examples/limits-tools.html`.
 
 A tab title, as `label-tabs.py` writes it:
 
@@ -253,6 +328,8 @@ Files that appear later, while the kit runs:
 | `~/.config/cmux/scripts/hive-data.js` | `label-tabs.py` | The data of the hive page; it holds your session titles (mode 600) |
 | `~/.config/cmux/scripts/history-data.js` | `label-tabs.py` | The history for the Timeline, Cost, Limits, Queue, Context and Rhythm views: at most 30 days (mode 600) |
 | `~/.config/cmux/agents-accounts` | You, or `agents-account-add.sh` | The account list and the folder rules |
+| `~/.config/cmux/agents-tools` | You | Start-menu tools of your own, one `tool` line each (see "The start menu") |
+| `~/.cache/cmux-agents/tools-on-path` | `label-tabs.py` | Which tool commands your login shell found; asked at most once in 10 minutes (mode 600) |
 
 The `statusLine` key that it adds:
 
@@ -332,7 +409,8 @@ You can keep a personal account and a work account of the same tool logged in at
 | Claude Code | `CLAUDE_CONFIG_DIR` | Documented by Claude Code for work and personal accounts. On macOS the Keychain entry is per folder. |
 | Codex | `CODEX_HOME` | Named in `codex --help`. |
 | OpenCode | `XDG_DATA_HOME` | Its login file and sessions are in the data folder. The variable also reaches each command that OpenCode runs. |
-| Grok Build, Antigravity (`agy`) | none found in their help | One account. The launcher refuses them; start them as before. |
+| Grok Build | `GROK_HOME` | xAI documents it as the home for config, auth, sessions, skills, plugins and logs ([settings reference](https://docs.x.ai/build/settings/reference)). The author moved Grok's data folder with `GROK_HOME` in a test and did not test a second Grok login. `agents-account-add.sh grok <name>` links nothing: the new account starts with its own settings, and you log in by hand with the command that the script prints. |
+| Antigravity (`agy`) | none found in its help | One account. The launcher refuses it; start it as before. |
 
 The accounts file is `~/.config/cmux/agents-accounts`. Without it, everything works as before. [`examples/agents-accounts.example`](examples/agents-accounts.example) is a start:
 
@@ -364,7 +442,7 @@ It gives short commands:
 
 | Command | What it does |
 |---|---|
-| `claude`, `codex`, `opencode` | Start with the account that the folder rules choose |
+| `claude`, `codex`, `opencode`, `grok` | Start with the account that the folder rules choose |
 | `cla work` | Claude Code with the account `work`, for this start only |
 | `cdx work` | Codex with the account `work`, for this start only |
 | `accounts` | Prints the account list and the account that the current folder gets |
@@ -377,15 +455,16 @@ What an account folder shares: `agents-account-add.sh` links a fixed list of set
 | Claude Code | `settings.json`, `CLAUDE.md`, `hooks`, `rules`, `skills`, `agents`, `commands`, `output-styles`, `plugins`, `statusline-command.sh`, `workflows`, `keybindings.json`, `teams` | The login, sessions and `/resume`, project memory, history, MCP servers added at user level |
 | Codex | `config.toml`, `AGENTS.md`, `instructions.md`, `hooks.json`, `rules`, `skills`, `agents`, `plugins`, `keybindings.json` | The login, sessions, memories, history |
 | OpenCode | nothing; its settings stay in `~/.config/opencode` | The login and the sessions |
+| Grok Build | nothing; `GROK_HOME` holds the settings too, so the account starts with its own | Everything: settings, login, sessions, skills, plugins, logs |
 
 A tool that saves a linked file by replacing it turns the link into a real file of that account. Run the script again to see the state of each link.
 
 Where you see the account:
 
 - The status line of a Claude Code session starts with the account name when the session runs on an extra account. A session on the default account shows no name.
-- A panel row names the account in a pill (`work`), in the colour of the account. For Codex the watcher reads one variable, `CODEX_HOME`, from the process of that tab.
+- A panel row names the account in a pill (`work`), in the colour of the account. For Codex the watcher reads one variable, `CODEX_HOME`, from the process of that tab. A Grok row has no account pill: the watcher does not read `GROK_HOME`.
 - The detail lines of a row hold `account`; a session on the default account reads `personal (primary)`, with the name from your `default` line.
-- `Limits` names the default account on the lines of the normal folder.
+- `Limits` names the default account on the lines of the normal folder of Claude Code and Codex. A Grok account that you added has its own group, with a `no data` line.
 - The account name has one fixed colour on the row tag, on the hive page and in the status line. The status line takes the name from the folder (`~/.claude-work` gives `work`), so the colours match when the folder follows that pattern.
 - `≠ work` on a row means that the folder rules name another account for that folder than the one the session runs on. Start the session again with the right account.
 - `accounts doctor` checks the folder and the links of every extra account in one run.
@@ -396,7 +475,7 @@ Limits to know:
 - `/resume` and `--resume` see only the sessions of the account in use. Under cmux, `claude --resume <id>` with an id that is stored in `~/.claude` moves that start to the normal folder, and so to that account.
 - The folder does not separate every sign-in. `ANTHROPIC_AUTH_TOKEN` and `CLAUDE_CODE_OAUTH_TOKEN` in the environment rank above the login of any folder; so does `ANTHROPIC_API_KEY` outside cmux (the cmux wrapper removes it). Claude Code stores a Console sign-in without an API key outside the folder.
 - The linked `settings.json` applies to every account. If it sets `apiKeyHelper`, a credential in `env`, `forceLoginMethod` or `forceLoginOrgUUID`, all accounts get that sign-in rule, and `forceLoginOrgUUID` can refuse the login of the second account. In that case give the account its own `settings.json` in place of the link.
-- With an accounts file, the launcher removes an inherited `CLAUDE_CONFIG_DIR` or `CODEX_HOME` when the chosen account uses the normal folder. It leaves `XDG_DATA_HOME` alone.
+- With an accounts file, the launcher removes an inherited `CLAUDE_CONFIG_DIR`, `CODEX_HOME` or `GROK_HOME` when the chosen account uses the normal folder. It leaves `XDG_DATA_HOME` alone.
 - The plan terms of each tool are your responsibility. Separate accounts for separate work are one thing; several accounts to pass a usage limit can break the terms.
 - The scripts read, copy and move no login token. They make folders and links, write one line of text, and set one variable.
 
@@ -424,7 +503,7 @@ Facts that follow from this design:
 - The account of a session comes from its data folder: the status line passes the folder name for Claude Code, and `label-tabs.py` reads the variable `CODEX_HOME` of a Codex tab. The accounts file maps the folder to a name. A Claude Code row gets its account after the first reply of the session.
 - The limit warning is a `cmux notify` call from `label-tabs.py`: one per limit window at 80% or more. A window that drops below 80% can warn again.
 - A limit line stays empty until the tool sent a figure. Claude Code sends none before the first reply of a session, and it can send a week figure without a 5-hour figure.
-- The `Limits` view reads local files only: the Claude Code status line data, and the `rate_limits` record in the newest Codex session file (`~/.codex/sessions`). It reads no login token and calls no network. A figure is as old as the tool's last reply, so each line shows its age. A tool that is installed and leaves no limit data shows "no limit data on this Mac"; this is the case for OpenCode, Grok Build and Antigravity today. The Claude Code lines need the status line of this repository.
+- The `Limits` view reads local files only: the Claude Code status line data, and the `rate_limits` record in the newest Codex session file (`~/.codex/sessions`). It reads no login token and calls no network. A figure is as old as the tool's last reply, so each line shows its age. A tool that is installed and leaves no limit data is named on the muted `no data` line of its group; this is the case for OpenCode, Grok Build and Antigravity today. The Claude Code lines need the status line of this repository.
 - A click on a session in the hive page goes to its tab. A web page cannot call cmux, so the page puts the request in its tab title for 5 seconds (`go:<workspace id>:<tab id>:<time>`), and the panel, which gets tab titles from cmux, focuses that tab. The panel must be open. It accepts only ids of tabs that it knows and a request younger than 20 seconds, and a request can do nothing but change the focus.
 - The hive page shows subagents under their session. It uses what cmux reports; when cmux reports none, it uses the Claude Code records: the running ones by name, the finished ones as a count. A subagent counts as running while its record is not finished and its transcript got a line in the last 15 minutes.
 
@@ -442,7 +521,8 @@ Without a watcher of your own the strip shows only the limit lines, one per tool
 - Everything stays on your Mac. No script calls the network.
 - `label-tabs.py` reads the environment of your own agent processes to find two values, `CMUX_SURFACE_ID` and `CODEX_HOME`. It keeps nothing else from it.
 - The only message that the kit sends is a local cmux notification for a limit warning.
-- A start item of a workspace menu opens a tab with one fixed command: `agent-run.sh`, a tool from a fixed list of three, and an account name that holds only `a-z`, `0-9` and `-`. For Grok and Antigravity the command is the fixed word `grok` or `agy`. An `Add account` item opens a tab that asks you for a name and passes it to `agents-account-add.sh`, which checks it. No other text reaches the shell. The launcher sets the tool's one folder variable and reads no login data.
+- A start item of a workspace menu opens a tab with one fixed command: `agent-run.sh`, a tool from a fixed list of four (`claude`, `codex`, `opencode`, `grok`), and an account name that holds only `a-z`, `0-9` and `-`. For Antigravity the command is the fixed word `agy`. For an extra tool the command is one checked word (`a-z`, `0-9`, `-`; no path, no argument) that the login shell finds by name. An `Add account` item opens a tab that asks you for a name and passes it to `agents-account-add.sh`, which checks it. No other text reaches the shell. The launcher sets the tool's one folder variable and reads no login data.
+- For the extra tools of the start menu, `label-tabs.py` does three things. It checks with `os.path.isdir` whether the data folder of each listed tool exists, and reads nothing inside it. It asks your login shell `command -v <name>` for the command names of the tools whose folder exists, at most once in 10 minutes, and keeps the answer (tool commands found or not) in `~/.cache/cmux-agents/tools-on-path` (mode 600). It reads your own file `~/.config/cmux/agents-tools`. The ids, commands and labels of the tools found go into the workspace description (`@tools:`), and the panel checks every part again before it builds a command.
 - `label-tabs.py` reads the transcripts of your live Claude Code sessions on disk. One line of the last reply, the `Next:` line, goes into the workspace description and the hive data file; no other reply text leaves the transcript.
 - From the same transcript `label-tabs.py` takes the title of the session (the one you set with `/rename`, else the one the tool gave it), cut to 48 characters. It goes into the workspace description and into `~/.cache/cmux-agents/<session id>.seen`, and the panel shows it on a tab with no title of its own.
 - The start of your last request (60 characters) also goes into the workspace description.
@@ -476,7 +556,7 @@ bash uninstall.sh
 bash uninstall.sh --yes
 ```
 
-It removes the panel, the scripts and `~/.cache/cmux-agents`. It never touches your accounts file, your account folders, a login, or the Claude Code settings, and it lists what is left for you.
+It removes the panel, the scripts and `~/.cache/cmux-agents` (that folder holds `tools-on-path`). It never touches your accounts file, your account folders, a login, or the Claude Code settings. It does not remove `~/.config/cmux/agents-tools` either, and its list of what is left for you does not name that file: delete it by hand if you made it.
 
 If you installed the status line: delete `~/.claude/statusline-command.sh` and the `statusLine` key in `~/.claude/settings.json`, or restore your `.bak` copies.
 Tab labels stay until you rename the tabs or close them.
@@ -495,7 +575,8 @@ Tab labels stay until you rename the tabs or close them.
 - The next step, the compaction count and the marks `dup` and `↑` were tested with sample data; on one Mac the next step and the count showed in the data. The new chips `you` and `push` were not seen on screen, and the chip row can be too wide for a narrow sidebar.
 - The compact layout, the top rows (counts, `Here | All | Limits`, chips, search field) and the limit bars were tested in the runtime with invented data; their look on screen (widths, cut text) was not checked by the author of the change.
 - `Clear filters` clears the search text that filters the list. The search field may still show the typed text; this was not checked on screen.
-- `Terminal` opens a plain tab. A start item such as `Codex` → `team` opens a tab that runs `agent-run.sh` with that tool and account in your login shell; a shell stays open when the tool ends. The start menu needs `agent-run.sh` installed by `install.sh`. Claude Code, Codex and OpenCode start through the launcher, one item per account. Grok and Antigravity keep one account, so each gets one item that runs its own command (`grok`, `agy`).
+- `Terminal` opens a plain tab. A start item such as `Codex` → `team` opens a tab that runs `agent-run.sh` with that tool and account in your login shell; a shell stays open when the tool ends. The start menu needs `agent-run.sh` installed by `install.sh`. Claude Code, Codex, OpenCode and Grok start through the launcher, one item per account. Antigravity keeps one account, so it gets one item that runs its own command (`agy`). An extra tool gets one item that runs its command word. The commands and folders of the extra tools come from each tool's docs or repo; a tool that changes its command or folder drops out of the menu until you fix it in `agents-tools`.
+- Several Grok accounts: the author moved Grok's data folder with `GROK_HOME` in a test. A second Grok login was not tested.
 - The state from the screen was tested with sample screens only, not with a live Codex or OpenCode tab. A tool that changes its interface lines breaks it. No documented cmux call for that was found.
 
 ## License
