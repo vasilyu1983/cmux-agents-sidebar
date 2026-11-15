@@ -788,5 +788,30 @@ check("an account name that is not plain (it could carry shell text) gives no me
   must(JSON.stringify(once) === JSON.stringify(["\u26AA  Terminal", "Agent session", "a", "ok-1"]), "menu items: " + JSON.stringify(once));
 });
 
+check("a tool from @tools gets a flat item with a neutral dot and starts by its command word", () => {
+  ctx.__setData("workspaces", JSON.stringify([{
+    id: "ws-bare", title: "ignored", directory: "/work/bare", color: "#336699", selected: true, unread: 0,
+    description: ["/work/bare", "@home: " + HOME, "@limits: claude,,,,0;grok,,,,0", "@tools: gemini=gemini=Gemini CLI;kiro=kiro-cli=Kiro CLI", "b-one: sonnet"].join(" | "),
+    tabs: [tab(1, "[b-one] t", { id: B(5), focused: true })], agents: [agent("b-one", B(5), "idle", "claude")], prs: [],
+  }]));
+  const want = ["\u26AA  Terminal", "Agent session", "\u{1F7E0}  Claude", "\u{1F534}  Grok", "\u26AB  Gemini CLI", "\u26AB  Kiro CLI"];
+  const once = [...new Set(withText((t) => want.includes(t)).map((n) => n.props.text))];
+  must(JSON.stringify(once) === JSON.stringify(want), "menu items: " + JSON.stringify(once));
+  const before = cmuxCalls().length;
+  tap(withText((t) => t === "\u26AB  Kiro CLI")[0]);
+  const calls = cmuxCalls().slice(before);
+  must(calls.length === 1 && calls[0].method === "surface.create" && calls[0].params.initial_command === "\"$SHELL\" -lic 'kiro-cli; exec \"$SHELL\" -l'", "command: " + JSON.stringify(calls));
+});
+check("a tool in @tools with a command, id or label that is not plain gives no menu item", () => {
+  const bad = ["a=$(id)=Aaa", "b=a;b=Bbb", "c=../x=Ccc", "d=x y=Ddd", "e=ok=$(id)", "f=ok=Fff`x`", "claude=ok=Claude2", "G=ok=Ggg", "h=ok=Hhh=extra", "i=1x=Iii", "j=" + "x".repeat(25) + "=Jjj"];
+  ctx.__setData("workspaces", JSON.stringify([{
+    id: "ws-bare", title: "ignored", directory: "/work/bare", color: "#336699", selected: true, unread: 0,
+    description: ["/work/bare", "@home: " + HOME, "@limits: claude,,,,0", "@tools: " + [...bad, "good=good-1=Good One"].join(";"), "b-one: sonnet"].join(" | "),
+    tabs: [tab(1, "[b-one] t", { id: B(5), focused: true })], agents: [agent("b-one", B(5), "idle", "claude")], prs: [],
+  }]));
+  const once = [...new Set(withText((t) => t.startsWith("\u26AB") || t === "\u{1F7E0}  Claude").map((n) => n.props.text))];
+  must(JSON.stringify(once) === JSON.stringify(["\u{1F7E0}  Claude", "\u26AB  Good One"]), "menu items: " + JSON.stringify(once));
+});
+
 console.log(failed === 0 ? "\nOK: all checks passed (runtime: " + path.basename(path.dirname(runtimePath)) + ")" : "\nFAILED: " + failed + " check(s)");
 process.exit(failed === 0 ? 0 : 1);

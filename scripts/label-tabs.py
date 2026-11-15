@@ -20,6 +20,8 @@ With ~/.config/cmux/agents-accounts it also reads the sessions of the account fo
 ("account claude work ~/.claude-work") and tags them: the field "acct work" after the model, and a 6th part
 with the account name on that account's limit items. Without that file nothing changes.
 
+With ~/.config/cmux/agents-tools you add a start-menu tool of your own (format: see read_tools).
+
 With --next-waiting it changes nothing: it prints "<workspace id> <tab id>" of the session that has waited
 for the owner the longest, or nothing when no session waits.
 """
@@ -42,6 +44,35 @@ HIVE_STATUS = {"waiting": "needs_input", "busy": "working", "idle": "idle"}
 SURFACE_ENV = re.compile(r" CMUX_SURFACE_ID=([0-9A-Fa-f-]{36})(?: |$)")
 ACCOUNT_NAME = r"[a-z0-9-]{1,16}"
 ACCOUNT_TOOLS = ("claude", "codex", "opencode")
+# Other terminal coding agents for the start menu: (id, start command, data folder, label). A tool counts as present
+# when its folder exists; nothing is read from it. Each line comes from the tool's own docs or repo (command and
+# folder), checked on 2026-11-15. The command is one word, run by name through your login shell PATH.
+EXTRA_TOOLS = [
+    # https://github.com/google-gemini/gemini-cli (start: "gemini"; settings in ~/.gemini/settings.json)
+    ("gemini", "gemini", "~/.gemini", "Gemini CLI"),
+    # https://github.com/QwenLM/qwen-code and its settings page (start: "qwen"; user settings ~/.qwen/settings.json)
+    ("qwen", "qwen", "~/.qwen", "Qwen Code"),
+    # https://github.com/MoonshotAI/kimi-code and its configuration page (start: "kimi"; config in ~/.kimi-code/)
+    ("kimi", "kimi", "~/.kimi-code", "Kimi Code"),
+    # https://docs.augmentcode.com/cli/overview and /cli/reference (start: "auggie"; default folder ~/.augment)
+    ("auggie", "auggie", "~/.augment", "Auggie"),
+    # https://github.com/cline/cline and its apps/cli/README.md (start: "cline"; data in ~/.cline/data)
+    ("cline", "cline", "~/.cline", "Cline"),
+    # https://docs.factory.com/cli/getting-started/quickstart and /cli/configuration/settings (start: "droid"; ~/.factory/settings.json)
+    ("droid", "droid", "~/.factory", "Droid"),
+    # https://kiro.dev/docs/cli/ and https://kiro.dev/docs/configuration/ (start: "kiro-cli"; user scope ~/.kiro/; the Kiro IDE may create it too)
+    ("kiro", "kiro-cli", "~/.kiro", "Kiro CLI"),
+    # https://github.com/charmbracelet/crush (start: "crush"; state in ~/.local/share/crush/crush.json)
+    ("crush", "crush", "~/.local/share/crush", "Crush"),
+    # https://block.github.io/goose/docs/guides/config-files (start: "goose"; config in ~/.config/goose/config.yaml)
+    ("goose", "goose", "~/.config/goose", "Goose"),
+    # https://github.com/github/copilot-cli (start: "copilot"; user-level files in ~/.copilot)
+    ("copilot", "copilot", "~/.copilot", "Copilot CLI"),
+]
+BUILT_IN_TOOLS = ("claude", "codex", "opencode", "grok", "agy")  # started by their own code; an extra tool may not reuse these ids
+TOOL_ID = r"[a-z][a-z0-9-]{0,11}"
+TOOL_COMMAND = r"[a-z][a-z0-9-]{0,23}"
+TOOL_LABEL = r"[A-Za-z0-9][A-Za-z0-9 .-]{0,19}"
 ACCOUNTS = []  # (tool, name, folder) per valid "account" line of the accounts file, in file order
 DEFAULT_ACCOUNT = []  # the name of the "default" line, when it has one
 RULES = []  # (folder prefix, account name) per "rule" line
@@ -135,6 +166,48 @@ def read_accounts():
                 DEFAULT_ACCOUNT.append(words[1])
         if not good:
             print(f"label-tabs: accounts file: line {number} skipped", file=sys.stderr)
+
+
+def read_tools():
+    """The extra tools of this Mac: EXTRA_TOOLS, then the lines of ~/.config/cmux/agents-tools. A line:
+    "tool <id> <command> <folder> <Label words>", for example "tool mytool mytool ~/.mytool My Tool".
+    Id: a-z, 0-9, "-", at most 12, a letter first. Command: one word of a-z, 0-9, "-" (at most 24), run by name
+    through your login shell PATH, so no path and no arguments. Folder: starts with "~/" or "/" and resolves to a
+    place inside the home folder; the tool counts as present when it exists. Label: letters, digits, spaces, "."
+    and "-" (at most 20). A line with an id of the same name replaces the built-in entry; the ids of the five
+    main tools are refused. A bad line is skipped and named by its number only. Returns [(id, command, label)]."""
+    home = os.path.realpath(os.path.expanduser("~"))
+    wanted = {}
+    for tool, command, folder, label in EXTRA_TOOLS:
+        wanted[tool] = (command, os.path.expanduser(folder), label)
+    try:
+        with open(os.path.expanduser("~/.config/cmux/agents-tools")) as fh:
+            lines = fh.read(20000).splitlines()
+    except FileNotFoundError:
+        lines = []
+    except (OSError, ValueError) as err:
+        print(f"label-tabs: tools file not read: {err}", file=sys.stderr)
+        lines = []
+    for number, line in enumerate(lines, 1):
+        words = line.split()
+        if not words or words[0].startswith("#"):
+            continue
+        good = (words[0] == "tool" and len(words) >= 5 and bool(re.fullmatch(TOOL_ID, words[1]))
+                and words[1] not in BUILT_IN_TOOLS and bool(re.fullmatch(TOOL_COMMAND, words[2]))
+                and words[3].startswith(("~/", "/")) and bool(re.fullmatch(TOOL_LABEL, " ".join(words[4:])))
+                and os.path.realpath(os.path.expanduser(words[3])).startswith(home + "/"))
+        if good:
+            wanted[words[1]] = (words[2], os.path.expanduser(words[3]), " ".join(words[4:]))
+        else:
+            print(f"label-tabs: tools file: line {number} skipped", file=sys.stderr)
+    return [(tool, command, label) for tool, (command, folder, label) in wanted.items() if os.path.isdir(folder)]
+
+
+def tools_part():
+    """"@tools: id=command=Label;..." for the start menu of the Agents panel: the extra tools found on this Mac.
+    The panel filters every part again before it builds a command."""
+    found = [f"{tool}={command}={label}" for tool, command, label in read_tools()[:20]]
+    return "@tools: " + ";".join(found) if found else ""
 
 
 def wrong_account(session, account):
@@ -1049,6 +1122,9 @@ def general_marks():
     warn_limits(limits)
     if limits:
         found.append("@limits: " + ";".join(limits))
+    tools = tools_part()
+    if tools:
+        found.append(tools)
     if ACCOUNTS and DEFAULT_ACCOUNT:
         found.append("@primary: " + DEFAULT_ACCOUNT[0])
     if TAB_ACCOUNTS:
@@ -1300,7 +1376,7 @@ def set_models(tree, models, strip):
         # gets fresh general parts, and keeps its other "@" parts.
         target = next((ref for ref, old in found.items() if " | @home: " in old), next(iter(found)))
         kept = [part for part in found[target].split(" | ")[1:]
-                if part.startswith("@") and not part.startswith(("@home: ", "@week: ", "@limits: ", "@primary: ", "@accts: "))]
+                if part.startswith("@") and not part.startswith(("@home: ", "@week: ", "@limits: ", "@tools: ", "@primary: ", "@accts: "))]
         strip = {target: kept + general_marks()}
     for workspace, old in found.items():
         parts = old.split(" | ")

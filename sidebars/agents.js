@@ -569,7 +569,7 @@ const view = computed(() => {
     out.push({
       // An empty workspace is a thin line, not a band: the key carries the form, as for the rows.
       // The start menu is built with the row, so the key also carries its items.
-      key: "h:" + w.id + (rows.length ? "" : ":e") + ":" + launchList().map((x) => x.tool + "." + x.acct).join(","),
+      key: "h:" + w.id + (rows.length ? "" : ":e") + ":" + launchList().map((x) => x.tool + "." + x.acct + (x.cmd ?? "") + (x.name ?? "")).join(","),
       launch: launchList(),
       kind: "header",
       wsId: w.id,
@@ -652,6 +652,22 @@ const STARTS = [...LAUNCH, ...Object.keys(PLAIN)];
 // A system menu draws no icon beside a label and no text colour (both tried with cmux 0.65, 2026-11-15), so a
 // coloured emoji dot is the mark of a tool there.
 const DOT = { term: "\u26AA", claude: "\u{1F7E0}", codex: "\u{1F7E2}", opencode: "\u{1F535}", grok: "\u{1F534}", agy: "\u{1F7E3}" };
+// Other tools: "@tools: gemini=gemini=Gemini CLI;kiro=kiro-cli=Kiro CLI" (id=command=label), written by label-tabs.py
+// from its list and from ~/.config/cmux/agents-tools. This text reaches a shell, so every part is checked here again:
+// the command is one word (a-z, 0-9, "-"; no path, no argument) that the login shell finds by name.
+const EXTRA_ID = /^[a-z][a-z0-9-]{0,11}$/, EXTRA_CMD = /^[a-z][a-z0-9-]{0,23}$/, EXTRA_LABEL = /^[A-Za-z0-9][A-Za-z0-9 .-]{0,19}$/;
+const extraTools = computed(() => {
+  const found = {};
+  for (const w of data.workspaces() ?? []) {
+    const part = descOf(w).split(" | ").find((p) => p.startsWith("@tools: "));
+    for (const item of part ? part.slice(8).split(";").slice(0, 20) : []) {
+      const [id, cmd, name, ...more] = item.split("=");
+      if (more.length || !EXTRA_ID.test(id ?? "") || TOOLS[id] || !EXTRA_CMD.test(cmd ?? "") || !EXTRA_LABEL.test(name ?? "")) continue;
+      found[id] = { tool: id, acct: "", cmd, name, label: "" };
+    }
+  }
+  return Object.values(found);
+});
 const launchList = computed(() => {
   const found = {};
   for (const w of data.workspaces() ?? []) {
@@ -663,9 +679,10 @@ const launchList = computed(() => {
     }
   }
   const primary = accountMarks().primary;
-  // The tool's normal folder first, then the other accounts by name.
-  return Object.values(found).sort((a, b) => STARTS.indexOf(a.tool) - STARTS.indexOf(b.tool) || (a.acct < b.acct ? -1 : a.acct > b.acct ? 1 : 0))
-    .map((x) => ({ ...x, label: PLAIN[x.tool] ? "" : (x.acct || primary || "default") + (x.acct ? "" : "  \u2605 default") }));
+  // The tool's normal folder first, then the other accounts by name. The other tools come last, by name.
+  const rank = (t) => (STARTS.includes(t) ? STARTS.indexOf(t) : STARTS.length);
+  return [...Object.values(found), ...extraTools()].sort((a, b) => rank(a.tool) - rank(b.tool) || (a.tool < b.tool ? -1 : a.tool > b.tool ? 1 : 0) || (a.acct < b.acct ? -1 : a.acct > b.acct ? 1 : 0))
+    .map((x) => ({ ...x, label: PLAIN[x.tool] || x.cmd ? "" : (x.acct || primary || "default") + (x.acct ? "" : "  \u2605 default") }));
 });
 const limits = computed(() => {
   const epoch = data.clock()?.epoch ?? 0;
@@ -892,12 +909,14 @@ function newTab(wsId) {
 }
 // Opens a new tab that starts a tool with an account, through agent-run.sh of this kit (it sets the one folder
 // variable of the tool and reads no login data). The command has a fixed form: the tool is one of LAUNCH and the
-// account name holds only a-z, 0-9 and "-", so no text from a description reaches the shell. The login shell runs it
+// account name holds only a-z, 0-9 and "-", so no text from a description reaches the shell. A tool from "@tools" starts by its
+// one checked command word (EXTRA_CMD), with no account and no argument. The login shell runs it
 // (your PATH), and a shell stays in the tab when the tool ends. "initial_command" checked with `cmux rpc`, 2026-11-15.
 function launch(wsId, item) {
   const who = item.acct || accountMarks().primary;
-  if (!wsId || !STARTS.includes(item.tool) || !/^[a-z0-9-]{0,16}$/.test(who)) return;
-  const run = PLAIN[item.tool] ?? (who ? "AGENT_ACCOUNT=" + who + " " : "") + '"$HOME/.config/cmux/scripts/agent-run.sh" ' + item.tool;
+  const extra = item.cmd !== undefined;
+  if (!wsId || !(extra ? EXTRA_ID.test(item.tool) && !TOOLS[item.tool] && EXTRA_CMD.test(item.cmd) : STARTS.includes(item.tool)) || !/^[a-z0-9-]{0,16}$/.test(who)) return;
+  const run = extra ? item.cmd : PLAIN[item.tool] ?? (who ? "AGENT_ACCOUNT=" + who + " " : "") + '"$HOME/.config/cmux/scripts/agent-run.sh" ' + item.tool;
   cmux("surface.create", { workspace_id: wsId, focus: true, initial_command: '"$SHELL" -lic \'' + run + '; exec "$SHELL" -l\'' });
 }
 
@@ -972,12 +991,14 @@ function addAccount(wsId, tool) {
 // submenu with its normal folder first, marked "default"; a tool with one account is one item. Last: add an account.
 const bandMenu = (entry) => {
   const items = entry().launch ?? [], ws = () => entry().wsId;
-  const tools = STARTS.filter((t) => items.some((x) => x.tool === t));
+  const tools = [...new Set(items.map((x) => x.tool))];
+  // A tool that is not one of the five has its label in the item and a neutral dot.
+  const name = (t) => TOOLS[t] ?? items.find((x) => x.tool === t).name, dot = (t) => DOT[t] ?? "\u26AB";
   const start = tools.map((t) => {
     const mine = items.filter((x) => x.tool === t);
-    if (mine.length < 2) return Button(DOT[t] + "  " + TOOLS[t], () => launch(ws(), mine[0]));
+    if (mine.length < 2) return Button(dot(t) + "  " + name(t), () => launch(ws(), mine[0]));
     const first = mine.filter((x) => !x.acct), rest = mine.filter((x) => x.acct);
-    return Menu(DOT[t] + "  " + TOOLS[t], [...first.map((x) => Button(x.label, () => launch(ws(), x))), ...(first.length && rest.length ? [Divider()] : []),
+    return Menu(dot(t) + "  " + name(t), [...first.map((x) => Button(x.label, () => launch(ws(), x))), ...(first.length && rest.length ? [Divider()] : []),
       ...rest.map((x) => Button(x.label, () => launch(ws(), x)))]);
   });
   const adds = tools.filter((t) => LAUNCH.includes(t)).map((t) => Button(DOT[t] + "  " + TOOLS[t] + "…", () => addAccount(ws(), t)));

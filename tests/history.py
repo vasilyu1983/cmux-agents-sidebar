@@ -381,5 +381,35 @@ check("a description that cmux trimmed to \"| ...\" gets its empty folder part b
       watcher.description_of({"description": "| api-3f: x | web-1: y"}).split(" | ") == ["", "api-3f: x", "web-1: y"]
       and watcher.description_of({"description": "/home/me/web | api-3f: x"}) == "/home/me/web | api-3f: x")
 
+# The extra tools of the start menu: the built-in list, and the user file ~/.config/cmux/agents-tools.
+tools_home = os.path.join(box, "tools-home")
+os.makedirs(os.path.join(tools_home, ".gemini"))
+os.makedirs(os.path.join(tools_home, ".mytool"))
+os.makedirs(os.path.join(tools_home, ".config", "cmux"))
+saved_home = os.environ.get("HOME")
+os.environ["HOME"] = tools_home
+try:
+    check("a built-in tool is listed when its folder exists, and one with no folder is not",
+          watcher.read_tools() == [("gemini", "gemini", "Gemini CLI")])
+    check("the description part names it as id=command=label", watcher.tools_part() == "@tools: gemini=gemini=Gemini CLI")
+    bad_lines = ["tool a $(id) ~/.mytool Aaa", "tool b a;b ~/.mytool Bbb", "tool c ../x ~/.mytool Ccc", "tool d x y ~/.mytool Ddd",
+                 "tool e ok ~/.mytool $(id)", "tool f ok /etc Fff", "tool g ok ~/../x Ggg", "tool claude ok ~/.mytool Claude",
+                 "tool H ok ~/.mytool Hhh", "tool i ok ~/.mytool", "tool j ok .mytool Jjj", "tool k " + "x" * 25 + " ~/.mytool Kkk",
+                 "tool l ok ~/.mytool Label`x`", "tool m ok ~/.mytool " + "L" * 21]
+    with open(os.path.join(tools_home, ".config", "cmux", "agents-tools"), "w") as fh:
+        fh.write("# a comment\n\n" + "\n".join(bad_lines) + "\ntool mytool my-tool ~/.mytool My Tool\ntool gemini gem ~/.gemini Gem Two\n")
+    err = io.StringIO()
+    with contextlib.redirect_stderr(err):
+        found = watcher.read_tools()
+    check("only the plain user lines are taken, and a user line replaces the built-in entry of the same id",
+          found == [("gemini", "gem", "Gem Two"), ("mytool", "my-tool", "My Tool")])
+    check("each bad user line is named by its number in one stderr line and its text is not echoed",
+          err.getvalue().count("skipped") == len(bad_lines) and "$(id)" not in err.getvalue())
+finally:
+    if saved_home is None:
+        del os.environ["HOME"]
+    else:
+        os.environ["HOME"] = saved_home
+
 print("OK: all history checks passed" if not failed else f"FAILED: {failed} check(s)")
 sys.exit(1 if failed else 0)
