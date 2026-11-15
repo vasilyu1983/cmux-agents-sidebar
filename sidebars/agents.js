@@ -344,7 +344,7 @@ function cappedPills(all) {
 // An empty place has no text, no padding and no fill, so it takes no width.
 const pillAt = (entry, i) => {
   const p = () => entry().pills[i];
-  return Text(() => p()?.text ?? "").font(11).weight("medium").monospaced().lineLimit(1).truncation("tail")
+  return Text(() => p()?.text ?? "").font(10).weight("medium").monospaced().lineLimit(1).truncation("tail")
     .color(() => p()?.color ?? META).paddingHorizontal(() => (p() ? 5 : 0)).paddingVertical(1)
     .background(() => (p() ? p().bg ?? p().color + "26" : "clear")).cornerRadius(4)
     .help(() => p()?.help ?? null)
@@ -864,7 +864,7 @@ function newTab(wsId) {
 // In a narrow sidebar the toggle with the lowest rank loses its text first.
 function toggleButton(labelFn, activeFn, onTapFn, rank) {
   return Text(labelFn)
-    .font(12).weight("medium").lineLimit(1).truncation("tail").layoutPriority(rank)
+    .font(11).weight("medium").lineLimit(1).truncation("tail").layoutPriority(rank)
     .paddingHorizontal(6).frame({ minHeight: 24 })
     .cornerRadius(6)
     .color(() => (activeFn() ? "primary" : META))
@@ -874,7 +874,7 @@ function toggleButton(labelFn, activeFn, onTapFn, rank) {
 }
 // One segment of the Here | All | Limits group. The selected one has the light fill and no hover.
 const segment = (label, activeFn, onTapFn) =>
-  Text(label).font(12).weight("medium").lineLimit(1).fixedSize()
+  Text(label).font(11).weight("medium").lineLimit(1).fixedSize()
     .paddingHorizontal(10).paddingVertical(4).cornerRadius(6)
     .color(() => (activeFn() ? "primary" : META))
     // No hover fill: a hover fill beside the selected one reads as two selections.
@@ -883,8 +883,8 @@ const segment = (label, activeFn, onTapFn) =>
 // A capsule chip: a label and its count.
 const chip = (labelFn, countFn, activeFn, onTapFn) =>
   HStack({ spacing: 4 }, [
-    Text(labelFn).font(12).weight("medium").lineLimit(1).fixedSize().color(() => (activeFn() ? "primary" : TEXT2)),
-    Text(countFn).font(11).monospaced().lineLimit(1).fixedSize().color(META),
+    Text(labelFn).font(11).weight("medium").lineLimit(1).fixedSize().color(() => (activeFn() ? "primary" : TEXT2)),
+    Text(countFn).font(10).monospaced().lineLimit(1).fixedSize().color(META),
   ])
     .paddingHorizontal(10).paddingVertical(4).cornerRadius(12)
     .background(() => (activeFn() ? "#FFFFFF26" : "#FFFFFF0F"))
@@ -923,7 +923,7 @@ const inset = (entry) => () => (byState() || /^(?:[dc]:)?n:/.test(String(entry()
 const bandMenu = (entry) => [Button("New tab here", () => newTab(entry().wsId))];
 const selectWs = (entry) => () => cmux("workspace.select", { workspace_id: entry().wsId });
 // "+" opens a new tab in the workspace, as the right-click menu does.
-const plusMark = (entry) => Text("+").font(12).color(TEXT2).frame({ width: 22, height: 22 }).onTap(() => newTab(entry().wsId));
+const plusMark = (entry) => Text("+").font(11).color(TEXT2).frame({ width: 22, height: 22 }).onTap(() => newTab(entry().wsId));
 
 // A header: a section of the view by state (and the "NEEDS YOU" block), an empty workspace, or a workspace band.
 // The form is fixed per key.
@@ -938,8 +938,8 @@ function sectionRow(entry) {
   return VStack({ spacing: 0 }, [
     Rectangle().fill("clear").frame({ height: 8 }),
     HStack({ spacing: 6 }, [
-      Text(() => entry().wsTitle).font(11).weight("bold").lineLimit(1).fixedSize().color(() => entry().wsColor),
-      Text(() => String(entry().count)).font(11).monospaced().color(META),
+      Text(() => entry().wsTitle).font(10).weight("bold").lineLimit(1).fixedSize().color(() => entry().wsColor),
+      Text(() => String(entry().count)).font(10).monospaced().color(META),
       Rectangle().fill("#7f7f7f40").frame({ height: 1, maxWidth: "infinity" }),
     ]).paddingHorizontal(8).paddingVertical(5).frame({ maxWidth: "infinity" }),
   ]).frame({ maxWidth: "infinity" });
@@ -955,7 +955,7 @@ function emptyRow(entry) {
     HStack({ spacing: 4 }, [
       HStack({ spacing: 7 }, [
         Capsule().fill(() => seen(entry().wsColor)).frame({ width: 4, height: 12 }),
-        Text(() => entry().wsTitle || "untitled").font(12).weight("medium").color(() => ink(entry().wsColor)).lineLimit(1).truncation("tail"),
+        Text(() => entry().wsTitle || "untitled").font(11).weight("medium").color(() => ink(entry().wsColor)).lineLimit(1).truncation("tail"),
         Spacer(),
       ]).frame({ maxWidth: "infinity" }).onTap(selectWs(entry)),
       plusMark(entry).showOnHover(),
@@ -975,12 +975,12 @@ function bandRow(entry) {
     Rectangle().fill("clear").frame({ height: 12 }),
     HStack({ spacing: 4 }, [
       Text(() => (entry().folded ? "▸" : "▾"))
-        .font(12).color(TEXT2).frame({ width: 22, height: 22 })
+        .font(11).color(TEXT2).frame({ width: 22, height: 22 })
         .onTap(() => toggleFold(entry().wsId)),
       HStack({ spacing: 7 }, [
         Capsule().fill(() => seen(entry().wsColor)).frame({ width: 4, height: 16 }),
         Text(() => entry().wsTitle || "untitled")
-          .font(13).weight("bold").lineLimit(1).truncation("tail").color(() => ink(entry().wsColor)),
+          .font(12).weight("bold").lineLimit(1).truncation("tail").color(() => ink(entry().wsColor)),
         Spacer(),
         ForEach(
           { items: () => (entry().folded ? entry().dots.map((c, i) => ({ id: String(i) + c, color: c })) : []), key: (d) => d.id },
@@ -990,11 +990,11 @@ function bandRow(entry) {
         ForEach({ items: () => (entry().unread ? [{ id: "unread" }] : []), key: (x) => x.id },
           () => HStack({ spacing: 3 }, [
             Circle({ size: 6 }).fill(DONE_DOT),
-            Text(() => String(entry().unread)).font(11).monospaced().color(PURPLE_TEXT),
+            Text(() => String(entry().unread)).font(10).monospaced().color(PURPLE_TEXT),
           ])),
         // The session count and the summed cost estimate of the workspace's sessions (Claude Code only).
         Text(() => String(entry().count) + (entry().cost >= 1 ? " · $" + Math.round(entry().cost) : ""))
-          .font(11).monospaced().lineLimit(1).fixedSize().color(META),
+          .font(10).monospaced().lineLimit(1).fixedSize().color(META),
       ]).frame({ maxWidth: "infinity" }).onTap(selectWs(entry)),
       plusMark(entry),
     ])
@@ -1026,13 +1026,13 @@ const VIEW_OF = (key) => (String(key).startsWith("cost-") ? ["cost", "Show the c
 function stripRow(entry) {
   const value = entry().bar >= 0
     ? [
-      Text(() => entry().pct).font(12).lineLimit(1).fixedSize().color(() => entry().color),
+      Text(() => entry().pct).font(11).lineLimit(1).fixedSize().color(() => entry().color),
       usedBar(() => entry().bar, 44, 4),
-      Text(() => entry().rest).font(11).color(META).lineLimit(1).truncation("tail").layoutPriority(1).help(() => entry().value),
+      Text(() => entry().rest).font(10).color(META).lineLimit(1).truncation("tail").layoutPriority(1).help(() => entry().value),
     ]
-    : [Text(() => entry().value).font(12).color(() => entry().color).lineLimit(1).truncation("tail").layoutPriority(1).help(() => entry().value)];
+    : [Text(() => entry().value).font(11).color(() => entry().color).lineLimit(1).truncation("tail").layoutPriority(1).help(() => entry().value)];
   return HStack({ spacing: 8 }, [
-    cell(Text(() => entry().label).font(11).color(META).lineLimit(1), 56, "leading"),
+    cell(Text(() => entry().label).font(10).color(META).lineLimit(1), 56, "leading"),
     ...value,  // plain parts of the row: a text inside an inner HStack is cut while the row has space
     Spacer(),
   ])
@@ -1051,13 +1051,13 @@ function limitRow(entry, width) {
   const cells = entry().bar >= 0
     ? [
       usedBar(() => entry().bar, 60, 5),
-      cell(Text(() => entry().pct).font(11).monospaced().lineLimit(1)
+      cell(Text(() => entry().pct).font(10).monospaced().lineLimit(1)
         .color(() => (entry().bar >= 80 ? "primary" : META)), 34, "trailing"),
-      Text(() => entry().rest).font(11).color(META).lineLimit(1).truncation("tail").help(() => entry().value),
+      Text(() => entry().rest).font(10).color(META).lineLimit(1).truncation("tail").help(() => entry().value),
     ]
-    : [Text(() => entry().value).font(11).color(() => entry().color).lineLimit(3).truncation("tail").layoutPriority(1).help(() => entry().value)];
+    : [Text(() => entry().value).font(10).color(() => entry().color).lineLimit(3).truncation("tail").layoutPriority(1).help(() => entry().value)];
   return HStack({ spacing: 8, alignment: "top" }, [
-    cell(Text(() => entry().label).font(11).color(TEXT2).lineLimit(1), width, "leading"),
+    cell(Text(() => entry().label).font(10).color(TEXT2).lineLimit(1), width, "leading"),
     ...cells,
     Spacer(),
   ])
@@ -1099,7 +1099,7 @@ function rowMenu(entry) {
 
 // "new": unread output. A finished-not-seen row leaves it out: its tint and its state say it already.
 const unreadBadge = (entry) =>
-  Text(() => (entry().unread && !entry().done ? "new" : "")).font(11).weight("semibold").color(PURPLE_TEXT);
+  Text(() => (entry().unread && !entry().done ? "new" : "")).font(10).weight("semibold").color(PURPLE_TEXT);
 // "▸ 2 sub running": the subagents of a session as a count. A click opens or closes their rows.
 // The subagent count: blue while one runs, else a calm teal, so it reads apart from the grey time.
 const KIDS = "#6AC4DC";
@@ -1113,13 +1113,13 @@ const kidsBadge = (entry) =>
     const e = entry();
     if (!e.kids) return "";
     return (openKids()[e.rowId] ? "▾" : "▸") + (e.kidsRunning ? e.kidsRunning + "/" + e.kids : e.kids);
-  }).font(11).monospaced().lineLimit(1).fixedSize()
+  }).font(10).monospaced().lineLimit(1).fixedSize()
     .color(() => (entry().kidsRunning ? BLUE_TEXT : KIDS))
     .onTap(() => flip(openKids, setOpenKids, entry().rowId));
 // "›" at the end of a row opens its detail lines and shows on hover only; "⌄" closes them and stays in view.
 const infoMark = (entry) =>
   Text(() => (openInfo()[entry().rowId] ? "⌄" : "›"))
-    .font(12).color(TEXT2).paddingHorizontal(4)
+    .font(11).color(TEXT2).paddingHorizontal(4)
     .showOnHover(() => !openInfo()[entry().rowId])
     .onTap(() => flip(openInfo, setOpenInfo, entry().rowId));
 
@@ -1131,8 +1131,8 @@ function detailRow(entry) {
   return HStack({ spacing: 8 }, [
     guide(entry, 16),
     HStack({ spacing: 8 }, [
-      cell(Text(() => entry().label).font(11).monospaced().color(META), 58, "leading"),
-      Text(() => entry().value).font(11).color(TEXT2).lineLimit(2).truncation("tail"),
+      cell(Text(() => entry().label).font(10).monospaced().color(META), 58, "leading"),
+      Text(() => entry().value).font(10).color(TEXT2).lineLimit(2).truncation("tail"),
       Spacer(),
     ]).paddingLeading(UNDER_TITLE),
   ])
@@ -1179,16 +1179,16 @@ const titleLine = (entry) => {
     // Both parts are plain texts of the row and rank above the gap, so a title is cut only when the row is full.
     // A text inside a wrapper (a ForEach, an inner HStack) is cut while the row still has space.
     Text(() => titleParts(entry).name)
-      .font(13).weight("semibold").lineLimit(1).truncation("tail").layoutPriority(3)
+      .font(12).weight("semibold").lineLimit(1).truncation("tail").layoutPriority(3)
       .color(() => (a().status === "ended" || entry().old ? META : "primary")),
-    Text(() => titleParts(entry).rest).font(13).lineLimit(1).truncation("tail").layoutPriority(2).color(META),
+    Text(() => titleParts(entry).rest).font(12).lineLimit(1).truncation("tail").layoutPriority(2).color(META),
     unreadBadge(entry),
     Spacer(),
     kidsBadge(entry),
     cell(Text(() => timeText(a(), data.clock()?.epoch ?? 0))
-      .font(11).monospaced().lineLimit(1)
+      .font(10).monospaced().lineLimit(1)
       // Grey reads 4.36:1 on the fill of the focused row, so the time is lighter there.
-      .color(() => (entry().look === "needs_input" ? ORANGE : entry().focused ? TEXT2 : META)), 36, "trailing"),
+      .color(() => (entry().look === "needs_input" ? ORANGE : entry().focused ? TEXT2 : META)), 33, "trailing"),
     infoMark(entry),
   ]);
 };
@@ -1216,16 +1216,16 @@ function agentRow(entry) {
     HStack({ spacing: 0 }, [
       ...pillRow(entry),
       Text(() => [entry().state, entry().line2 || entry().prompt].filter(Boolean).join(" · "))
-        .font(12).lineLimit(1).truncation("tail").layoutPriority(-1)
+        .font(11).lineLimit(1).truncation("tail").layoutPriority(-1)
         .color(() => (hot() ? ORANGE : entry().done ? PURPLE_TEXT : META))
         .marginLeading(() => (entry().pills.length ? 5 : 0)),
       Spacer().layoutPriority(-2),
       // Three columns with fixed widths, so model, context and cost line up down the list.
-      cell(Text(() => entry().model).font(11).weight("medium").lineLimit(1).color(MODEL_INK), 46, "trailing").marginLeading(5),
-      cell(Text(() => entry().ctxText).font(11).monospaced().lineLimit(1)
-        .color(() => (entry().ctxWarm ? "#FFD60A" : CTX_INK)), 30, "trailing").marginLeading(5),
-      cell(Text(() => entry().tokText).font(11).monospaced().lineLimit(1).color(CTX_INK), 32, "trailing").marginLeading(5),
-      cell(Text(() => entry().costText).font(11).monospaced().lineLimit(1).color(COST_INK), 54, "trailing").marginLeading(5),
+      cell(Text(() => entry().model).font(10).weight("medium").lineLimit(1).color(MODEL_INK), 42, "trailing").marginLeading(5),
+      cell(Text(() => entry().ctxText).font(10).monospaced().lineLimit(1)
+        .color(() => (entry().ctxWarm ? "#FFD60A" : CTX_INK)), 27, "trailing").marginLeading(5),
+      cell(Text(() => entry().tokText).font(10).monospaced().lineLimit(1).color(CTX_INK), 29, "trailing").marginLeading(5),
+      cell(Text(() => entry().costText).font(10).monospaced().lineLimit(1).color(COST_INK), 49, "trailing").marginLeading(5),
     ]).paddingLeading(UNDER_TITLE).frame({ minHeight: 16 }),
   ])]).paddingVertical(4));
 }
@@ -1237,11 +1237,11 @@ function childRow(entry) {
   return HStack({ spacing: 8 }, [
     guide(entry, 18),
     HStack({ spacing: 6 }, [
-      Text("└").font(11).monospaced().color(META),
+      Text("└").font(10).monospaced().color(META),
       Circle({ size: 5 })
         .fill(() => (c().running ? "#0A84FF" : "#7f7f7f55")),
       Text(() => c().label || "subagent")
-        .font(12).lineLimit(1).truncation("tail")
+        .font(11).lineLimit(1).truncation("tail")
         .color(() => (c().running ? TEXT2 : META)),
       Spacer(),
       Text(() => {
@@ -1250,7 +1250,7 @@ function childRow(entry) {
         const end = c().running ? epoch : (c().endedEpoch ?? epoch);
         return fmtElapsed(end - (c().startedEpoch ?? end));
       })
-        .font(11).monospaced().color(META),
+        .font(10).monospaced().color(META),
     ]).paddingLeading(UNDER_TITLE),
   ])
     .paddingLeading(9).paddingTrailing(10).paddingVertical(1)
@@ -1283,7 +1283,7 @@ const filterChip = (f) =>
     .help(() => f().help)
     .opacity(() => ((view().chips[f().id] ?? 0) === 0 && filter() !== f().id ? 0.45 : 1));
 const resetChip = () =>
-  Text("✕ Reset").font(12).weight("medium").lineLimit(1).fixedSize().color(ORANGE)
+  Text("✕ Reset").font(11).weight("medium").lineLimit(1).fixedSize().color(ORANGE)
     .paddingHorizontal(10).paddingVertical(4).cornerRadius(12)
     .background("#FFFFFF0F").hoverBackground("#FFFFFF1A")
     .onTap(resetView);
@@ -1295,7 +1295,7 @@ const acctItems = () => {
 // A count in the panel head, hidden at zero. With a chip id, a tap shows only those rows and a second tap all rows.
 const headCount = (n, word, color, chipId) =>
   ForEach({ items: () => (n() > 0 ? [{ id: word }] : []), key: (x) => x.id }, () => {
-    const t = Text(() => n() + " " + word).font(11).lineLimit(1).truncation("tail").layoutPriority(1).color(color);
+    const t = Text(() => n() + " " + word).font(10).lineLimit(1).truncation("tail").layoutPriority(1).color(color);
     return chipId ? t.onTap(() => setView({ c: filter() === chipId ? "" : chipId })) : t;
   });
 // A zero-or-one list: the row takes no height while it has nothing to show.
@@ -1313,7 +1313,7 @@ sidebar(() =>
   // 8 pt clear line on top of the first band make 12 pt between the search field and the band.
   VStack({ spacing: 4 }, [VStack({ spacing: 8 }, [
     HStack({ spacing: 8 }, [
-      Text("Agents").font(15).weight("semibold"),
+      Text("Agents").font(14).weight("semibold"),
       Spacer(),
       // One count per state in words: orange needs you, blue working, green idle. Then the cost estimate.
       headCount(() => counts().needs_input, "need you", ORANGE, "needs"),
@@ -1321,7 +1321,7 @@ sidebar(() =>
       // The idle chip means idle for 1 hour or more, and this count holds every idle session: no tap.
       headCount(() => counts().idle, "idle", "#34C759"),
       headCount(() => (showEnded() ? counts().ended : 0), "ended", META),
-      optional("cost", () => totalCost() >= 1, () => Text(() => "$" + Math.round(totalCost())).font(11).monospaced().color(META)),
+      optional("cost", () => totalCost() >= 1, () => Text(() => "$" + Math.round(totalCost())).font(10).monospaced().color(META)),
     ]).paddingHorizontal(10),
 
     ZStack({}, [
@@ -1363,7 +1363,7 @@ sidebar(() =>
 
     HStack({ spacing: 0 }, [
       HStack({ spacing: 6 }, [
-        Image("magnifyingglass").font(11).color(META),
+        Image("magnifyingglass").font(10).color(META),
         TextField("", {
           placeholder: "Search agents",
           autofocus: false,
@@ -1388,12 +1388,12 @@ sidebar(() =>
     // The empty list: no session yet, or nothing that matches; "Clear filters" resets the view and the search text.
     // The form is fixed per key.
     optional("none", () => emptyState() === "none", () => VStack({ spacing: 4 }, [
-      Text("No sessions yet").font(13).weight("semibold"),
-      Text("Start an agent in a cmux tab and it shows up here.").font(12).color(META),
+      Text("No sessions yet").font(12).weight("semibold"),
+      Text("Start an agent in a cmux tab and it shows up here.").font(11).color(META),
     ]).paddingVertical(16).paddingHorizontal(10)),
     optional("nomatch", () => emptyState() === "nomatch", () => VStack({ spacing: 4 }, [
-      Text("Nothing matches").font(13).weight("semibold"),
-      Text("Clear filters").font(12).color(BLUE_TEXT).onTap(() => { resetView(); setQuery(""); }),
+      Text("Nothing matches").font(12).weight("semibold"),
+      Text("Clear filters").font(11).color(BLUE_TEXT).onTap(() => { resetView(); setQuery(""); }),
     ]).paddingVertical(16).paddingHorizontal(10)),
     Spacer(),
   ]).paddingHorizontal(6),

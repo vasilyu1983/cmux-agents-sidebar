@@ -257,14 +257,14 @@ check("a waiting session shows in the top block and in its workspace, in the sam
   must(withText((t) => t === "[lead-1]").length === 3, "lead-1 is not shown twice, plus its earlier run");
   // The second line: the state word, then why it waits, in orange.
   const why = withText((t) => t === "asked · permission");
-  must(why.length === 2 && why.every((n) => n.props.color === ORANGE && n.props.font === 12), "no orange \"asked · permission\" on both rows");
+  must(why.length === 2 && why.every((n) => n.props.color === ORANGE && n.props.font === 11), "no orange \"asked · permission\" on both rows");
   must(reachable().some((n) => n.props.borderColor === "#FF9F0A73"), "no orange border on the waiting card");
 });
 check("the title splits into the name and a dim rest", () => {
   const name = withText((t) => t === "[lead-1]")[0];
-  must(name.props.font === 13 && name.props.weight === "semibold", "name is not 13 semibold");
+  must(name.props.font === 12 && name.props.weight === "semibold", "name is not 12 semibold");
   const rest = withText((t) => t === "fix the login test");
-  must(rest.length > 0 && rest.every((n) => n.props.font === 13 && n.props.color === META), "rest is not a 13 pt META title part");
+  must(rest.length > 0 && rest.every((n) => n.props.font === 12 && n.props.color === META), "rest is not a 12 pt META title part");
 });
 check("times are short: no \"ago\", minutes without seconds", () => {
   must(withText((t) => t === "5m").length > 0, "no \"5m\" elapsed time");
@@ -284,7 +284,7 @@ check("workspace bands take the workspace colour; the selected one is stronger",
 });
 check("an empty workspace is a flat line in its own colour with a hover-only +", () => {
   const name = withText((t) => t === "docs");
-  must(name.length === 1 && name[0].props.font === 12 && name[0].props.color === "#94afca", "docs line is not 12 pt in its colour");
+  must(name.length === 1 && name[0].props.font === 11 && name[0].props.color === "#94afca", "docs line is not 11 pt in its colour");
   must(!reachable().some((n) => /^#5580aa/.test(String(n.props.background ?? ""))), "the empty workspace has a fill");
   // A settled row is flat: only a focused, asking or unseen row has a fill, so the list is not a stack of boxes.
   const fills = reachable().filter((n) => n.props.cornerRadius === 10).map((n) => n.props.background);
@@ -312,22 +312,22 @@ check("a tool has no pill of its own: a session with no known model names its to
 });
 check("a tab with no title of its own shows the title of its session; the request, model, context and cost are on the second line", () => {
   // old-5: the tab title is only the tool name. Its description carries "title Release notes".
-  must(withText((t) => t === "Release notes").some((n) => n.props.font === 13 && n.props.color === META && n.props.layoutPriority === 2), "old-5 does not show its session title beside the name");
-  must(withText((t) => t === "close the release notes").some((n) => n.props.font === 12 && n.props.color === META), "old-5 does not show its last request on the second line");
+  must(withText((t) => t === "Release notes").some((n) => n.props.font === 12 && n.props.color === META && n.props.layoutPriority === 2), "old-5 does not show its session title beside the name");
+  must(withText((t) => t === "close the release notes").some((n) => n.props.font === 11 && n.props.color === META), "old-5 does not show its last request on the second line");
   // The end of the second line is three columns of fixed width, so the values line up down the list.
-  must(withText((t) => t === "sonnet").some((n) => n.props.font === 11 && n.props.weight === "medium" && n.props.color === "#BDB2E8"), "old-5 has no lavender model column");
-  must(withText((t) => t === "12%").some((n) => n.props.font === 11 && n.props.color === "#A9C0D4"), "old-5 has no slate context column");
-  must(withText((t) => t === "$1.20").some((n) => n.props.font === 11 && n.props.color === "#D8BE8C"), "lead-1 has no sand cost column");
+  must(withText((t) => t === "sonnet").some((n) => n.props.font === 10 && n.props.weight === "medium" && n.props.color === "#BDB2E8"), "old-5 has no lavender model column");
+  must(withText((t) => t === "12%").some((n) => n.props.font === 10 && n.props.color === "#A9C0D4"), "old-5 has no slate context column");
+  must(withText((t) => t === "$1.20").some((n) => n.props.font === 10 && n.props.color === "#D8BE8C"), "lead-1 has no sand cost column");
   // worker-2 does not work and has a next step: a bare "next" label stands before the text of its second line.
   must(withText((t) => t === "next").some((n) => n.props.background === "clear" && n.props.color === "#D1D1D6"), "no bare next label on worker-2");
   must(withText((t) => t.endsWith("the lead merges")).length >= 1, "worker-2 does not show its next step");
   const widths = (w) => reachable().filter((n) => n.props.width === w).length;
-  must(widths(46) >= 6 && widths(46) === widths(30) && widths(30) === widths(54) && widths(54) === widths(32), "the four columns are not on every row");
-  must(withText((t) => t === "claude").some((n) => n.props.fixedSize === true && n.props.font === 11), "the strip line of the limit is not labelled claude");
+  must(widths(42) >= 6 && widths(42) === widths(27) && widths(27) === widths(49) && widths(49) === widths(29), "the four columns are not on every row");
+  must(withText((t) => t === "claude").some((n) => n.props.fixedSize === true && n.props.font === 10), "the strip line of the limit is not labelled claude");
   must(withText((t) => t === "week").length === 0, "the strip still has a line labelled week");
 });
 check("the context tokens show beside the share in the same slate colour: 420K, 1.2M; none when unknown", () => {
-  must(withText((t) => t === "420K").some((n) => n.props.font === 11 && n.props.color === "#A9C0D4"), "old-5 has no slate 420K beside its share");
+  must(withText((t) => t === "420K").some((n) => n.props.font === 10 && n.props.color === "#A9C0D4"), "old-5 has no slate 420K beside its share");
   must(withText((t) => t === "1.2M").some((n) => n.props.color === "#A9C0D4"), "scout-4 has no 1.2M (one decimal from 1M)");
   // A Codex row gets its share and tokens by tab id.
   must(withText((t) => t === "37%").length >= 1 && withText((t) => t === "95K").length >= 1, "the Codex row of helper-6 has no 37% and 95K");
@@ -364,14 +364,14 @@ check("render shows the project strip lines", () => {
   mustContain(rendered, "2 ready");
   mustContain(rendered, "api 2");
 });
-check("strip lines: one 12 pt line with the full text on hover; the train line drops its \"none\" clauses", () => {
+check("strip lines: one 11 pt line with the full text on hover; the train line drops its \"none\" clauses", () => {
   const train = withText((t) => t === "merged #12");
   must(train.length === 1, "the train line is not \"merged #12\"");
-  must(train[0].props.font === 12 && train[0].props.lineLimit === 1 && train[0].props.truncation === "tail", "the strip value is not 12 pt on one line");
+  must(train[0].props.font === 11 && train[0].props.lineLimit === 1 && train[0].props.truncation === "tail", "the strip value is not 11 pt on one line");
   must(train[0].props.help === "merged #12", "the strip value has no hover text");
   must(withText((t) => t === "refused none; skipped none").length === 1, "a train line with only \"none\" clauses did not keep its text");
   const label = withText((t) => t === "train")[0];
-  must(label.props.font === 11 && !label.props.monospaced && label.props.color === META, "the strip label is not 11 pt META");
+  must(label.props.font === 10 && !label.props.monospaced && label.props.color === META, "the strip label is not 10 pt META");
   // A label sits in a 56 pt cell at the leading side: the text takes its own width, a gap fills the rest.
   must(label.props.fixedSize === true && reachable().some((n) => n.props.width === 56), "the strip label has no 56 pt cell");
 });
@@ -384,7 +384,7 @@ check("the strip has one limit line per tool with a live window: percent, a 44 x
   must(reachable().some((n) => n.type === "capsule" && n.props.fill === "#7f7f7f40" && n.props.width === 44 && n.props.height === 4), "no 44 pt track on the strip bar");
   const rest = withText((t) => /5h · resets 14:10$/.test(t))[0];
   must(rest && rest.props.text === "personal · 5h · resets 14:10", "the claude line does not name its account: " + rest?.props.text);
-  must(rest && rest.props.font === 11 && rest.props.color === META, "the rest of the claude line is not \"5h · resets 14:10\" in 11 pt META");
+  must(rest && rest.props.font === 10 && rest.props.color === META, "the rest of the claude line is not \"5h · resets 14:10\" in 10 pt META");
 });
 check("the panel head, control row, chips and search field have their new form", () => {
   must(!rendered.includes("showing:"), "the showing line is still there");
@@ -684,7 +684,7 @@ check("rows keep their height and their columns with and without the new fields"
   const seconds = reachable().filter((n) => n.props.minHeight === 16 && n.props.paddingLeading === 19);
   must(seconds.length === rows.length, "second lines: " + seconds.length + " for " + rows.length + " rows");
   const widths = (w) => reachable().filter((n) => n.props.width === w).length;
-  must(widths(46) === rows.length && widths(54) === rows.length, "the model and cost columns are not on every row");
+  must(widths(42) === rows.length && widths(49) === rows.length, "the model and cost columns are not on every row");
 });
 check("a row menu opens the views page on the inside view and on the setup view", () => {
   for (const [label, v] of [["Show inside the sessions", "inside"], ["Show the setup", "setup"]]) {
