@@ -458,6 +458,20 @@ check("a folded band shows one dot per session; opening it hides them", () => {
   tap(withText((t) => t === "▸")[0]);
   must(!reachable().some((n) => n.props.size === 5), "session dots stayed after the band opened");
 });
+check("one mark beside the search folds every group, then opens every group", () => {
+  // With many groups, folding them one by one is slow; the mark shows what a click does.
+  const bands = () => withText((t) => t === "▾").length;
+  const open = bands();
+  must(open >= 2, "the fixture has fewer than two open groups");
+  tap(withText((t) => t === "▾▾")[0]);
+  must(bands() === 0 && withText((t) => t === "▸").length === open, "a group stayed open after fold all");
+  // One group opened by hand is a mixed state: it counts as open, so the click folds again.
+  tap(withText((t) => t === "▸")[0]);
+  must(withText((t) => t === "▾▾").length === 1, "a mixed state does not offer to fold");
+  tap(withText((t) => t === "▾▾")[0]);
+  tap(withText((t) => t === "▸▸")[0]);
+  must(bands() === open && withText((t) => t === "▸").length === 0, "a group stayed folded after open all");
+});
 check("the Show details menu item opens the detail lines of its row", () => {
   must(withText((t) => t === "›").every((n) => n.props.showOnHover === true), "a closed detail mark is not hover-only");
   const menu = parentOf(withText((t) => t === "Copy name: lead-1")[0].id);
@@ -664,6 +678,17 @@ check("a folded band that holds the matching session is not \"Nothing matches\""
   tap(withText((t) => t === "▸")[0]);
   tap(tapTarget(withText((t) => t === "✓")[0]));
   must(withText((t) => t === "✕ Reset").length === 0, "the view did not go back to the default");
+});
+check("a search finds a session inside a folded group, and the fold comes back after the search", () => {
+  tap(withText((t) => t === "▾▾")[0]);
+  must(withText((t) => t === "[worker-2]").length === 0, "the groups did not fold");
+  const field = reachable().find((n) => n.type === "textfield");
+  ctx.__dispatch(field.id, "edit", JSON.stringify({ text: "worker-2" }));
+  must(withText((t) => t === "[worker-2]").length >= 1, "a match inside a folded group stays hidden");
+  must(withText((t) => t === "▾▾" || t === "▸▸").length === 0, "the fold-all mark shows during a search");
+  ctx.__dispatch(field.id, "edit", JSON.stringify({ text: "" }));
+  must(withText((t) => t === "[worker-2]").length === 0, "the fold was lost after the search");
+  tap(withText((t) => t === "▸▸")[0]);
 });
 check("a search with no match says \"Nothing matches\"; Clear filters brings the rows back", () => {
   const field = reachable().find((n) => n.type === "textfield");

@@ -114,6 +114,15 @@ function toggleFold(wsId) {
   setCollapsedS({ ...collapsedS(), [wsId]: fold });
   persist({ c: filter(), a: false, s: scopeAll(), e: showEnded(), l: showLimits() }, wsId, fold);
 }
+// Fold or open every group that the list shows now (a filter narrows the list, so it narrows this too).
+const foldable = () => entries().filter((e) => e.kind === "header" && e.wsId && e.count > 0);
+const anyOpen = () => foldable().some((e) => !e.folded);
+function foldAll(fold) {
+  const ids = foldable().map((e) => e.wsId);
+  setCollapsedS({ ...collapsedS(), ...Object.fromEntries(ids.map((id) => [id, fold])) });
+  const next = { c: filter(), a: false, s: scopeAll(), e: showEnded(), l: showLimits() };
+  for (const id of ids) persist(next, id, fold);
+}
 
 // One agent record per tab: cmux can keep an older live record for the same tab. The record that waits or works
 // wins, then the newest, then the first in the list. An ended record is never picked. The rows and the hive use this.
@@ -581,14 +590,15 @@ const view = computed(() => {
       count: rows.length,
       cost: costOf(w),
       unread: w.unread ?? 0,
-      folded: Boolean(collapsed()[w.id]),
+      folded: Boolean(collapsed()[w.id]) && !query().trim(),
       wsSelected: w.selected,
       dots: rows.map(dotColor),
     });
     // A folded group still reports its waiting sessions to the top block.
     for (const r of rows) if (r.look === "needs_input") waiting.push({ ...r, key: "n:" + r.key });
     for (const r of rows) flat.push({ ...r, age: epoch - (r.agent.lastActivityAt ?? epoch) });
-    if (collapsed()[w.id]) continue;
+    // A search looks inside folded groups too: a match in a folded group must show.
+    if (collapsed()[w.id] && !query().trim()) continue;
     // A waiting session also shows in the top block; its copy in the workspace has its own key.
     for (const r of rows) expand(r.look === "needs_input" ? { ...r, key: r.key + ":w" } : r, out);
   }
@@ -1070,7 +1080,8 @@ const bandMenu = (entry) => {
   });
   const adds = tools.filter((t) => LAUNCH.includes(t)).map((t) => Button(DOT[t] + "  " + TOOLS[t] + "…", () => addAccount(ws(), t)));
   return [Button(DOT.term + "  Terminal", () => newTab(ws())), ...(start.length ? [Divider(), Text("Agent session"), ...start] : []),
-    ...(adds.length ? [Divider(), Menu("Add account", adds)] : [])];
+    ...(adds.length ? [Divider(), Menu("Add account", adds)] : []),
+    Divider(), Button("Collapse all groups", () => foldAll(true)), Button("Expand all groups", () => foldAll(false))];
 };
 const selectWs = (entry) => () => cmux("workspace.select", { workspace_id: entry().wsId });
 // "+" opens a plain terminal tab in the workspace, the first item of the right-click menu. A Menu() as the mark was
@@ -1591,6 +1602,11 @@ sidebar(() =>
           onSubmit: (t) => setQuery(t ?? ""),
         }),
       ]).paddingHorizontal(8).paddingVertical(5).background("#FFFFFF0F").cornerRadius(8),
+      // Fold or open all groups: the mark shows what a click does. Mixed counts as open, so the first click folds.
+      // Not in the view by state (no groups there) and not during a search (a search ignores folds).
+      optional("foldall", () => !byState() && !query().trim() && foldable().length > 0, () =>
+        Text(() => (anyOpen() ? "\u25BE\u25BE" : "\u25B8\u25B8")).font(11).monospaced().color(TEXT2)
+          .frame({ width: 30, height: 24 }).onTap(() => foldAll(anyOpen()))),
     ]).paddingHorizontal(10)),
   ]),
 
