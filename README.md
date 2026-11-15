@@ -1,9 +1,24 @@
 # cmux Agents sidebar
 
-A right-sidebar panel for [cmux](https://github.com/manaflow-ai/cmux) that shows every coding-agent session in every workspace, in one list.
-You see who waits for you, who works, and who is idle. You click a row to go to that session.
+**Run ten coding agents and still know which one waits for you.**
 
-It is made for people who run many agent sessions at the same time: Claude Code, Codex, OpenCode, Grok Build, Antigravity, or any tool that cmux detects.
+A right-sidebar panel for [cmux](https://github.com/manaflow-ai/cmux) that puts every agent session of every workspace in one list: who waits for you, who works, who is idle, what each one costs, and how much of each limit is left. One click takes you to the session.
+
+It works with Claude Code, Codex, OpenCode, Grok Build, Antigravity, and any other terminal agent that cmux detects.
+
+| You want to know | The panel shows |
+|---|---|
+| Which session needs my answer? | An orange dot and a `→ you` pill, and a `NEEDS YOU` block at the top for a session that is blocked on a permission |
+| What did each one do last? | The session title and its next step, in two lines per session |
+| Is a context window nearly full? | Context share per session, and a menu item that sends `/compact` to an idle session |
+| What does this cost? | Cost per session, per workspace and per account |
+| Will I hit a limit? | One line per tool and account with the share used and the reset time, and a warning at 80% |
+| Where is my lead session? | `Pin to top` keeps it in a block above all groups |
+| How do I start one more? | Right-click a workspace: one item per agent tool found on your Mac, per account |
+
+**Local only.** No script calls the network, reads a login token, or stores the text of a message. See [Privacy and safety](#privacy-and-safety).
+
+**Install in three steps:** clone, `bash install.sh`, start the watcher in a cmux tab. See [Install](#install). `bash uninstall.sh` removes it.
 
 ![A cmux window with agent terminal tabs on the left, the hive graph page in the middle and the Agents panel on the right](examples/window.png)
 
