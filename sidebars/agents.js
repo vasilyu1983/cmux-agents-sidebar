@@ -649,6 +649,9 @@ const accountMarks = computed(() => {
 const LAUNCH = ["claude", "codex", "opencode"];
 const PLAIN = { grok: "grok", agy: "agy" };
 const STARTS = [...LAUNCH, ...Object.keys(PLAIN)];
+// A system menu draws no icon beside a label and no text colour (both tried with cmux 0.65, 2026-11-15), so a
+// coloured emoji dot is the mark of a tool there.
+const DOT = { term: "\u26AA", claude: "\u{1F7E0}", codex: "\u{1F7E2}", opencode: "\u{1F535}", grok: "\u{1F534}", agy: "\u{1F7E3}" };
 const launchList = computed(() => {
   const found = {};
   for (const w of data.workspaces() ?? []) {
@@ -662,7 +665,7 @@ const launchList = computed(() => {
   const primary = accountMarks().primary;
   // The tool's normal folder first, then the other accounts by name.
   return Object.values(found).sort((a, b) => STARTS.indexOf(a.tool) - STARTS.indexOf(b.tool) || (a.acct < b.acct ? -1 : a.acct > b.acct ? 1 : 0))
-    .map((x) => ({ ...x, label: PLAIN[x.tool] ? "" : (x.acct || primary || "default") + (x.acct ? "" : " · default") }));
+    .map((x) => ({ ...x, label: PLAIN[x.tool] ? "" : (x.acct || primary || "default") + (x.acct ? "" : "  \u2605 default") }));
 });
 const limits = computed(() => {
   const epoch = data.clock()?.epoch ?? 0;
@@ -972,13 +975,13 @@ const bandMenu = (entry) => {
   const tools = STARTS.filter((t) => items.some((x) => x.tool === t));
   const start = tools.map((t) => {
     const mine = items.filter((x) => x.tool === t);
-    if (mine.length < 2) return Button(TOOLS[t], () => launch(ws(), mine[0]));
+    if (mine.length < 2) return Button(DOT[t] + "  " + TOOLS[t], () => launch(ws(), mine[0]));
     const first = mine.filter((x) => !x.acct), rest = mine.filter((x) => x.acct);
-    return Menu(TOOLS[t], [...first.map((x) => Button(x.label, () => launch(ws(), x))), ...(first.length && rest.length ? [Divider()] : []),
+    return Menu(DOT[t] + "  " + TOOLS[t], [...first.map((x) => Button(x.label, () => launch(ws(), x))), ...(first.length && rest.length ? [Divider()] : []),
       ...rest.map((x) => Button(x.label, () => launch(ws(), x)))]);
   });
-  const adds = tools.filter((t) => LAUNCH.includes(t)).map((t) => Button(TOOLS[t] + "…", () => addAccount(ws(), t)));
-  return [Button("New terminal", () => newTab(ws())), ...(start.length ? [Divider(), Text("New session"), ...start] : []),
+  const adds = tools.filter((t) => LAUNCH.includes(t)).map((t) => Button(DOT[t] + "  " + TOOLS[t] + "…", () => addAccount(ws(), t)));
+  return [Button(DOT.term + "  Terminal", () => newTab(ws())), ...(start.length ? [Divider(), Text("Agent session"), ...start] : []),
     ...(adds.length ? [Divider(), Menu("Add account", adds)] : [])];
 };
 const selectWs = (entry) => () => cmux("workspace.select", { workspace_id: entry().wsId });

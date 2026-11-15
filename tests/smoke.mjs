@@ -756,25 +756,25 @@ check("the group menu starts a plain terminal first, then each tool with each ac
     description: ["/work/bare", "@home: " + HOME, "@primary: main", "@limits: claude,week,4,Sat 09:39,1794600000;claude,,,,0,work;codex,,,,0;codex,,,,0,team;grok,,,,0", "b-one: sonnet"].join(" | "),
     tabs: [tab(1, "[b-one] t", { id: B(5), focused: true })], agents: [agent("b-one", B(5), "idle", "claude")], prs: [],
   }]));
-  const want = ["New terminal", "New session", "Claude", "main · default", "work", "Codex", "team", "Grok", "Add account", "Claude…", "Codex…"];
+  const want = ["\u26AA  Terminal", "Agent session", "\u{1F7E0}  Claude", "main  \u2605 default", "work", "\u{1F7E2}  Codex", "team", "\u{1F534}  Grok", "Add account", "\u{1F7E0}  Claude…", "\u{1F7E2}  Codex…"];
   const once = [...new Set(withText((t) => want.includes(t)).map((n) => n.props.text))];
   must(JSON.stringify(once) === JSON.stringify(want), "menu items: " + JSON.stringify(once));
-  must(withText((t) => t === "Grok…").length === 0, "a tool with no account support got an add item");
+  must(withText((t) => t.endsWith("Grok…")).length === 0, "a tool with no account support got an add item");
   let before = cmuxCalls().length;
   tap(withText((t) => t === "team")[0]);
   let calls = cmuxCalls().slice(before);
   must(calls.length === 1 && calls[0].method === "surface.create" && calls[0].params.workspace_id === "ws-bare", "got " + JSON.stringify(calls));
   must(calls[0].params.initial_command === "\"$SHELL\" -lic 'AGENT_ACCOUNT=team \"$HOME/.config/cmux/scripts/agent-run.sh\" codex; exec \"$SHELL\" -l'", "command: " + calls[0].params.initial_command);
   before = cmuxCalls().length;
-  tap(withText((t) => t === "Codex…")[0]);
+  tap(withText((t) => t.endsWith("Codex…"))[0]);
   calls = cmuxCalls().slice(before);
   must(calls.length === 1 && calls[0].params.initial_command === "\"$SHELL\" -lic 'printf \"New Codex account name (a-z, 0-9, -): \"; read -r n; \"$HOME/.config/cmux/scripts/agents-account-add.sh\" codex \"$n\"; exec \"$SHELL\" -l'", "add command: " + JSON.stringify(calls));
   before = cmuxCalls().length;
-  tap(withText((t) => t === "Grok")[0]);
+  tap(withText((t) => t.endsWith("  Grok"))[0]);
   calls = cmuxCalls().slice(before);
   must(calls.length === 1 && calls[0].params.initial_command === "\"$SHELL\" -lic 'grok; exec \"$SHELL\" -l'", "grok command: " + JSON.stringify(calls));
   before = cmuxCalls().length;
-  tap(withText((t) => t === "New terminal")[0]);
+  tap(withText((t) => t.endsWith("  Terminal"))[0]);
   calls = cmuxCalls().slice(before);
   must(calls.length === 1 && calls[0].method === "surface.create" && !("initial_command" in calls[0].params), "a plain terminal got a command: " + JSON.stringify(calls));
 });
@@ -784,8 +784,8 @@ check("an account name that is not plain (it could carry shell text) gives no me
     description: ["/work/bare", "@home: " + HOME, "@limits: claude,,,,0,a;rm -rf x;codex,,,,0,$(id);claude,,,,0,ok-1", "b-one: sonnet"].join(" | "),
     tabs: [tab(1, "[b-one] t", { id: B(5), focused: true })], agents: [agent("b-one", B(5), "idle", "claude")], prs: [],
   }]));
-  const once = [...new Set(withText((t) => ["a", "ok-1", "$(id)", "x"].includes(t) || t.startsWith("New ")).map((n) => n.props.text))];
-  must(JSON.stringify(once) === JSON.stringify(["New terminal", "New session", "a", "ok-1"]), "menu items: " + JSON.stringify(once));
+  const once = [...new Set(withText((t) => ["a", "ok-1", "$(id)", "x"].includes(t) || t.endsWith("Terminal") || t === "Agent session").map((n) => n.props.text))];
+  must(JSON.stringify(once) === JSON.stringify(["\u26AA  Terminal", "Agent session", "a", "ok-1"]), "menu items: " + JSON.stringify(once));
 });
 
 console.log(failed === 0 ? "\nOK: all checks passed (runtime: " + path.basename(path.dirname(runtimePath)) + ")" : "\nFAILED: " + failed + " check(s)");
