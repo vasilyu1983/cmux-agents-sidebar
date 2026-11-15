@@ -727,6 +727,18 @@ check("when the plain reason arrives, the ask becomes a wait on its agents and i
   must(withText((t) => t === "[k-nowait]").length === 1 && withText((t) => t === "1 need you").length === 1, "k-nowait still shows in NEEDS YOU");
   must(rowText("k-nowait").includes("finished · not seen · agents running"), "k-nowait is not an unseen wait on its agents: " + rowText("k-nowait").join(" | "));
 });
+// A workspace that began with no description: label-tabs.py left only its own parts there, so the text starts
+// with "| ". The group must take the folder name, not that label text.
+const B = (n) => "DDDDDDDD-0000-0000-0000-00000000000" + n;
+check("a workspace whose description holds no folder is named by its folder, not by the label text", () => {
+  ctx.__setData("workspaces", JSON.stringify([{
+    id: "ws-bare", title: "ignored", directory: "/work/bare", description: "| b-one: sonnet · $1.00", color: "#336699", selected: true, unread: 0,
+    tabs: [tab(1, "[b-one] t", { id: B(1), focused: true })], agents: [agent("b-one", B(1), "idle", "claude")], prs: [],
+  }]));
+  must(withText((t) => t === "bare").length >= 1, "the group is not named \"bare\"");
+  must(withText((t) => t.startsWith("| b-one")).length === 0, "the label text shows as a group name");
+  must(rowText("b-one").some((t) => /sonnet/i.test(t)), "the session lost its fields: " + rowText("b-one").join(" | "));
+});
 
 console.log(failed === 0 ? "\nOK: all checks passed (runtime: " + path.basename(path.dirname(runtimePath)) + ")" : "\nFAILED: " + failed + " check(s)");
 process.exit(failed === 0 ? 0 : 1);

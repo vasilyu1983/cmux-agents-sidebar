@@ -377,5 +377,9 @@ check("with no session folder it takes the cmux title, never the label text",
 check("a folder in the description still names the workspace",
       watcher.hive_places(dict(tree, description="/home/me/web | api-3f: x"), {"T1": "/home/me/shop-api"})[1]["W1"][0] == "web")
 
+check("a description that cmux trimmed to \"| ...\" gets its empty folder part back, so no session part is kept as the folder",
+      watcher.description_of({"description": "| api-3f: x | web-1: y"}).split(" | ") == ["", "api-3f: x", "web-1: y"]
+      and watcher.description_of({"description": "/home/me/web | api-3f: x"}) == "/home/me/web | api-3f: x")
+
 print("OK: all history checks passed" if not failed else f"FAILED: {failed} check(s)")
 sys.exit(1 if failed else 0)

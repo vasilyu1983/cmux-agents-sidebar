@@ -34,12 +34,15 @@ const [attentionS, setAttentionS] = signal(null);
 // Groups folded or opened since the reload (workspace id -> Bool) and sessions whose subagent rows are open (row id -> true).
 const [collapsedS, setCollapsedS] = signal({});
 const VIEW_RE = /^@view: ([a-z]=[a-z0-9]{1,12}(?:,[a-z]=[a-z0-9]{1,12}){0,7})$/;
+// A workspace description as text. One that began empty holds only the parts of label-tabs.py, and cmux trims it to
+// "| api-3f: Fable ...": the empty folder part comes back, so the first part is always the folder and never a session.
+const descOf = (w) => { const d = String(w.description ?? ""); return d.startsWith("| ") ? " " + d : d; };
 const saved = computed(() => {
   let best = {};
   let bestT = -1;
   const folds = {};
   for (const w of data.workspaces() ?? []) {
-    for (const part of String(w.description ?? "").split(" | ")) {
+    for (const part of descOf(w).split(" | ")) {
       const m = VIEW_RE.exec(part);
       if (!m) continue;
       const v = Object.fromEntries(m[1].split(",").map((kv) => kv.split("=")));
@@ -96,7 +99,7 @@ function persist(next, wsId, fold) {
   const on = (b) => (b ? 1 : 0);
   const part = "@view: t=" + (data.clock()?.epoch ?? 0) + ",c=" + (next.c || "all") + ",a=" + on(next.a)
     + ",s=" + on(next.s) + ",e=" + on(next.e) + ",l=" + on(next.l) + ",f=" + on(fold ?? collapsed()[wsId]);
-  const parts = String(w.description ?? "").split(" | ").filter((p) => !p.startsWith("@view: "));
+  const parts = descOf(w).split(" | ").filter((p) => !p.startsWith("@view: "));
   cmux("workspace.action", { workspace_id: wsId, action: "set_description", description: [...parts, part].join(" | ") });
 }
 // One change of the view: c = chip, a = attention sort, s = all workspaces, e = ended rows, l = the Limits view.
@@ -159,7 +162,7 @@ function sendCommand(row, text) {
 // "@" parts belong to the strip.
 function sessionsOf(w) {
   const models = {};
-  for (const part of String(w.description ?? "").split(" | ").slice(1)) {
+  for (const part of descOf(w).split(" | ").slice(1)) {
     const at = part.indexOf(": ");
     if (at <= 0 || part.startsWith("@")) continue;
     const s = {};
@@ -290,6 +293,8 @@ function timeText(a, epoch) {
   return "";
 }
 
+// The text before the first " | " of a workspace description: the project folder.
+const descHead = (w) => descOf(w).split(" | ")[0];
 const dirTail = (d) => {
   const parts = String(d ?? "").split("/").filter((p) => p.length > 0);
   return parts.length ? parts[parts.length - 1] : "";
@@ -302,7 +307,7 @@ function pillsOf(a, sess, w) {
   const out = [];
   const add = (id, text, color, bg) => { if (text) out.push({ id, text: String(text), color, bg }); };
   const plain = (id, text) => add(id, text, META, NEUTRAL);
-  const wsName = dirTail(String(w.description ?? "").split(" | ")[0]) || dirTail(w.directory) || w.title;
+  const wsName = dirTail(descHead(w)) || dirTail(w.directory) || w.title;
   if (byState()) add("ws", wsName, w.color || "#8E8E93");
   add("wrong", sess.wrong ? "≠ " + sess.wrong : "", ORANGE);
   const alert = PR_ALERT.test(sess.pr ?? "");
@@ -472,7 +477,7 @@ const view = computed(() => {
         sessName: sessionName(tabTitle) ?? "",
         sessTitle: sess.title ?? "",
         // The name on the workspace band: the second line leaves the folder out when it only repeats this name.
-        wsName: dirTail(String(w.description ?? "").split(" | ")[0]) || dirTail(w.directory) || w.title,
+        wsName: dirTail(descHead(w)) || dirTail(w.directory) || w.title,
         // The PR of the lane branch where the session works, with the state from your merge tool: "#644 needs grant".
         prText: sess.pr ?? "",
         acct: sess.acct ?? "",
@@ -568,7 +573,7 @@ const view = computed(() => {
       wsId: w.id,
       // The project folder names the group. w.title is the title of the focused tab, which reads like one more session.
       // The description starts with the project folder; w.directory follows the focused tab (it read "app" for one project).
-      wsTitle: dirTail(String(w.description ?? "").split(" | ")[0]) || dirTail(w.directory) || w.title,
+      wsTitle: dirTail(descHead(w)) || dirTail(w.directory) || w.title,
       wsColor: w.color || "#8E8E93",
       count: rows.length,
       cost: costOf(w),
@@ -624,7 +629,7 @@ const TOOLS = { claude: "Claude", codex: "Codex", opencode: "OpenCode", grok: "G
 const accountMarks = computed(() => {
   const out = { primary: "", tabs: {} };
   for (const w of data.workspaces() ?? []) {
-    for (const part of String(w.description ?? "").split(" | ")) {
+    for (const part of descOf(w).split(" | ")) {
       const p = /^@primary: ([a-z0-9-]{1,16})$/.exec(part);
       if (p) out.primary = p[1];
       if (!part.startsWith("@accts: ")) continue;
@@ -640,7 +645,7 @@ const limits = computed(() => {
   const epoch = data.clock()?.epoch ?? 0;
   let newest = null;
   for (const w of data.workspaces() ?? []) {
-    const part = String(w.description ?? "").split(" | ").find((p) => p.startsWith("@limits: "));
+    const part = descOf(w).split(" | ").find((p) => p.startsWith("@limits: "));
     if (part && (!newest || part.length > newest.text.length)) newest = { text: part.slice(9), wsId: w.id };
   }
   const out = [];
@@ -707,7 +712,7 @@ const dropNone = (text) => {
 const strip = computed(() => {
   const out = [];
   for (const w of data.workspaces() ?? []) {
-    for (const part of String(w.description ?? "").split(" | ").slice(1)) {
+    for (const part of descOf(w).split(" | ").slice(1)) {
       const at = part.indexOf(": ");
       const kind = STRIP[part.slice(1, at)];
       if (part.startsWith("@") && kind) {
@@ -784,7 +789,7 @@ function hiveUrl(mark, view, sel) {
   // The home folder comes from label-tabs.py ("@home: ..." in a description), not from a folder that an agent reports.
   let home = "";
   for (const w of all) {
-    const found = /(?:^| \| )@home: (\/Users\/[A-Za-z0-9._-]{1,64})(?: \| |$)/.exec(String(w.description ?? ""));
+    const found = /(?:^| \| )@home: (\/Users\/[A-Za-z0-9._-]{1,64})(?: \| |$)/.exec(descOf(w));
     if (found) { home = found[1]; break; }
   }
   const ws = [];
@@ -803,7 +808,7 @@ function hiveUrl(mark, view, sel) {
           : hiveSubs(sess.subs),
       });
     }
-    ws.push({ n: dirTail(String(w.description ?? "").split(" | ")[0]) || w.title, c: w.color || "#8E8E93", f: mark ? mark.ws === w.id : Boolean(w.selected), a: agents });
+    ws.push({ n: dirTail(descHead(w)) || w.title, c: w.color || "#8E8E93", f: mark ? mark.ws === w.id : Boolean(w.selected), a: agents });
   }
   if (!home) return "";
   return "file://" + home + "/.config/cmux/scripts/hive.html#" + encodeURIComponent(JSON.stringify({ t: data.clock()?.epoch ?? 0, v: view ?? "", sel: sel ?? "", ws }));

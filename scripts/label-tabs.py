@@ -550,6 +550,13 @@ def clean_cache(live_ids):
             print(f"label-tabs: cannot delete {entry.path}: {err}", file=sys.stderr)
 
 
+def description_of(node):
+    """The description of a workspace node. One that began empty holds only the parts that set_models wrote, and cmux
+    trims it to "| api-3f: Fable ...": the empty folder part comes back, so the first part is never a session."""
+    text = str(node.get("description") or "")
+    return " " + text if text.startswith("| ") else text
+
+
 def hive_places(tree, starts=None):
     """tab id -> (workspace id, tab focused in the selected workspace), and workspace id -> (name, selected).
     The name is the last part of the folder in the workspace description. A workspace with no folder there gets
@@ -561,9 +568,7 @@ def hive_places(tree, starts=None):
             ref = str(node.get("ref", ""))
             if ref.startswith("workspace:") and node.get("id"):
                 space, selected = str(node["id"]).upper(), bool(node.get("selected"))
-                # A description that the watcher wrote for a workspace with no folder starts with "| ": no folder there.
-                folder = str(node.get("description") or "").split(" | ")[0].rstrip("/")
-                folder = folder if folder.startswith(("/", "~")) else ""
+                folder = description_of(node).split(" | ")[0].rstrip("/")
                 spaces[space] = (folder.rsplit("/", 1)[-1] or str(node.get("title") or "workspace"), selected)
                 if not folder:
                     bare.add(space)
@@ -1274,7 +1279,7 @@ def workspaces(node, found):
     """ref -> description, for every workspace in the cmux tree."""
     if isinstance(node, dict):
         if str(node.get("ref", "")).startswith("workspace:"):
-            found[node["ref"]] = node.get("description") or ""
+            found[node["ref"]] = description_of(node)
         for value in node.values():
             workspaces(value, found)
     elif isinstance(node, list):
