@@ -739,6 +739,16 @@ check("a workspace whose description holds no folder is named by its folder, not
   must(withText((t) => t.startsWith("| b-one")).length === 0, "the label text shows as a group name");
   must(rowText("b-one").some((t) => /sonnet/i.test(t)), "the session lost its fields: " + rowText("b-one").join(" | "));
 });
+check("a tab title that the shell left (user@host, or a start command with a variable) is not shown as the work", () => {
+  ctx.__setData("workspaces", JSON.stringify([{
+    id: "ws-bare", title: "ignored", directory: "/work/bare", description: "/work/bare | b-two: sonnet · title Fix the login form", color: "#336699", selected: true, unread: 0,
+    tabs: [tab(1, "[b-one] me@my-laptop: ~/work", { id: B(2), focused: true }), tab(2, "[b-two] TOOL_HOME=~/.tool-x tool", { id: B(3) }), tab(3, "[b-three] Review the diff", { id: B(4) })],
+    agents: [agent("b-one", B(2), "idle", "claude"), agent("b-two", B(3), "idle", "claude"), agent("b-three", B(4), "idle", "claude")], prs: [],
+  }]));
+  must(withText((t) => /my-laptop|TOOL_HOME/.test(t)).length === 0, "a shell title shows on a row");
+  must(rowText("b-two").includes("Fix the login form"), "the session title does not replace the start command: " + rowText("b-two").join(" | "));
+  must(rowText("b-three").includes("Review the diff"), "a real tab title was dropped");
+});
 
 console.log(failed === 0 ? "\nOK: all checks passed (runtime: " + path.basename(path.dirname(runtimePath)) + ")" : "\nFAILED: " + failed + " check(s)");
 process.exit(failed === 0 ? 0 : 1);

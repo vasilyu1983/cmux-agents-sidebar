@@ -1173,7 +1173,9 @@ const titleParts = (entry) => {
   if (bare) return { name: t, rest: ask };
   if (!m) return { name: t, rest: "" };
   const tool = [a.name, a.kind, "Claude Code"].some((x) => x && String(x).toLowerCase() === m[2].toLowerCase());
-  return { name: m[1], rest: tool ? ask : m[2] };
+  // A title that the shell left ("user@host: folder", or the start command "VAR=value tool") says nothing about the work.
+  const shell = /^(?:[\w.-]+@[\w.-]+|[A-Z_][A-Z0-9_]*=\S)/.test(m[2]);
+  return { name: m[1], rest: tool || shell ? ask : m[2] };
 };
 // The first line of a row: dot, name, unread mark, then subagents, time and the detail mark. An old settled row
 // shows its name dim.
