@@ -8,7 +8,7 @@ the part "Several accounts" in the [README](README.md). The names here (`persona
 - **One primary account per tool.** It lives in the tool's normal folder (`~/.claude`, `~/.codex`) and needs
   no setup. Name it on the `default` line of the accounts file. It never gets a second folder.
 - **Extra accounts.** Each one has its own folder, `~/.<tool>-<name>`. The launcher sets one variable
-  (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `XDG_DATA_HOME`) so the tool uses that folder.
+  (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `XDG_DATA_HOME`, `GROK_HOME`) so the tool uses that folder.
 - **One name per organisation, in every tool.** A folder rule holds one account name. If Claude Code calls
   the account `work` and Codex calls it `job`, a rule to `work` starts Codex on the primary account.
 - All of it is described by one text file, `~/.config/cmux/agents-accounts`.
@@ -47,7 +47,11 @@ the part "Several accounts" in the [README](README.md). The names here (`persona
    account name, and the panel row reads `claude · work`. The limit line of that account in `Limits` fills
    after this first reply, not before.
 
-For Codex or OpenCode, use `codex` or `opencode` in place of `claude` in steps 1 and 2.
+For Codex, OpenCode or Grok Build, use `codex`, `opencode` or `grok` in place of `claude` in steps 1 and 2.
+For Grok the login command is `grok login`, started through the launcher with that account. The author moved
+Grok's data folder with `GROK_HOME` in a test; a second Grok login was not tested.
+
+You can also add an account from the panel: right-click a workspace header, then `Add account`.
 
 ## Folder rules
 
@@ -66,7 +70,8 @@ tool gets there. For one start against the rule, name the account: `cla personal
 
 | Command | What it does |
 |---|---|
-| `claude`, `codex`, `opencode` | Start with the account that the folder rules choose |
+| `claude`, `codex`, `opencode`, `grok` | Start with the account that the folder rules choose |
+| Right-click a workspace header in the panel | A menu of the tools found on this Mac; a tool with several accounts opens a list of them, the default one marked |
 | `cla <account> [arguments]` | Claude Code with that account, for this start only |
 | `cdx <account> [arguments]` | Codex with that account, for this start only |
 | `accounts` | The account list, and the account that the current folder gets |
@@ -131,7 +136,7 @@ folder, with no spaces. A bad line is skipped and reported by its number: run
 | Account chips | One chip per account with its row count, when sessions run on two accounts or more |
 | Search | The account name matches, in every workspace |
 | `≠ work` | The folder rule names `work`, and the session runs on another account |
-| `Limits` | One limit line per tool and account, and the summed cost of the open Claude Code sessions per account |
+| `Limits` | `by account`: one group per account with its tools and its cost. `by tool`: one group per tool with its accounts, to see which account has room |
 | Notification | One warning when a limit window of an account passes 80% |
 | Hive page | The account name on each session box, in its colour |
 | Status line | The account name first, in its colour, on an extra account |
@@ -146,6 +151,7 @@ only way to change it.
 | Claude Code | Settings, instructions, hooks, rules, skills, agents, commands, output styles, plugins, status line, workflows, key bindings, teams | The login, sessions and `/resume`, project memory, history, MCP servers added at user level, folder trust answers |
 | Codex | `config.toml`, `AGENTS.md`, `instructions.md`, `hooks.json`, rules, skills, agents, plugins, key bindings | The login, sessions, memories, history |
 | OpenCode | Nothing is linked; its settings stay in `~/.config/opencode` | The login and the sessions |
+| Grok Build | Nothing is linked; `GROK_HOME` holds the settings too | Everything: settings, login, sessions, skills, plugins, logs |
 
 A change to a shared file reaches every account at once. Memory is separate on purpose: a work account does
 not read personal notes.
