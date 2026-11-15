@@ -78,6 +78,7 @@ const workspaces = [
       agent("a1", T(1), "needs_input", "claude"),
       agent("a2", T(2), "idle", "claude", { lastActivityAt: EPOCH - 7200 }),
       agent("a5", T(5), "ended", "claude", { lastActivityAt: EPOCH - 60 }),
+      agent("a5help", T(5), "ended", "claude", { lastActivityAt: EPOCH - 120 }),  // a helper run that ended in the same tab
       agent("a1old", T(1), "ended", "claude", { lastActivityAt: EPOCH - 600 }),  // two earlier runs in the tab of lead-1
       agent("a1older", T(1), "ended", "claude", { lastActivityAt: EPOCH - 900 }),
     ],

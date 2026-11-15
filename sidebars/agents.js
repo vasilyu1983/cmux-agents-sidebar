@@ -433,9 +433,10 @@ const view = computed(() => {
       // An ended run in a tab that hosts a live session is an earlier run of that tab. The data of the tab (marks,
       // model, cost, request, focus) belongs to the live session, so the earlier run shows none of it.
       const earlier = a.status === "ended" && liveInTab;
-      // All earlier runs of one tab share one row: the newest of them, with their count.
-      const runs = earlier ? (w.agents ?? []).filter((b) => b.status === "ended" && b.panelId === a.panelId) : [];
-      if (earlier && runs.some((b) => b !== a && ((b.lastActivityAt ?? 0) > (a.lastActivityAt ?? 0)
+      // All ended runs of one tab share one row: the newest of them. A closed session leaves helper runs behind in
+      // its tab (a hook that starts the tool again, for one), and each of them would be a row of its own.
+      const runs = a.status === "ended" ? (w.agents ?? []).filter((b) => b.status === "ended" && b.panelId === a.panelId) : [];
+      if (runs.some((b) => b !== a && ((b.lastActivityAt ?? 0) > (a.lastActivityAt ?? 0)
           || ((b.lastActivityAt ?? 0) === (a.lastActivityAt ?? 0) && runs.indexOf(b) < runs.indexOf(a))))) continue;
       const sess = earlier ? {} : { ...(models[sessionName(tabTitle)] ?? {}), ...(models[String(tab?.id ?? "").toUpperCase()] ?? {}) };
       if (!sess.acct) sess.acct = accountMarks().tabs[String(tab?.id ?? "").toUpperCase()] ?? "";
@@ -742,12 +743,11 @@ const counts = computed(() => {
   const all = data.workspaces() ?? [];
   const c = { working: 0, needs_input: 0, idle: 0, ended: 0 };
   for (const w of all) {
-    // The earlier runs of a tab that hosts a live session count as one, as they share one row.
-    const live = new Set((w.agents ?? []).filter((a) => a.status !== "ended").map((a) => a.panelId));
+    // The ended runs of one tab count as one, as they share one row.
     const folded = new Set();
     const models = sessionsOf(w);
     for (const a of w.agents ?? []) {
-      if (a.status === "ended" && live.has(a.panelId)) {
+      if (a.status === "ended") {
         if (folded.has(a.panelId)) continue;
         folded.add(a.panelId);
       }
