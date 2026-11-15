@@ -337,13 +337,20 @@ function cappedPills(all) {
   return [...all.slice(0, 2).map(short), { id: "more", text: "+" + rest.length, color: META, bg: NEUTRAL, help: rest.map((p) => p.text).join(" · ") }];
 }
 // A one-line row shows 2 bare marks: no tool and no folder. The workspace counts, in the view by state.
-const pill = (p) =>
-  Text(() => p().text).font(11).weight("medium").monospaced().lineLimit(1).fixedSize()
-    .color(() => p().color).paddingHorizontal(5).paddingVertical(1)
-    .background(() => p().bg ?? p().color + "26").cornerRadius(4)
-    .help(() => p().help ?? null);
-const pillRow = (entry) => ForEach({ items: () => entry().pills, key: (p) => p.id }, pill);
-
+// A row has 3 pill places: cappedPills gives 3 pills at most. Each place is a plain text of the row. A pill in a
+// group (a ForEach) shares the free width with the gap of the row in equal parts, so it is cut while the row has
+// space; a fixed pill holds the row wider than a narrow sidebar, and cmux then cuts the panel at both edges.
+// A place ranks above the text after it: the pills keep their whole text until the row has no space for them.
+// An empty place has no text, no padding and no fill, so it takes no width.
+const pillAt = (entry, i) => {
+  const p = () => entry().pills[i];
+  return Text(() => p()?.text ?? "").font(11).weight("medium").monospaced().lineLimit(1).truncation("tail")
+    .color(() => p()?.color ?? META).paddingHorizontal(() => (p() ? 5 : 0)).paddingVertical(1)
+    .background(() => (p() ? p().bg ?? p().color + "26" : "clear")).cornerRadius(4)
+    .help(() => p()?.help ?? null)
+    .marginLeading(() => (i && p() ? 5 : 0));
+};
+const pillRow = (entry) => [0, 1, 2].map((i) => pillAt(entry, i));
 // Tabs whose session ended its turn (working or asking, then idle: a turn end can pass through "needs_input" before
 // its wait reason arrives) while another tab had the focus: "finished, not seen", like
 // the unread flag of cmux. The mark clears when the owner focuses the tab or the session works again. A session that
@@ -854,9 +861,10 @@ function newTab(wsId) {
 }
 
 // A plain toggle of the control row: dim when off, primary on a light fill when on. At least 24 pt tall.
-function toggleButton(labelFn, activeFn, onTapFn) {
+// In a narrow sidebar the toggle with the lowest rank loses its text first.
+function toggleButton(labelFn, activeFn, onTapFn, rank) {
   return Text(labelFn)
-    .font(12).weight("medium").lineLimit(1).fixedSize()
+    .font(12).weight("medium").lineLimit(1).truncation("tail").layoutPriority(rank)
     .paddingHorizontal(6).frame({ minHeight: 24 })
     .cornerRadius(6)
     .color(() => (activeFn() ? "primary" : META))
@@ -1204,18 +1212,20 @@ function agentRow(entry) {
   return card(entry, HStack({ spacing: 8 }, [guide(entry, 34), VStack({ spacing: 4 }, [
     titleLine(entry),
     // The texts are plain parts of the line: a text inside a wrapper is cut while the line still has space.
-    HStack({ spacing: 5 }, [
-      pillRow(entry),
+    // No spacing of the line: an empty pill place would add a gap. Each part has its own 5 pt margin.
+    HStack({ spacing: 0 }, [
+      ...pillRow(entry),
       Text(() => [entry().state, entry().line2 || entry().prompt].filter(Boolean).join(" · "))
-        .font(12).lineLimit(1).truncation("tail").layoutPriority(1)
-        .color(() => (hot() ? ORANGE : entry().done ? PURPLE_TEXT : META)),
-      Spacer(),
+        .font(12).lineLimit(1).truncation("tail").layoutPriority(-1)
+        .color(() => (hot() ? ORANGE : entry().done ? PURPLE_TEXT : META))
+        .marginLeading(() => (entry().pills.length ? 5 : 0)),
+      Spacer().layoutPriority(-2),
       // Three columns with fixed widths, so model, context and cost line up down the list.
-      cell(Text(() => entry().model).font(11).weight("medium").lineLimit(1).color(MODEL_INK), 46, "trailing"),
+      cell(Text(() => entry().model).font(11).weight("medium").lineLimit(1).color(MODEL_INK), 46, "trailing").marginLeading(5),
       cell(Text(() => entry().ctxText).font(11).monospaced().lineLimit(1)
-        .color(() => (entry().ctxWarm ? "#FFD60A" : CTX_INK)), 30, "trailing"),
-      cell(Text(() => entry().tokText).font(11).monospaced().lineLimit(1).color(CTX_INK), 32, "trailing"),
-      cell(Text(() => entry().costText).font(11).monospaced().lineLimit(1).color(COST_INK), 54, "trailing"),
+        .color(() => (entry().ctxWarm ? "#FFD60A" : CTX_INK)), 30, "trailing").marginLeading(5),
+      cell(Text(() => entry().tokText).font(11).monospaced().lineLimit(1).color(CTX_INK), 32, "trailing").marginLeading(5),
+      cell(Text(() => entry().costText).font(11).monospaced().lineLimit(1).color(COST_INK), 54, "trailing").marginLeading(5),
     ]).paddingLeading(UNDER_TITLE).frame({ minHeight: 16 }),
   ])]).paddingVertical(4));
 }
@@ -1285,7 +1295,7 @@ const acctItems = () => {
 // A count in the panel head, hidden at zero. With a chip id, a tap shows only those rows and a second tap all rows.
 const headCount = (n, word, color, chipId) =>
   ForEach({ items: () => (n() > 0 ? [{ id: word }] : []), key: (x) => x.id }, () => {
-    const t = Text(() => n() + " " + word).font(11).lineLimit(1).fixedSize().color(color);
+    const t = Text(() => n() + " " + word).font(11).lineLimit(1).truncation("tail").layoutPriority(1).color(color);
     return chipId ? t.onTap(() => setView({ c: filter() === chipId ? "" : chipId })) : t;
   });
 // A zero-or-one list: the row takes no height while it has nothing to show.
@@ -1326,11 +1336,11 @@ sidebar(() =>
         ]),
         Spacer(),
         // The attention sort, then the view by state in place of by workspace.
-        toggleButton("↑", () => attention(), () => setView({ a: !attention() })),
-        toggleButton("state", () => byState(), () => setByState(!byState())),
-        toggleButton("Ended", () => showEnded(), () => setView({ e: !showEnded() })),
+        toggleButton("↑", () => attention(), () => setView({ a: !attention() }), 4),
+        toggleButton("state", () => byState(), () => setByState(!byState()), 3),
+        toggleButton("Ended", () => showEnded(), () => setView({ e: !showEnded() }), 2),
         // Opens the views page in the browser: the hive tree, the timeline, cost, flow, limits, queue, context and rhythm.
-        toggleButton("views ↗", () => false, () => openViews()),
+        toggleButton("views ↗", () => false, () => openViews(), 1),
       ]).paddingHorizontal(10),
     ]),
 

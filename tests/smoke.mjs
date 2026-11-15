@@ -225,7 +225,7 @@ check("render shows the work marks: ahead count and duplicate", () => {
   mustContain(helpText(), "dup");  // lead-1 has more pills than its second line holds
 });
 check("a row shows 2 pills by priority, then a +N pill that names the rest; a long pill is cut", () => {
-  // The pills have a fixed size. A row wider than the panel would make the whole panel wider than its place.
+  // The pills are cut to 10 characters, so a row needs little width for them.
   const more = withText((t) => t === "+5");
   // lead-1 waits, so it shows twice: in the top block and in its workspace. Both rows have the same form.
   must(more.length === 2, "expected a \"+5\" pill on both rows of lead-1, got " + more.length);
@@ -233,6 +233,16 @@ check("a row shows 2 pills by priority, then a +N pill that names the rest; a lo
   for (const t of ["83%", "→ you"]) must(withText((x) => x === t).length > 0, "pill " + t + " not shown");
   const pills = reachable().filter((n) => n.props.cornerRadius === 4 && typeof n.props.text === "string");
   must(pills.length > 0 && pills.every((n) => n.props.text.length <= 10), "a pill is longer than 10 characters: " + pills.map((n) => n.props.text).filter((t) => t.length > 10).join(", "));
+});
+check("a narrow sidebar: pills, toggles and head counts can shrink, so the panel is not cut at its edges", () => {
+  // cmux cuts a panel that is wider than the sidebar at both edges. A text with a fixed size cannot shrink, so
+  // the parts that are not in a fixed cell must not have one.
+  const pills = reachable().filter((n) => n.props.cornerRadius === 4 && typeof n.props.text === "string");
+  must(pills.some((n) => n.props.text) && pills.every((n) => n.props.fixedSize !== true), "a pill has a fixed size");
+  const toggles = withText((t) => ["↑", "state", "Ended", "views ↗"].includes(t));
+  must(toggles.length === 4 && toggles.every((n) => n.props.fixedSize !== true), "a toggle of the control row has a fixed size");
+  const counts = withText((t) => /^\d+ (need you|working|idle)$/.test(t));
+  must(counts.length > 0 && counts.every((n) => n.props.fixedSize !== true), "a count of the panel head has a fixed size");
 });
 check("an earlier ended run in a tab does not take the data or the focus of the live session of that tab", () => {
   // Tab 1 hosts lead-1 (live, focused, $1.20, 83%) and an ended run. Only the live one may show that data.
