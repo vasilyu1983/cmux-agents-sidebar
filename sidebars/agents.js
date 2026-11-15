@@ -972,13 +972,13 @@ const bandMenu = (entry) => {
   const tools = STARTS.filter((t) => items.some((x) => x.tool === t));
   const start = tools.map((t) => {
     const mine = items.filter((x) => x.tool === t);
-    if (mine.length < 2) return Button("New " + TOOLS[t], () => launch(ws(), mine[0]));
+    if (mine.length < 2) return Button(TOOLS[t], () => launch(ws(), mine[0]));
     const first = mine.filter((x) => !x.acct), rest = mine.filter((x) => x.acct);
-    return Menu("New " + TOOLS[t], [...first.map((x) => Button(x.label, () => launch(ws(), x))), ...(first.length && rest.length ? [Divider()] : []),
+    return Menu(TOOLS[t], [...first.map((x) => Button(x.label, () => launch(ws(), x))), ...(first.length && rest.length ? [Divider()] : []),
       ...rest.map((x) => Button(x.label, () => launch(ws(), x)))]);
   });
-  const adds = tools.filter((t) => LAUNCH.includes(t)).map((t) => Button(TOOLS[t] + " account…", () => addAccount(ws(), t)));
-  return [Button("New terminal", () => newTab(ws())), ...(start.length ? [Divider(), ...start] : []),
+  const adds = tools.filter((t) => LAUNCH.includes(t)).map((t) => Button(TOOLS[t] + "…", () => addAccount(ws(), t)));
+  return [Button("New terminal", () => newTab(ws())), ...(start.length ? [Divider(), Text("New session"), ...start] : []),
     ...(adds.length ? [Divider(), Menu("Add account", adds)] : [])];
 };
 const selectWs = (entry) => () => cmux("workspace.select", { workspace_id: entry().wsId });
