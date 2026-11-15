@@ -550,19 +550,29 @@ def clean_cache(live_ids):
             print(f"label-tabs: cannot delete {entry.path}: {err}", file=sys.stderr)
 
 
-def hive_places(tree):
-    """tab id -> (workspace id, tab focused in the selected workspace), and workspace id -> (name, selected)."""
-    tabs, spaces = {}, {}
+def hive_places(tree, starts=None):
+    """tab id -> (workspace id, tab focused in the selected workspace), and workspace id -> (name, selected).
+    The name is the last part of the folder in the workspace description. A workspace with no folder there gets
+    the folder name of its first session in starts (tab id -> start folder), else its cmux title."""
+    tabs, spaces, bare = {}, {}, set()
 
     def walk(node, space=None, selected=False):
         if isinstance(node, dict):
             ref = str(node.get("ref", ""))
             if ref.startswith("workspace:") and node.get("id"):
                 space, selected = str(node["id"]).upper(), bool(node.get("selected"))
+                # A description that the watcher wrote for a workspace with no folder starts with "| ": no folder there.
                 folder = str(node.get("description") or "").split(" | ")[0].rstrip("/")
+                folder = folder if folder.startswith(("/", "~")) else ""
                 spaces[space] = (folder.rsplit("/", 1)[-1] or str(node.get("title") or "workspace"), selected)
+                if not folder:
+                    bare.add(space)
             if ref.startswith("surface:") and node.get("id") and space:
                 tabs[str(node["id"]).upper()] = (space, bool(selected and node.get("focused")))
+                start = str((starts or {}).get(str(node["id"]).upper()) or "").rstrip("/").rsplit("/", 1)[-1]
+                if space in bare and start:
+                    spaces[space] = (start, spaces[space][1])
+                    bare.discard(space)
             for value in node.values():
                 walk(value, space, selected)
         elif isinstance(node, list):
@@ -744,7 +754,7 @@ def write_hive(tree, live, titles, codex=None, inside=None):
     inside: tab id -> (hive keys of INSIDE, start folder, session title) per Claude Code tab; the title can be
     absent. A session with a title is named "[name] title", else it has the title of its tab. A workspace gets "inv", the
     setup_inventory of the start folder of its first session in `live`."""
-    tabs, spaces = hive_places(tree)
+    tabs, spaces = hive_places(tree, {key: value[1] for key, value in (inside or {}).items()})
     agents, folders = [], {}
     for key, name, _waits, _stalled, model, status, _since in live:
         if key not in tabs:
@@ -1426,7 +1436,7 @@ def main():
             print(f"label-tabs: rename failed for {ref}: {done.stderr.strip()}", file=sys.stderr)
     write_hive(tree, live, titles, {key: (states.get(key), fields) for key, fields in codex.items()},
                {key: (INSIDE.get(sid, {}), FOLDERS.get(sid, ""), SESSION_TITLES.get(sid, "")) for key, sid, *_rest in past})
-    tabs, spaces = hive_places(tree)
+    tabs, spaces = hive_places(tree, {key: FOLDERS.get(sid, "") for key, sid, *_rest in past})
     rows = []
     for key, sid, name, status, model in past:
         agent = hive_agent(model)

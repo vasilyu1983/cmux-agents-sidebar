@@ -367,5 +367,15 @@ watcher.clean_cache({SID})
 check("an old counts file of an ended session goes, a live session's stays",
       not os.path.exists(os.path.join(cache, DEAD + ".inside")) and os.path.exists(inside_file))
 
+# A workspace whose description holds no folder must not get its label text as a name: the views group by that name.
+tree = {"ref": "workspace:1", "id": "w1", "title": "some tab title", "description": "| api-3f: Fable 5.2 high",
+        "panes": [{"ref": "surface:1", "id": "t1"}]}
+check("a workspace with no folder in its description takes the start folder of its first session",
+      watcher.hive_places(tree, {"T1": "/home/me/shop-api/"})[1]["W1"][0] == "shop-api")
+check("with no session folder it takes the cmux title, never the label text",
+      watcher.hive_places(tree)[1]["W1"][0] == "some tab title")
+check("a folder in the description still names the workspace",
+      watcher.hive_places(dict(tree, description="/home/me/web | api-3f: x"), {"T1": "/home/me/shop-api"})[1]["W1"][0] == "web")
+
 print("OK: all history checks passed" if not failed else f"FAILED: {failed} check(s)")
 sys.exit(1 if failed else 0)
