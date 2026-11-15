@@ -636,7 +636,7 @@ function drawCost(svg) {
   }
   y += 14;
   // The ranked list: every session is readable here, also the ones that are thin lines in the map.
-  const ROW = 34, LEFT = 330, RIGHT = 150, max = all[0].v, shown = all.slice(0, 30);
+  const ROW = 34, LEFT = 330, RIGHT = 150, max = all[0].v, shown = all.slice(0, 12), rest = all.slice(12);
   svg.appendChild(el("text", { x: 2, y: y + 4, style: "font-size:12px;font-weight:700" }, "By session"));
   y += 14;
   for (const { a, v, ws } of shown) {
@@ -653,6 +653,11 @@ function drawCost(svg) {
     if (go) jump(g, go);
     svg.appendChild(g);
     y += ROW + 5;
+  }
+  if (rest.length) {
+    const sum = rest.reduce((n, r) => n + r.v, 0);
+    svg.appendChild(el("text", { class: "sub", x: 30, y: y + 12, style: "font-size:12px" }, rest.length + " smaller sessions, $" + sum.toFixed(2) + " together (" + Math.round((sum / total) * 100) + "%)"));
+    y += 26;
   }
   // Cost per hour: the rise of a session's cost between two samples counts in the hour of the later sample.
   const HOURS = 12, clockNow = hist.t || Math.floor(Date.now() / 1000), hourNow = Math.floor(clockNow / 3600), sums = Array.from({ length: HOURS }, () => new Map());
@@ -830,7 +835,7 @@ function drawLimits(svg) {
     svg.appendChild(el("path", { d: "M" + x(start) + "," + y(0) + " L" + line.join(" L") + " L" + x(last[5]) + "," + y(0) + " Z", style: "fill:" + color + ";fill-opacity:.16;stroke:none" }));
     svg.appendChild(el("path", { d: "M" + x(start) + "," + y(0) + " L" + line[0], style: "stroke:" + color + ";stroke-width:1.6;stroke-dasharray:1 4;stroke-linecap:round;opacity:.8" }));
     if (c.pts.length > 1) svg.appendChild(el("path", { d: "M" + line.join(" L"), style: "stroke-width:2.6;stroke-linejoin:round;stroke:" + color }));
-    if (rate > 0) {
+    if (rate > 0 && !thin) {
       const end = hot ? [hit, 100] : [c.reset, last[3] + rate * (c.reset - last[5])];
       svg.appendChild(el("path", { d: `M${x(last[5])},${y(last[3])} L${x(end[0])},${y(end[1])}`, style: "stroke-dasharray:6 5;stroke-width:2.2;stroke-linecap:round;stroke:" + (hot ? "#FF6B61" : "#98989d") }));
       if (hot) svg.appendChild(el("circle", { cx: x(hit), cy: y(100), r: 4.5, style: "fill:var(--card);stroke:#FF6B61;stroke-width:2.2" }));
