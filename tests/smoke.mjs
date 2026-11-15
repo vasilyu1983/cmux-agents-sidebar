@@ -371,7 +371,10 @@ check("strip lines: one 11 pt line with the full text on hover; the train line d
   must(train[0].props.help === "merged #12", "the strip value has no hover text");
   must(withText((t) => t === "refused none; skipped none").length === 1, "a train line with only \"none\" clauses did not keep its text");
   const label = withText((t) => t === "train")[0];
-  must(label.props.font === 10 && !label.props.monospaced && label.props.color === META, "the strip label is not 10 pt META");
+  must(label.props.font === 10 && label.props.color === META, "the strip label is not 10 pt META");
+  // The whole panel uses the monospaced font, as the terminal beside it.
+  const plain = reachable().filter((n) => typeof n.props.text === "string" && n.props.font >= 10 && n.props.monospaced !== true);
+  must(plain.length === 0, "a text is not monospaced: " + plain.slice(0, 3).map((n) => n.props.text).join(", "));
   // A label sits in a 56 pt cell at the leading side: the text takes its own width, a gap fills the rest.
   must(label.props.fixedSize === true && reachable().some((n) => n.props.width === 56), "the strip label has no 56 pt cell");
 });
