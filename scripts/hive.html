@@ -109,7 +109,7 @@ function tidy(raw) {
   if (!raw || typeof raw !== "object" || !Array.isArray(raw.ws)) return null;
   return {
     t: Number.isFinite(raw.t) ? raw.t : 0,
-    v: text(raw.v, 12), sel: text(raw.sel, 60),
+    v: text(raw.v, 12), sel: text(raw.sel, 60), u: tidyInv(raw.u),
     ws: raw.ws.slice(0, 200).filter((w) => w && typeof w === "object").map((w) => ({
       n: text(w.n, 120), c: text(w.c, 9), w: ident(w.w), f: w.f === true, inv: tidyInv(w.inv),
       a: (Array.isArray(w.a) ? w.a : []).slice(0, 300).map(tidyAgent).filter(Boolean),
@@ -133,6 +133,7 @@ function merge(pic, raw) {
   const live = tidy(raw);
   if (!live || !Array.isArray(raw.a) || !Array.isArray(raw.tabs)) return false;
   const tabs = new Set(raw.tabs.map(ident).filter(Boolean));
+  pic.u = live.u;
   const agents = raw.a.slice(0, 300).map(tidyAgent).filter((a) => a && a.i && a.w);
   for (const lw of live.ws) {
     if (!lw.w) continue;
@@ -1183,13 +1184,17 @@ function drawSetup(svg) {
   const found = (w) => w.inv && (w.inv.files.length > 0 || SETUP.some(([key]) => w.inv[key] > 0));
   const have = pic.ws.filter(found), none = pic.ws.filter((w) => !found(w)).map((w) => w.n || "no name");
   const noneLine = "no setup files found: " + none.join(", ");
-  if (have.length === 0) {
+  // The user folder of Claude Code: every session loads it, in every workspace. Its card comes first.
+  const user = found({ inv: pic.u }) ? [{ n: "Every workspace · user folder", inv: pic.u }] : [];
+  if (have.length + user.length === 0) {
     empty(svg, ["No setup figures yet.", "The watcher reads the instruction files and agent folders of each workspace.", ...(none.length ? [cut(noneLine, 96)] : [])]);
     return "Setup: no data.";
   }
   const W = pageWidth(), total = have.reduce((s, w) => s + w.inv.files.reduce((t, f) => t + f[1], 0), 0);
-  let y = tiles(svg, [[String(have.length), have.length === 1 ? "workspace with setup" : "workspaces with setup", ""], [kb(total), "instruction files, all workspaces", ""]]);
-  y = grid(svg, y, W, have, setupCard);
+  const shared = user.length ? ["skills", "agents", "commands", "rules"].reduce((s, key) => s + (pic.u[key] || 0), 0) : 0;
+  let y = tiles(svg, [[String(have.length), have.length === 1 ? "workspace with setup" : "workspaces with setup", ""], [kb(total), "instruction files, all workspaces", ""],
+    ...(user.length ? [[String(shared), "skills, agents, commands and rules in the user folder", ""]] : [])]);
+  y = grid(svg, y, W, [...user, ...have], setupCard);
   if (none.length) {
     const line = el("text", { class: "sub", x: 2, y: y + 24, style: "font-size:12px" }, cut(noneLine, Math.floor(W / 6.6)));
     line.appendChild(el("title", {}, noneLine));
@@ -1198,7 +1203,7 @@ function drawSetup(svg) {
   }
   size(svg, W, y + 6);
   legendItems = [[WARN, "instruction file over 40 KB: it costs context in every session"], ["var(--line)", "chip = how many of a kind the folder holds"]];
-  return "What the folder of each workspace gives its agents: instruction files with their sizes, and counts of skills, agents, commands, rules, hooks and MCP servers."
+  return "What the user folder gives every session, and what the folder of each workspace adds: instruction files with their sizes, and counts of skills, agents, commands, rules, hooks and MCP servers."
     + " This shows what exists in the folder, not what was loaded into the window.";
 }
 

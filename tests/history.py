@@ -283,6 +283,9 @@ inventory = {"files": [["CLAUDE.md", 3], [".claude/CLAUDE.md", 1]], "skills": 2,
 with contextlib.redirect_stderr(errors):
     check("the setup inventory has sizes and counts only", watcher.setup_inventory(space) == inventory)
     check("an unreadable settings file is left out", watcher.setup_inventory(space2) == {})
+# The user folder holds the files with no ".claude" part in the path, and it has no MCP count.
+check("the user folder is read at its own level", watcher.setup_inventory(os.path.join(space, ".claude"), user=True)
+      == {"files": [["CLAUDE.md", 1]], "skills": 2, "agents": 1, "hooks": 2})
 check("a folder with no setup gives nothing", watcher.setup_inventory(os.path.join(box, "codex")) == {})
 
 with contextlib.redirect_stderr(errors):

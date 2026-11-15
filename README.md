@@ -137,7 +137,7 @@ A row shows at most 2 pills. Their order of priority is: `≠`, a PR that needs 
 | Context | One gauge per session, fullest first, with the number of compactions (`⟳`). `–` = not known: after a compaction or a resume Claude Code gives no figure until the next reply. The line under a gauge is the share over the last 6 hours: it falls at a compaction; the dotted line is 80% | Which session must I compact or restart? | Live and history |
 | Inside | One card per Claude Code session: tool calls by tool (MCP servers and skills in a second grey), an estimate of what fills the context by kind, failed tool calls and API errors, the edited files, files that another session also edited (yellow), silent subagents. Sessions with 5 failures in a row come first | What does each agent do inside, and is one stuck? | Live |
 | Rhythm | A grid of hours × the last 7 days, then a calendar of days (a week per row, up to 5 weeks); darker = more agent work | When do my agents work? | History |
-| Setup | One card per workspace: the instruction files with their sizes, and counts of skills, agents, commands, rules, hooks and MCP servers. A file over 40 KB is yellow. It shows what the folder holds, not what was loaded | What does this workspace give its agents? | Live |
+| Setup | The first card is the user folder of Claude Code (`~/.claude`), which every session loads; then one card per workspace: the instruction files with their sizes, and counts of skills, agents, commands, rules, hooks and MCP servers. A file over 40 KB is yellow. It shows what the folder holds, not what was loaded | What does this workspace give its agents? | Live |
 
 ![Timeline view: a strip with the number of agents at work, then one lane per session with blue, orange and pale green blocks, marks for compactions, and the worked and waited times at the right](examples/view-timeline.png)
 
@@ -152,6 +152,10 @@ A row shows at most 2 pills. Their order of priority is: `≠`, a PR that needs 
 ![Queue view: one bar per waiting session, then bars of how fast you answer](examples/view-queue.png)
 
 ![Rhythm view: a grid of hours for the last 7 days, then a calendar of days with the agent work per day](examples/view-rhythm.png)
+
+![Inside view: one card per session with its tool calls, an estimate of the context by kind, errors and edited files](examples/view-inside.png)
+
+![Setup view: a card for the user folder, then one card per workspace, with instruction file sizes and counts](examples/view-setup.png)
 
 The pictures are renders of `scripts/hive.html` with sample data.
 
@@ -452,7 +456,7 @@ Without a watcher of your own the strip shows only the limit lines, one per tool
   - It keeps no message text, no tool input and no tool output. The hive data file gets the counts, and the file names without their folders.
 - `label-tabs.py` compares the edited paths of your live sessions, to find two sessions that edited the same file in the last 6 hours. The hive data file then names the file and the other session.
 - Four numbers also go into the workspace description: the errors, the failed tool results in a row, the files that overlap with another session, and the silent subagents.
-- For each workspace `label-tabs.py` looks at the start folder of its first session. It keeps the names and sizes of `CLAUDE.md`, `AGENTS.md`, `GEMINI.md` and `.claude/CLAUDE.md`. It counts the entries in `.claude/skills`, `.claude/agents`, `.claude/commands` and `.claude/rules`. It reads no file in those folders. From `.claude/settings.json` it counts the keys under `hooks`, and from `.mcp.json` the keys under `mcpServers`. It never keeps or shows a value from these files. The counts go into the hive data file only.
+- For each workspace `label-tabs.py` looks at the start folder of its first session. It keeps the names and sizes of `CLAUDE.md`, `AGENTS.md`, `GEMINI.md` and `.claude/CLAUDE.md`. It counts the entries in `.claude/skills`, `.claude/agents`, `.claude/commands` and `.claude/rules`. It reads no file in those folders. From `.claude/settings.json` it counts the keys under `hooks`, and from `.mcp.json` the keys under `mcpServers`. It never keeps or shows a value from these files. The counts go into the hive data file only. For the user folder `~/.claude` it does the same: the size of `CLAUDE.md`, the entry counts of `skills`, `agents`, `commands` and `rules`, and the number of keys under `hooks` in `settings.json`. It reads no value and no other key.
 - For the `?` mark, `label-tabs.py` also reads the file times of the subagent transcripts of a session. It reads no content from them. These file times and the "finished" mark in the subagent record give the count of silent subagents: not finished, and no line for 10 minutes.
 - The views page stores two words in the browser's local storage of its cmux tab: the last view and the last time range.
 - `~/.cache/cmux-agents` is created with mode 700.

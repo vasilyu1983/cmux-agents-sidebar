@@ -589,14 +589,16 @@ def hive_agent(fields):
     return agent
 
 
-def setup_inventory(folder):
+def setup_inventory(folder, user=False):
     """{"files": [[name, bytes], ...], "skills": 2, "agents": 1, "commands": n, "rules": n, "hooks": n, "mcp": n}
     for the setup of one start folder; a zero count is left out, and nothing found gives {}. It reads only sizes,
     folder listings (a name with a leading "." is not counted), the number of keys under "hooks" in
-    .claude/settings.json and under "mcpServers" in .mcp.json: never a value. A missing file is left out; an
+    .claude/settings.json and under "mcpServers" in .mcp.json: never a value. user: the folder is the user folder of
+    Claude Code (~/.claude), which holds CLAUDE.md, the four folders and settings.json itself; no MCP count there. A missing file is left out; an
     unreadable one too, with one line on stderr that names the file only."""
     found, sizes = {}, []
-    for name in SETUP_FILES:
+    sub = "" if user else ".claude"
+    for name in ("CLAUDE.md",) if user else SETUP_FILES:
         try:
             info = os.stat(os.path.join(folder, name))
             if os.path.isfile(os.path.join(folder, name)):
@@ -609,7 +611,7 @@ def setup_inventory(folder):
         found["files"] = sizes
     for name in SETUP_FOLDERS:
         try:
-            count = sum(not entry.startswith(".") for entry in os.listdir(os.path.join(folder, ".claude", name)))
+            count = sum(not entry.startswith(".") for entry in os.listdir(os.path.join(folder, sub, name)))
         except (FileNotFoundError, NotADirectoryError):
             continue
         except OSError as err:
@@ -617,7 +619,7 @@ def setup_inventory(folder):
             continue
         if count:
             found[name] = count
-    for key, name, part in (("hooks", ".claude/settings.json", "hooks"), ("mcp", ".mcp.json", "mcpServers")):
+    for key, name, part in (("hooks", os.path.join(sub, "settings.json"), "hooks"),) + (() if user else (("mcp", ".mcp.json", "mcpServers"),)):
         try:
             with open(os.path.join(folder, name)) as fh:
                 keys = json.loads(fh.read(1_000_000)).get(part)
@@ -662,6 +664,7 @@ def write_hive(tree, live, titles, codex=None, inside=None):
     data = {"t": int(time.time()), "cur": next((tab for tab, (_space, focused) in tabs.items() if focused), ""),
             "ws": [dict({"w": space, "n": name, "f": selected}, **({"inv": inventories[space]} if inventories.get(space) else {}))
                    for space, (name, selected) in spaces.items()], "a": agents,
+            "u": setup_inventory(os.path.join(os.path.expanduser("~"), ".claude"), user=True),
             "tabs": sorted(tabs)}
     folder = os.path.dirname(os.path.abspath(__file__))
     # The change time of the page file: an open page reloads itself when this value changes (after an install).
