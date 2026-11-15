@@ -111,7 +111,8 @@ From top to bottom of the picture. "You do" says what the mark asks of you.
 | Grey text with no label | Your last request to a session that works | — |
 | Orange text | Why the session waits, or `quiet 20m+`: no output for 20 minutes | Open the tab and check |
 | `Opus` `Fable` `Sonnet` (lavender) | The model. A tool that reports no model shows its name (`codex`) | — |
-| `42%` (slate blue) | Share of the context window in use. Yellow from 50%; from 80% it becomes the red pill | — |
+| `42%` (slate blue) | Share of the context window in use. Yellow from 50%; from 80% it becomes the red pill. A Codex row shows it too, when only one Codex tab uses that Codex folder | — |
+| `420K` (slate blue) | Tokens in the context at the last call, beside the share. `1.2M` from 1 million. Empty when unknown | — |
 | `$31.20` (sand) | Cost estimate of the session so far | — |
 
 A row shows at most 2 pills. Their order of priority is: `≠`, a PR that needs you, `83%`, `→ you`, `↑2`, `dup`, `⟳`, `❄`, PR, account, folder.
@@ -124,7 +125,7 @@ A row shows at most 2 pills. Their order of priority is: `≠`, a PR that needs 
 
 | View | The picture | The question it answers | Data |
 |------|-------------|-------------------------|------|
-| Hive | A tree: workspace → session → subagent | What runs where? | Live |
+| Hive | A tree: workspace → session → subagent. A session carries its context tokens beside the share. A Codex session gets its context share from its newest Codex session file | What runs where? | Live |
 | Timeline | One lane per session; a block per state: blue works, orange waited for you, pale green idle. Ranges: auto (fits the history that exists), 1h, 6h, 24h, 7d. On top, `Agents at work`: how many sessions worked at one time (blue steps) and how many waited for you (orange). On a lane: `◇` = context compacted, `○` = prompt cache went cold, a thin grey bar under the blocks = one subagent run. A red dashed line = a limit reached 80% | How long did each agent work, and how long did it wait for me? How many work at once? | History |
 | Cost | A map: one column per workspace, one box per session; the area is the cost, the tint is the model. Below it, a ranked list of the sessions, then `Cost per hour`: one bar per hour of the last 12, stacked by model | Where does the money go, and how fast? | Live and history |
 | Flow | Bands from workspace to model (and from account, when you use more than one); the width of a band is the cost | Which workspace spends on which model? | Live |
@@ -393,7 +394,7 @@ Limits to know:
 
 A cmux panel gets workspaces, tabs and agents from cmux. It cannot read a file, and cmux does not know the model or the cost of a session. So the data takes this path:
 
-1. The status line script runs inside each Claude Code session. It writes one small file per session to `~/.cache/cmux-agents/<session id>`: model, context share, cost, lane branch, cold-cache tokens, the limit figures (5 hours and 7 days, with reset times) and the name of the account folder, separated by tabs.
+1. The status line script runs inside each Claude Code session. It writes one small file per session to `~/.cache/cmux-agents/<session id>`: model, context share, cost, lane branch, cold-cache tokens, the limit figures (5 hours and 7 days, with reset times), the name of the account folder and the context tokens of the last call, separated by tabs.
 2. `label-tabs.py` reads the Claude Code session registry (`~/.claude/sessions/`) and those files. It renames each tab to `[session name] title`, with `!` for a waiting session and `?` for a busy session whose transcript was quiet for 20 minutes.
 3. `label-tabs.py` writes the session data into the workspace description: `<folder> | @week: 36% | api-3f: Fable 5.2 high · ctx 42% · $12.34`.
    For each Claude Code session it also adds the subagents that Claude Code recorded on disk: `sub 2/7: Explore repo; Review diff` means 2 run now, 7 in all.
@@ -402,10 +403,10 @@ A cmux panel gets workspaces, tabs and agents from cmux. It cannot read a file, 
 Facts that follow from this design:
 
 - The workspace description belongs to this tool. The text before the first ` | ` is kept; the rest is rewritten every 15 seconds.
-- Only Claude Code sessions get a name, model, context and cost. Other tools show their status, title and tool tag.
+- Only Claude Code sessions get a name, model, context and cost. Other tools show their status, title and tool tag. A Codex tab also gets its context share, but only when no other live Codex tab uses its Codex folder: the newest session file of a folder cannot be tied to one tab.
 - The cost is the Claude Code estimate at list price for one session. It is not your bill.
 - The `?` mark is a hint. A long silent command also leaves the transcript quiet.
-- The hive page gets its first data in the link, after `#`. After that it reads `hive-data.js`, a file that `label-tabs.py` writes next to the page every 15 seconds (mode 600; it holds your session titles). The page loads nothing from the network. Only Claude Code sessions update; other tools keep the state of the first picture. Without a fresh file the page says "Fixed picture".
+- The hive page gets its first data in the link, after `#`. After that it reads `hive-data.js`, a file that `label-tabs.py` writes next to the page every 15 seconds (mode 600; it holds your session titles). The page loads nothing from the network. Only Claude Code sessions update, and Codex tabs that have a context figure; other tools keep the state of the first picture. Without a fresh file the page says "Fixed picture".
 - The panel saves your view (chip, sort, scope, ended rows, folds) in a description part, `@view: ...`, on a click. `label-tabs.py` keeps that part, so the view returns after a panel reload.
 - For the next step and the compaction count, `label-tabs.py` reads the transcript of each live Claude Code session, only the part that is new since the last pass. It keeps the position, the count and the one `Next:` line in `~/.cache/cmux-agents/<session id>.seen` (mode 600). A new request of yours clears the line.
 - For the work marks it asks `git` in the start folder of each session: the branch, and the commits of `HEAD` that no remote branch holds. It never fetches, so the count is as fresh as your last fetch or push. `main`, `master`, `dev`, `develop` and `trunk` never count as a duplicate.
@@ -436,6 +437,8 @@ Without a watcher of your own the strip shows only the limit lines, one per tool
 - The start of your last request (60 characters) also goes into the workspace description.
 - For a tab that runs Codex, OpenCode, Grok or Antigravity, `label-tabs.py` asks cmux for the last 30 lines on screen (`cmux read-screen`). It tests them for two fixed interface lines and keeps one word: `working`, `asks` or `idle`. No screen text is stored or shown.
 - `label-tabs.py` keeps a history file, `~/.config/cmux/scripts/history-data.js`, for the views page. Every 15 seconds it records, per live Claude Code session: the session id, the session name (the one you gave it, else the short one of the tool, at most 60 characters), the workspace name, the state (working, needs input, idle) with start and end times, the model, the context share, the cost and the account name. It also records each limit figure with its time; a sample of the context share and the cost per session (one per minute at most, when a figure changed, kept for one day); the time of each compaction and of each cold prompt cache; and per subagent of a live session its agent type (for example `Explore`) with the start and end time, taken from the file times of its transcript. It holds no request text and no reply text. It keeps 30 days, is readable by you only (mode 600), and never leaves your Mac. `uninstall.sh` removes it.
+- For the context share of a Codex tab, `label-tabs.py` reads token counters (numbers only) from the newest Codex session file of that Codex folder. It keeps no text from that file.
+- For the `?` mark, `label-tabs.py` also reads the file times of the subagent transcripts of a session. It reads no content from them.
 - The views page stores two words in the browser's local storage of its cmux tab: the last view and the last time range.
 - `~/.cache/cmux-agents` is created with mode 700.
 - The panel writes to the clipboard only from a menu item that you click.

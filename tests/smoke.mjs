@@ -47,7 +47,7 @@ const apiDescription = [
   "lead-1: opus · acct work · ctx 83% · $1.20 · waits permission · next you push the branch · comp 3 · ahead 2 · dup"
     + " · prompt fix the login test · screen asks",
   "worker-2: sonnet · cold 5m · next the lead merges · sub 2/7: Review diff; Lint",
-  "old-5: sonnet · ctx 12% · title Release notes",
+  "old-5: sonnet · ctx 12% · tok 420000 · title Release notes",
   "@home: " + HOME,
   "@primary: personal",
   "@view: t=1799999990,c=all,a=0,s=1,e=1,l=0,f=0",
@@ -56,7 +56,9 @@ const apiDescription = [
   "@unpushed: api 2",
   "@train: merged #12; refused none; skipped none; deferred none",
 ].join(" | ");
-const webDescription = ["web", "scout-4: sonnet · acct personal · ctx 45% · $0.30", "@accts: " + T(4) + "=work",
+const webDescription = ["web", "scout-4: sonnet · acct personal · ctx 45% · tok 1234567 · $0.30", "@accts: " + T(4) + "=work",
+  // A Codex tab has no session fields: the watcher gives its screen state and context figure by tab id.
+  T(4) + ": screen idle · ctx 37% · tok 95000",
   "@train: refused none; skipped none", "@week: 47%"].join(" | ");
 
 const agent = (id, panelId, status, kind, extra = {}) => ({
@@ -310,9 +312,18 @@ check("a tab with no title of its own shows the title of its session; the reques
   must(withText((t) => t === "next").some((n) => n.props.background === "clear" && n.props.color === "#D1D1D6"), "no bare next label on worker-2");
   must(withText((t) => t.endsWith("the lead merges")).length >= 1, "worker-2 does not show its next step");
   const widths = (w) => reachable().filter((n) => n.props.width === w).length;
-  must(widths(46) >= 6 && widths(46) === widths(30) && widths(30) === widths(54), "the three columns are not on every row");
+  must(widths(46) >= 6 && widths(46) === widths(30) && widths(30) === widths(54) && widths(54) === widths(32), "the four columns are not on every row");
   must(withText((t) => t === "claude").some((n) => n.props.fixedSize === true && n.props.font === 11), "the strip line of the limit is not labelled claude");
   must(withText((t) => t === "week").length === 0, "the strip still has a line labelled week");
+});
+check("the context tokens show beside the share in the same slate colour: 420K, 1.2M; none when unknown", () => {
+  must(withText((t) => t === "420K").some((n) => n.props.font === 11 && n.props.color === "#A9C0D4"), "old-5 has no slate 420K beside its share");
+  must(withText((t) => t === "1.2M").some((n) => n.props.color === "#A9C0D4"), "scout-4 has no 1.2M (one decimal from 1M)");
+  // A Codex row gets its share and tokens by tab id.
+  must(withText((t) => t === "37%").length >= 1 && withText((t) => t === "95K").length >= 1, "the Codex row of helper-6 has no 37% and 95K");
+  // Only the rows with a token field show a token figure.
+  const figures = withText((t) => /^\d+(\.\d)?[KM]$/.test(t)).map((n) => n.props.text);
+  must(figures.every((t) => ["420K", "1.2M", "95K"].includes(t)), "a token figure shows for a row that has none: " + JSON.stringify(figures));
 });
 check("the two parts of a title sit directly in the row and rank above the gap", () => {
   const name = withText((t) => t === "[lead-1]")[0];
@@ -447,6 +458,10 @@ check("the info mark opens detail lines", () => {
   const after = textOf();
   must(after.split("\n").length > before, "no detail lines appeared");
 });
+check("the context detail line names the tokens beside the share", () => {
+  mustContain(textOf(), "12% · 420K tokens");
+  mustContain(textOf(), "37% · 95K tokens");
+});
 check("the sub badge opens the subagent rows, from cmux data and from the description", () => {
   for (const m of withText((t) => /^▸\d/.test(t))) tap(m);
   const after = textOf();
@@ -495,6 +510,11 @@ check("a row menu opens the views page on the timeline, with the session marked"
   must(calls.length === 1 && calls[0].method === "browser.open_split", "got " + JSON.stringify(calls));
   const sent = JSON.parse(decodeURIComponent(calls[0].params.url.split("#")[1]));
   must(sent.v === "timeline" && /^[a-z0-9-]+$/.test(sent.sel), "the link carries " + JSON.stringify([sent.v, sent.sel]));
+  // The hive link carries the context tokens as z, also for the Codex tab, and no z when unknown.
+  const linked = sent.ws.flatMap((w) => w.a);
+  must(linked.some((a) => a.i === T(3) && a.z === 1234567), "scout-4 has no z in the link");
+  must(linked.some((a) => a.i === T(4) && a.x === 37 && a.z === 95000), "the Codex tab has no x and z in the link");
+  must(linked.filter((a) => a.i === T(2)).every((a) => !("z" in a)), "worker-2 has a z with no token figure");
 });
 check("the Limits view lists the limit windows", () => {
   const btn = withText((t) => t === "Limits")[0];

@@ -165,6 +165,8 @@ function sessionsOf(w) {
     const s = {};
     for (const f of part.slice(at + 2).split(" · ")) {
       if (f.startsWith("ctx ")) s.ctx = parseInt(f.slice(4), 10);
+      // "tok 420000": the context tokens of the last call. Another form is left out.
+      else if (f.startsWith("tok ")) { if (/^tok [1-9]\d{0,6}$/.test(f)) s.tok = Number(f.slice(4)); }
       else if (f.startsWith("$")) s.cost = f;
       else if (f.startsWith("waits ")) s.wait = f.slice(6);
       else if (f.startsWith("lane ")) s.lane = f.slice(5);
@@ -209,6 +211,8 @@ function sessionsOf(w) {
   return models;
 }
 const sessionName = (tabTitle) => (/^\[(.+?)(?: [!?])?\]/.exec(tabTitle ?? "") ?? [])[1];
+// Context tokens, short: "420K", "1.2M" (one decimal only from 1M); "" when unknown.
+const tokText = (t) => (!(t > 0) ? "" : t >= 999500 ? (t / 1e6).toFixed(1) + "M" : t >= 1000 ? Math.round(t / 1000) + "K" : String(t));
 
 // Status vocabulary (workspaces[i].agents[j].status). In-flight states get a
 // strong dot; settled states are muted, matching how a roster reads at a
@@ -425,6 +429,8 @@ const view = computed(() => {
         model: String(sess.model ?? "").split(" ")[0] || String(a.kind ?? ""),
         ctxText: sess.ctx >= 0 && sess.ctx < 80 ? sess.ctx + "%" : "",
         ctxWarm: sess.ctx >= 50,
+        // The context tokens of the last call, beside the share: "420K".
+        tokText: tokText(sess.tok),
         costText: sess.cost ?? "",
         stalled,
         cold: sess.look === "idle" ? String(sess.cold ?? "").replace(/^cold /, "❄") : "",
@@ -451,7 +457,7 @@ const view = computed(() => {
           ["account", sess.acct || (accountMarks().primary && /claude|codex/.test(String(a.kind ?? "")) ? accountMarks().primary + " (primary)" : "")],
           ["rule", sess.wrong ? "the folder rule names " + sess.wrong + "; start the session again on that account" : ""],
           ["model", sess.model ?? ""],
-          ["context", sess.ctx >= 0 ? sess.ctx + "%" : ""],
+          ["context", [sess.ctx >= 0 ? sess.ctx + "%" : "", sess.tok > 0 ? tokText(sess.tok) + " tokens" : ""].filter(Boolean).join(" · ")],
           ["cost", sess.cost ?? ""],
           ["folder", String(a.directory ?? "").replace(/^\/Users\/[^/]+/, "~")],
           ["branch", tab?.branch ? tab.branch + (tab.dirty ? " (changed files)" : "") : ""],
@@ -713,10 +719,11 @@ function hiveUrl(mark, view, sel) {
     const models = sessionsOf(w);
     const agents = [];
     for (const { a, tab } of onePerTab(w)) {
-      const sess = models[sessionName(tab?.title)] ?? {};
+      // Fields by session name, and by tab id for a tool without a session name (the context of a Codex tab).
+      const sess = { ...(models[sessionName(tab?.title)] ?? {}), ...(models[String(tab?.id ?? "").toUpperCase()] ?? {}) };
       agents.push({
         n: rowTitle(tab?.title ?? "") || a.title || a.name || "session", k: a.kind ?? "", s: a.status,
-        i: tab?.id ?? "", w: w.id, f: mark ? mark.ws === w.id && mark.tab === tab?.id : Boolean(w.selected && tab?.focused), m: sess.model ?? "", u: sess.acct ?? "", x: sess.ctx ?? null, c: sess.cost ?? "", p: sess.pr ?? "", l: sess.lane ?? "",
+        i: tab?.id ?? "", w: w.id, f: mark ? mark.ws === w.id && mark.tab === tab?.id : Boolean(w.selected && tab?.focused), m: sess.model ?? "", u: sess.acct ?? "", x: sess.ctx ?? null, ...(sess.tok > 0 ? { z: sess.tok } : {}), c: sess.cost ?? "", p: sess.pr ?? "", l: sess.lane ?? "",
         // Subagents: what cmux reports for the agent; when it reports none, what label-tabs.py found on disk.
         ch: (a.children ?? []).length > 0
           ? a.children.map((c) => ({ n: c.label || "subagent", r: Boolean(c.running) }))
@@ -1139,6 +1146,7 @@ function agentRow(entry) {
       cell(Text(() => entry().model).font(11).weight("medium").lineLimit(1).color(MODEL_INK), 46, "trailing"),
       cell(Text(() => entry().ctxText).font(11).monospaced().lineLimit(1)
         .color(() => (entry().ctxWarm ? "#FFD60A" : CTX_INK)), 30, "trailing"),
+      cell(Text(() => entry().tokText).font(11).monospaced().lineLimit(1).color(CTX_INK), 32, "trailing"),
       cell(Text(() => entry().costText).font(11).monospaced().lineLimit(1).color(COST_INK), 54, "trailing"),
     ]).paddingLeading(UNDER_TITLE).frame({ minHeight: 16 }),
   ])]).paddingVertical(4));

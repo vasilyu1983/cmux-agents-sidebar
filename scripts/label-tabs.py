@@ -58,6 +58,9 @@ SCREEN_WORKING = re.compile(r"\besc to interrupt\b", re.I)
 # A permission or option menu: a first option line ("› 1. Yes, proceed") and a line that offers to allow.
 SCREEN_MENU = re.compile(r"^\s*(❯|›|>)?\s*1\.\s")
 SCREEN_ALLOW = re.compile(r"\b(yes|allow|approve)\b", re.I)
+SCREEN_HIVE = {"working": "working", "asks": "needs_input", "idle": "idle"}  # screen state -> hive page state
+CODEX_TAIL = 2_000_000  # bytes read from the end of a Codex session file
+TAILS = {}  # path -> (change time, lines) of a Codex session file, read once per pass
 
 
 def run(args):
@@ -229,21 +232,23 @@ def screen_state(text):
     return "idle"
 
 
-def screen_marks(keys, by_id, models):
-    """Adds "<tab id>: screen working" (or asks, idle) to `models` for each tab id in `keys`: one read-screen call
-    per tab. A failed call skips its tab and names only the tab ref; after a call that cannot run or times out,
-    no other tab is read in this pass."""
+def screen_marks(keys, by_id):
+    """tab id -> "working" (or "asks", "idle") for each tab id in `keys`: one read-screen call per tab. A failed
+    call skips its tab and names only the tab ref; after a call that cannot run or times out, no other tab is read
+    in this pass."""
+    states = {}
     for key in sorted(keys):
-        ref, _title, workspace = by_id[key]
+        ref = by_id[key][0]
         try:
             shown = run(["cmux", "read-screen", "--surface", ref, "--lines", str(SCREEN_LINES)])
         except (OSError, subprocess.TimeoutExpired) as err:
             print(f"label-tabs: screen not read for {ref}: {err}", file=sys.stderr)
-            return
+            break
         if shown.returncode != 0:
             print(f"label-tabs: screen not read for {ref}: exit {shown.returncode}", file=sys.stderr)
             continue
-        models.setdefault(workspace, []).append(f"{key}: screen {screen_state(shown.stdout)}")
+        states[key] = screen_state(shown.stdout)
+    return states
 
 
 def git_marks(folder):
@@ -365,8 +370,9 @@ def hive_places(tree):
 
 
 def hive_agent(fields):
-    """The description fields of one session, as the hive page's keys: m model, x context %, c cost, p PR,
-    l lane, u account, q compactions, ch subagents (the running ones by name, the finished ones as a count)."""
+    """The description fields of one session, as the hive page's keys: m model, x context %, z context tokens,
+    c cost, p PR, l lane, u account, q compactions, ch subagents (the running ones by name, the finished ones as
+    a count)."""
     agent = {"k": "claude"}
     for field in fields:
         sub = re.fullmatch(r"sub (\d{1,4})/(\d{1,4})(?:: (.*))?", field)
@@ -380,6 +386,8 @@ def hive_agent(fields):
                 agent["ch"].append({"n": f"{total - running} finished", "r": False})
         elif re.fullmatch(r"ctx \d{1,3}%", field):
             agent["x"] = int(field[4:-1])
+        elif re.fullmatch(r"tok [1-9]\d{0,6}", field):
+            agent["z"] = int(field[4:])
         elif field.startswith("$"):
             agent["c"] = field
         elif field.startswith("pr "):
@@ -390,14 +398,16 @@ def hive_agent(fields):
             agent["u"] = field[5:]
         elif re.fullmatch(r"comp \d{1,4}", field):
             agent["q"] = int(field[5:])
-        elif not field.startswith(("cold ", "waits ", "comp ", "next ", "ahead ", "wrong ", "prompt ", "title ", "screen ")) and field != "dup" and "m" not in agent:
+        elif not field.startswith(("cold ", "waits ", "comp ", "next ", "ahead ", "wrong ", "prompt ", "title ", "screen ", "tok ")) and field != "dup" and "m" not in agent:
             agent["m"] = field
     return agent
 
 
-def write_hive(tree, live, titles):
+def write_hive(tree, live, titles, codex=None):
     """Writes hive-data.js next to this script: the Claude Code sessions, their tabs and the open tab.
-    The hive page loads it every 15 seconds. It holds session titles, so it is readable by the owner only."""
+    The hive page loads it every 15 seconds. It holds session titles, so it is readable by the owner only.
+    codex: tab id -> (screen state, fields of codex_marks), for the Codex tabs that have a context figure. The page
+    copies every key of a live agent over its picture, so a Codex tab comes in only with its title and its state."""
     tabs, spaces = hive_places(tree)
     agents = []
     for key, name, _waits, _stalled, model, status, _since in live:
@@ -405,6 +415,12 @@ def write_hive(tree, live, titles):
             continue
         agent = hive_agent(model)
         agent.update(i=key, w=tabs[key][0], s=status, n=titles.get(key) or f"[{name}]", f=tabs[key][1])
+        agents.append(agent)
+    for key, (state, fields) in sorted((codex or {}).items()):
+        if key not in tabs or state not in SCREEN_HIVE:
+            continue
+        agent = hive_agent(fields)
+        agent.update(k="codex", i=key, w=tabs[key][0], s=SCREEN_HIVE[state], n=titles.get(key) or "codex", f=tabs[key][1])
         agents.append(agent)
     data = {"t": int(time.time()), "cur": next((tab for tab, (_space, focused) in tabs.items() if focused), ""),
             "ws": [{"w": space, "n": name, "f": selected} for space, (name, selected) in spaces.items()], "a": agents,
@@ -610,9 +626,9 @@ def subagents_of(sid, home):
 
 def model_of(session, prs, home, account):
     """What the status line script left for the session, as description fields:
-    ["Fable 5.2 high", "ctx 42%", "$12.34", "lane lane/x", "pr #644 needs grant", "cold 198K"].
+    ["Fable 5.2 high", "ctx 42%", "$12.34", "lane lane/x", "pr #644 needs grant", "cold 198K", "tok 420000"].
     The file holds "model<TAB>context %<TAB>cost<TAB>lane branch<TAB>cold tokens<TAB>week %<TAB>5h %<TAB>5h reset
-    <TAB>week reset<TAB>config folder name"; older files hold fewer parts. `home` is the Claude Code folder that
+    <TAB>week reset<TAB>config folder name<TAB>context tokens"; older files hold fewer parts. `home` is the Claude Code folder that
     holds the session's record and `account` its name in the accounts file ("" when not listed): a listed
     account adds "acct <name>" after the model."""
     sid = str(session.get("sessionId") or "")
@@ -621,11 +637,11 @@ def model_of(session, prs, home, account):
     path = os.path.expanduser(f"~/.cache/cmux-agents/{sid}")
     try:
         with open(path) as fh:
-            parts = fh.read(300).split("\t")
+            parts = fh.read(1000).split("\t")
         at = os.path.getmtime(path)
     except OSError:
         return ([f"acct {account}"] if account else []) + wrong_account(session, account) + subagents_of(sid, home)
-    parts += [""] * (10 - len(parts))
+    parts += [""] * (11 - len(parts))
     if not account and parts[9]:
         # The record sits in the usual folder: the status line's config folder name decides, when one line has it.
         named = [name for kind, name, folder in ACCOUNTS if kind == "claude" and os.path.basename(folder) == parts[9]]
@@ -642,6 +658,9 @@ def model_of(session, prs, home, account):
             fields.append(f"pr {prs[parts[3]]}")
     if re.fullmatch(r"\d{1,9}", parts[4]):
         fields.append(f"cold {short(int(parts[4]))}")
+    # The context tokens of the last call: a whole number from 1 to under 10 million, else none.
+    if re.fullmatch(r"[1-9]\d{0,6}", parts[10]):
+        fields.append(f"tok {parts[10]}")
     if re.fullmatch(r"\d{1,3}(\.\d+)?", parts[5]) and at > WEEKS.get(account, {}).get("at", 0):
         WEEKS[account] = dict(at=at, used=str(round(float(parts[5]))), five=parts[6], five_reset=parts[7],
                               week_reset=parts[8])
@@ -704,20 +723,81 @@ def limit_item(tool, window, used, reset, seen, account=""):
     return f"{tool},{window},{used},{text},{int(seen)}" + (f",{account}" if account else "")
 
 
-def codex_limits(home, account):
-    """The limit windows in the newest Codex session file of one Codex folder that holds any: Codex writes
-    "rate_limits" into its session records. Reads the file tail only, and keeps the windows, not the plan or the credits."""
+def codex_files(home):
+    """The Codex session files of one Codex folder, newest first; [] when one cannot be dated."""
     files = glob.glob(os.path.join(home, "sessions", "*", "*", "*", "rollout-*.jsonl"))
     try:
         files.sort(key=os.path.getmtime, reverse=True)
     except OSError:
         return []
-    for path in files[:5]:
+    return files
+
+
+def codex_tail(path):
+    """(change time, lines) of the last CODEX_TAIL bytes of a Codex session file, read once per pass.
+    Raises OSError."""
+    if path not in TAILS:
+        seen = os.path.getmtime(path)
+        with open(path, "rb") as fh:
+            fh.seek(max(0, os.path.getsize(path) - CODEX_TAIL))
+            TAILS[path] = (seen, fh.read().decode("utf-8", "replace").splitlines())
+    return TAILS[path]
+
+
+def codex_context(home):
+    """(context % as a whole number, tokens) from the last token count record with figures in the newest Codex
+    session file of one Codex folder; None when that file has none. The record is Codex's "token_count" event:
+    info.last_token_usage.total_tokens is the context of the last call, info.model_context_window the window
+    (TokenUsageInfo in codex-rs/protocol/src/protocol.rs). A record with "info": null holds limits only and is
+    passed over. A missing or non-number figure gives None, never 0. Only the newest file counts: an older file
+    is another session. The share is tokens / window; Codex's own status first takes a fixed 12000-token base
+    off both, so its figure can differ by a few points."""
+    files = codex_files(home)[:1]
+    try:
+        _seen, lines = codex_tail(files[0]) if files else (0, [])
+    except OSError as error:
+        print(f"label-tabs: codex context: cannot read a session file: {error}", file=sys.stderr)
+        return None
+    for line in reversed(lines):
+        at = line.rfind('"info":{')
+        if at < 0 or '"token_count"' not in line:
+            continue
         try:
-            seen = os.path.getmtime(path)
-            with open(path, "rb") as fh:
-                fh.seek(max(0, os.path.getsize(path) - 400000))
-                lines = fh.read().decode("utf-8", "replace").splitlines()
+            info, _ = json.JSONDecoder().raw_decode(line[at + len('"info":'):])
+        except ValueError:
+            continue
+        last = info.get("last_token_usage")
+        used, window = last.get("total_tokens") if isinstance(last, dict) else None, info.get("model_context_window")
+        if not all(isinstance(n, int) and not isinstance(n, bool) for n in (used, window)):
+            return None
+        if not 0 < used <= window or used >= 10_000_000:
+            return None
+        return round(used * 100 / window), used
+    return None
+
+
+def codex_marks(tabs, claude_keys):
+    """tab id -> ["ctx 40%", "tok 108000"] for a live Codex tab, from codex_context of its Codex folder.
+    tabs: Codex folder -> the ids of the tabs that run Codex with it. Limit: the newest session file of a folder
+    can belong to another Codex run of that folder (a second tab, a run outside cmux that the process list does
+    not tie to a tab, or a run that ended after this tab's last reply). Nothing ties a file to a tab, so a folder
+    with more than one live Codex tab gives no figure, and a run outside cmux can still lend its figure."""
+    found = {}
+    for home, keys in tabs.items():
+        if len(keys) != 1 or keys & claude_keys:
+            continue
+        figure = codex_context(home)
+        if figure:
+            found[next(iter(keys))] = [f"ctx {figure[0]}%", f"tok {figure[1]}"]
+    return found
+
+
+def codex_limits(home, account):
+    """The limit windows in the newest Codex session file of one Codex folder that holds any: Codex writes
+    "rate_limits" into its session records. Reads the file tail only, and keeps the windows, not the plan or the credits."""
+    for path in codex_files(home)[:5]:
+        try:
+            seen, lines = codex_tail(path)
         except OSError as error:
             print(f"label-tabs: codex limits: cannot read a session file: {error}", file=sys.stderr)
             continue
@@ -871,9 +951,20 @@ def set_models(tree, models, strip):
 
 
 def quiet(session, home):
-    """True when the session's transcript exists and got no line for QUIET_SECONDS."""
-    found = glob.glob(os.path.join(home, "projects", "*", f"{session.get('sessionId')}.jsonl"))
-    return bool(found) and time.time() - os.path.getmtime(found[0]) > QUIET_SECONDS
+    """True when the session's transcript exists and neither it nor a transcript of one of its subagents got a
+    line for QUIET_SECONDS. A working subagent writes to its own file, not to the main transcript. Only file
+    times are read, no content."""
+    sid = str(session.get("sessionId") or "")
+    found = glob.glob(os.path.join(home, "projects", "*", f"{sid}.jsonl"))
+    if not found or not re.fullmatch(SESSION_ID, sid):
+        return False
+    times = []
+    for path in found[:1] + glob.glob(os.path.join(os.path.dirname(found[0]), sid, "subagents", "*.jsonl")):
+        try:
+            times.append(os.stat(path).st_mtime)
+        except OSError:
+            continue  # a file that went between the listing and the stat
+    return bool(times) and time.time() - max(times) > QUIET_SECONDS
 
 
 def set_needs_you(rows):
@@ -917,6 +1008,7 @@ def main():
     past = []  # (surface id, session id, name, state, fields) per live Claude Code session, for the history
     board_runs = False
     screen_keys = set()  # surface ids of tabs that run a tool of SCREEN_TOOLS
+    codex_tabs = {}  # Codex folder -> surface ids of the tabs that run Codex with it (a wrapper and its program share one)
     for line in run(["ps", "eww", "-ax", "-o", "pid=,tty=,command="]).stdout.splitlines():
         board_runs = board_runs or "cmux/scripts/dock-open-prs.sh" in line
         surface = SURFACE_ENV.search(line)
@@ -928,6 +1020,11 @@ def main():
         programs = [os.path.basename(word) for word in command.split(" ", 2)[:2]]
         if any(program == tool or program.startswith(tool + "-") for program in programs for tool in SCREEN_TOOLS):
             screen_keys.add(key)
+        if any(program == "codex" or program.startswith("codex-") for program in programs):
+            # The Codex folder of the tab: its CODEX_HOME, else the usual folder.
+            named = CODEX_ENV.search(line)
+            place = os.path.realpath(named.group(1) if named else os.path.expanduser("~/.codex"))
+            codex_tabs.setdefault(place, set()).add(key)
         codex_home = CODEX_ENV.search(line) if ACCOUNTS else None
         if codex_home and "codex" in command.split(" ", 1)[0]:
             # Only this one variable is read from the environment of the process.
@@ -952,7 +1049,12 @@ def main():
             print(tabs[asked[0][1]][0], asked[0][1])
         return
     # A tab with a Claude Code session has the session's state; a tab outside a workspace has no description.
-    screen_marks({key for key in screen_keys - set(labels) if key in by_id and by_id[key][2]}, by_id, models)
+    states = screen_marks({key for key in screen_keys - set(labels) if key in by_id and by_id[key][2]}, by_id)
+    codex = codex_marks(codex_tabs, set(labels))
+    # One part per tab: the panel keeps only the last part of one name.
+    for key in sorted(set(states) | {key for key in codex if key in by_id and by_id[key][2]}):
+        fields = ([f"screen {states[key]}"] if key in states else []) + codex.get(key, [])
+        models.setdefault(by_id[key][2], []).append(f"{key}: " + " · ".join(fields))
     set_models(tree, models, strip_segments(board_runs))
     set_needs_you({workspace: ", ".join(sorted(items))[:120] for workspace, items in waiting.items()})
 
@@ -972,7 +1074,7 @@ def main():
             print(f"{ref}: {wanted}")
         else:
             print(f"label-tabs: rename failed for {ref}: {done.stderr.strip()}", file=sys.stderr)
-    write_hive(tree, live, titles)
+    write_hive(tree, live, titles, {key: (states.get(key), fields) for key, fields in codex.items()})
     tabs, spaces = hive_places(tree)
     rows = []
     for key, sid, name, status, model in past:

@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Checks of history_step in scripts/label-tabs.py: the log behind the Timeline, Limits and Rhythm views.
+At the end, checks of the functions that read session files: quiet, codex_context, codex_marks and model_of.
 Run: python3 tests/history.py"""
 import importlib.util
 import os
@@ -103,6 +104,77 @@ check("the runs of a session that this pass did not read stay", len(h["g"]) == 3
 
 many = {"b": [[SID, "idle", T - 10, T - 10]] * (watcher.HISTORY_BLOCKS + 50)}
 check("the number of blocks has a cap", len(step(many, [], [], T)["b"]) == watcher.HISTORY_BLOCKS)
+
+# The functions that read session files, on made-up files in a temporary folder (never the real folders).
+import json
+import tempfile
+import time
+
+box = tempfile.mkdtemp()
+os.environ["HOME"] = box  # model_of reads the hand-over file under ~/.cache/cmux-agents
+
+
+def write(path, text, age=0):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as fh:
+        fh.write(text)
+    os.utime(path, (time.time() - age, time.time() - age))
+
+
+# A quiet mark: the main transcript is quiet while a subagent writes to its own transcript.
+claude = os.path.join(box, "claude")
+main_file = os.path.join(claude, "projects", "p", SID + ".jsonl")
+write(main_file, "{}\n", age=30 * 60)
+check("a busy session with a quiet transcript and no subagent is quiet", watcher.quiet({"sessionId": SID}, claude))
+write(os.path.join(claude, "projects", "p", SID, "subagents", "agent-a1.jsonl"), "{}\n", age=60)
+check("a session whose subagent wrote a line a minute ago is not quiet", not watcher.quiet({"sessionId": SID}, claude))
+check("a session with no transcript is not quiet", not watcher.quiet({"sessionId": OTHER}, claude))
+
+# Context share of a Codex session, from the last token count record of its newest session file.
+def token_line(used, window, kind="token_count"):
+    info = None if used is None else {"total_token_usage": {"total_tokens": 9_000_000},
+                                      "last_token_usage": {"input_tokens": 1, "total_tokens": used},
+                                      "model_context_window": window}
+    return json.dumps({"timestamp": "2026-01-01T00:00:00Z", "type": "event_msg",
+                       "payload": {"type": kind, "info": info, "rate_limits": None}}, separators=(",", ":")) + "\n"
+
+
+codex = os.path.join(box, "codex")
+rollout = os.path.join(codex, "sessions", "2026", "01", "01", "rollout-b.jsonl")
+write(os.path.join(codex, "sessions", "2026", "01", "01", "rollout-a.jsonl"), token_line(50_000, 100_000), age=600)
+write(rollout, token_line(20_000, 200_000) + token_line(108_000, 272_000) + token_line(None, None))
+watcher.TAILS.clear()
+check("a Codex context share comes from the last token count with numbers: whole percent and tokens",
+      watcher.codex_context(codex) == (40, 108_000))
+for name, text in (("no window", token_line(108_000, None)), ("a window that is not a number", token_line(108_000, "272000")),
+                   ("a count that is a bool", token_line(True, 272_000)), ("no token count", "{}\n"),
+                   ("more tokens than the window", token_line(300_000, 272_000))):
+    write(rollout, text)
+    watcher.TAILS.clear()
+    check(f"a Codex file with {name} gives no figure, not an older file's figure", watcher.codex_context(codex) is None)
+write(rollout, token_line(108_000, 272_000))
+watcher.TAILS.clear()
+check("one live Codex tab on a folder gets its figure", watcher.codex_marks({codex: {"TAB1"}}, set()) == {"TAB1": ["ctx 40%", "tok 108000"]})
+check("two live Codex tabs on one folder get no figure", watcher.codex_marks({codex: {"TAB1", "TAB2"}}, set()) == {})
+check("a Codex tab that Claude Code labels gets no figure", watcher.codex_marks({codex: {"TAB1"}}, {"TAB1"}) == {})
+check("a Codex figure reaches the hive agent as x and z, not as the model",
+      watcher.hive_agent(["ctx 40%", "tok 108000"]) == {"k": "claude", "x": 40, "z": 108_000})
+
+# Tokens beside the share for Claude Code: the 11th field of the hand-over file.
+fields = ["Fable 5.2 high", "42", "12.34", "", "", "", "", "", "", ""]
+hand_over = os.path.join(box, ".cache", "cmux-agents", SID)
+write(hand_over, "\t".join(fields + ["420000"]))
+got = watcher.model_of({"sessionId": SID}, {}, claude, "")
+check("an 11-field hand-over file gives the context tokens", got == ["Fable 5.2 high", "ctx 42%", "$12.34", "tok 420000"])
+check("the tokens reach the hive agent as z", watcher.hive_agent(got).get("z") == 420_000 and watcher.hive_agent(got)["m"] == "Fable 5.2 high")
+write(hand_over, "\t".join(fields))
+check("a 10-field hand-over file still works and gives no tokens",
+      watcher.model_of({"sessionId": SID}, {}, claude, "") == ["Fable 5.2 high", "ctx 42%", "$12.34"])
+for bad in ("0", "10000000", "12x", "-5", " 420000"):
+    write(hand_over, "\t".join(fields + [bad]))
+    check(f"a token field {bad!r} gives no tokens",
+          not any(f.startswith("tok ") for f in watcher.model_of({"sessionId": SID}, {}, claude, "")))
+check("a bad token field is never taken as the model", "m" not in watcher.hive_agent(["tok 12x"]))
 
 print("OK: all history checks passed" if not failed else f"FAILED: {failed} check(s)")
 sys.exit(1 if failed else 0)
