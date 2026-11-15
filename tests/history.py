@@ -429,5 +429,14 @@ finally:
     else:
         os.environ["HOME"] = saved_home
 
+# The state of a tool that publishes none comes from the live part of its screen only.
+work_line, old = "• Working (12s • esc to interrupt)", ["output line %d" % k for k in range(14)]
+check("a working line at the bottom of the screen reads as working", watcher.screen_state("\n".join(old + [work_line, "", "> ", ""])) == "working")
+check("a working line quoted in old output, above the live part, does not read as working",
+      watcher.screen_state("\n".join([work_line] + old + ["> "])) == "idle")
+check("a permission menu at the bottom reads as asks", watcher.screen_state("\n".join(old + ["Run the command?", "› 1. Yes, proceed", "  2. No"])) == "asks")
+check("a numbered list in old output with an allow word does not read as asks",
+      watcher.screen_state("\n".join(["1. yes, we allow it"] + old + ["> "])) == "idle")
+
 print("OK: all history checks passed" if not failed else f"FAILED: {failed} check(s)")
 sys.exit(1 if failed else 0)

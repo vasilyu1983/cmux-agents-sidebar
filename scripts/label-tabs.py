@@ -89,6 +89,9 @@ GIT_MARKS = {}  # folder -> (branch, commits that no remote holds), for one pass
 # checked against a live process list.
 SCREEN_TOOLS = ("codex", "opencode", "grok", "agy")
 SCREEN_LINES = 30
+# The working line and a menu are tested in the last lines with text only: the live part of the interface sits at
+# the bottom, and a line further up is output of an earlier turn that can quote the same words.
+SCREEN_LIVE = 12
 # Fixed interface lines only; no screen text is kept or shown. Codex prints "• Working (12s • esc to interrupt)".
 SCREEN_WORKING = re.compile(r"\besc to interrupt\b", re.I)
 # A permission or option menu: a first option line ("› 1. Yes, proceed") and a line that offers to allow.
@@ -517,9 +520,9 @@ def transcript_marks(sid, home):
 
 
 def screen_state(text):
-    """"working", "asks" or "idle" for the text of a tab, from the fixed lines of the tool's interface in its last
-    SCREEN_LINES lines. A line that says how to interrupt wins over a menu. The text itself is not kept."""
-    lines = text.splitlines()[-SCREEN_LINES:]
+    """"working", "asks" or "idle" for the text of a tab, from the fixed lines of the tool's interface in the last
+    SCREEN_LIVE lines with text of its last SCREEN_LINES lines. A line that says how to interrupt wins over a menu. The text itself is not kept."""
+    lines = [line for line in text.splitlines()[-SCREEN_LINES:] if line.strip()][-SCREEN_LIVE:]
     if any(SCREEN_WORKING.search(line) for line in lines):
         return "working"
     if any(SCREEN_MENU.match(line) for line in lines) and any(SCREEN_ALLOW.search(line) for line in lines):
