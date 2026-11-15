@@ -263,7 +263,10 @@ const lookOf = (a, sess) =>
   onAgents(a, sess) ? "idle"
     : a.status === "working" || a.status === "needs_input" || a.status === "ended" ? a.status
     : sess.screen === "asks" ? "needs_input" : sess.screen === "working" ? "working" : a.status;
-const dotColor = (row) => (row.done ? DONE_DOT : (STATUS[row.look] ?? statusOf(row.agent)).color);
+// A session whose next step is the reader's has the orange of "needs you", as its pill and its chip. Only a session
+// that is blocked on a prompt also has the fill and the halo.
+const yourTurn = (row) => (row.pills ?? []).some((p) => p.id === "you");
+const dotColor = (row) => (row.done ? DONE_DOT : yourTurn(row) ? ORANGE : (STATUS[row.look] ?? statusOf(row.agent)).color);
 
 // Ended sessions stay visible briefly (a just-finished agent is still news),
 // then hide behind the Ended toggle.
@@ -1322,7 +1325,7 @@ function detailRow(entry) {
 // Only a row that says something has a fill: the focused one, one that asks, one that finished unseen.
 // Every other row is flat, so the list is not a stack of boxes; the band and the rail carry the group.
 const rowBackground = (entry) => () =>
-  (entry().focused ? "#FFFFFF24" : entry().look === "needs_input" ? "#FF9F0A26" : entry().done ? "#BF5AF226" : "clear");
+  (entry().focused ? "#FFFFFF24" : entry().look === "needs_input" ? "#FF9F0A26" : entry().done ? "#BF5AF217" : "clear");
 // The status dot, with a halo for a row that works, asks or finished unseen. The 13 pt frame is always there,
 // so the titles line up.
 const haloDot = (entry) => {
@@ -1330,7 +1333,7 @@ const haloDot = (entry) => {
   return ZStack({}, [
     Circle({ size: 13 }).fill(() => (halo() ? dotColor(entry()) + "33" : "clear")),
     // A dark ring: the dot sits on the group line, and the ring keeps the two apart.
-    Circle({ size: 10 }).fill(DOT_RING),
+    Circle({ size: 10 }).fill(() => (rowBackground(entry)() === "clear" ? DOT_RING : "clear")),
     Circle({ size: 7 }).fill(() => dotColor(entry())),
   ]).frame({ width: 13, height: 13 });
 };

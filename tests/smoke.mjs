@@ -206,7 +206,7 @@ check("render shows all four states", () => {
   // Settled rows are one line with a dot only, so idle and ended show in the summary line of the panel head.
   mustContain(rendered, "asked");  // a session that needs input reads "asked" on its second line
   // A row that finished unseen is one line like the others: its purple fill and its unread mark say it.
-  must(reachable().some((n) => n.props.cornerRadius === 10 && n.props.background === "#BF5AF226"), "no purple fill on the row that finished unseen");
+  must(reachable().some((n) => n.props.cornerRadius === 10 && n.props.background === "#BF5AF217"), "no purple fill on the row that finished unseen");
   // A plain working row shows no state word: its blue dot says it.
   must(!rendered.includes("Working"), "a plain working row shows a state word");
   must(reachable().some((n) => n.props.fill === "#0A84FF"), "no blue dot for the working session");
@@ -332,6 +332,15 @@ check("a row shows no token count: it is in the detail lines, so the next step h
   const figures = withText((t) => /^\d+(\.\d)?[KM]$/.test(t)).map((n) => n.props.text);
   must(figures.length === 0, "a token figure shows on a row: " + JSON.stringify(figures));
   must(withText((t) => t === "12%").length >= 1 && withText((t) => t === "37%").length >= 1, "a context share left the rows");
+});
+check("a row whose next step is the reader's has an orange dot, and no orange fill: it asks, it is not blocked", () => {
+  const subtree = (n) => { const out = []; const walk = (id) => { const x = node(id); if (!x) return; out.push(x); x.children.forEach(walk); }; walk(n.id); return out; };
+  // Pill, chip and dot say the same thing in one colour; the fill stays for a session that waits on a prompt.
+  const card = reachable().filter((n) => n.props.cornerRadius === 10).find((n) => subtree(n).some((x) => x.props.text === "\u2192 you"));
+  must(card, "no row with a your-turn pill in the list");
+  must(card.props.background !== "#FF9F0A26", "a your-turn row has the fill of a blocked session");
+  const marks = subtree(card).filter((n) => n.props.size === 7);
+  must(marks.length === 1 && marks[0].props.fill === "#FF9F0A", "the dot of a your-turn row is not orange: " + JSON.stringify(marks.map((n) => n.props.fill)));
 });
 check("the two parts of a title sit directly in the row and rank above the gap", () => {
   const name = withText((t) => t === "[lead-1]")[0];
@@ -766,7 +775,7 @@ check("a session on its agents is not in NEEDS YOU and shows \"agents running\";
 });
 check("a turn that ends in a tab without the focus is \"finished, not seen\"; a session idle at first sight is not", () => {
   ctx.__setData("workspaces", JSON.stringify(newData("h-err", "idle")));
-  must(cardOf("h-seen").props.background === "#BF5AF226" && rowText("h-seen").includes("finished · not seen"), "h-seen is not marked unseen: " + rowText("h-seen").join(" | "));
+  must(cardOf("h-seen").props.background === "#BF5AF217" && rowText("h-seen").includes("finished · not seen"), "h-seen is not marked unseen: " + rowText("h-seen").join(" | "));
   must(cardOf("h-bad").props.background === "clear", "h-bad was idle from the start and is marked");
 });
 check("the unseen mark clears when the owner focuses the tab, and stays clear after the focus moves on", () => {

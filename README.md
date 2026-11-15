@@ -95,9 +95,10 @@ From top to bottom of the picture. "You do" says what the mark asks of you.
 | `claude 36% ▬ personal · week · resets Wed 23:00` | The fullest limit window of that tool over all your accounts: share used, account, window, reset time. Red from 80% | Slow down or change account before 100% |
 | Tinted band `shop-api  4 · $55  +` | A workspace: name, session count, summed cost. A purple `●1` is 1 tab with unread output | Click to fold. `+` opens a new terminal tab there; right-click for the start menu |
 | Flat line `docs-site` | A workspace with no agent session | Click to go to it |
-| Green dot | The session is idle: it ended its turn | Read the row to see whose step is next |
+| Green dot | The session is idle: it ended its turn, and the next step is not yours | Nothing |
 | Blue dot | The session works now | Nothing |
 | Orange dot, orange row tint | The session asks you something (a permission, a question) | Answer it first |
+| Orange dot, no tint | The session ended its turn and the next step is yours (the `→ you` pill) | Do the step, or answer in the tab |
 | Purple dot, purple row tint | The session finished and you did not look at it yet | Open the tab |
 | `[api-3f]` | The short name of the session; other sessions send messages to this name | Use it to name the session |
 | Text after the name | The title of the tab, else the title of the session | — |
