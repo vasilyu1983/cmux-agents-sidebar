@@ -586,5 +586,132 @@ check("with no session at all the list says \"No sessions yet\"", () => {
   must(withText((t) => t === "Nothing matches").length === 0, "\"Nothing matches\" shows with no session");
 });
 
+// ---------------------------------------------------------------- health marks, the wait on subagents, the seen mark
+// A second data set, after the view went back to its defaults above. The tab order is the reverse of the attention
+// order, so the sort check can fail. h-bad carries only forms that the panel must leave out.
+const N = (n) => "BBBBBBBB-0000-0000-0000-00000000000" + n;
+const newDescription = ["new",
+  "h-loop: sonnet · loop 6 · overlap 2 · silent 1 · err 3",
+  "h-over: sonnet · overlap 2 · silent 1 · err 3",
+  "h-silent: sonnet · silent 1 · err 3",
+  "h-err: sonnet · err 3",
+  "h-bad: sonnet · err 0 · loop x · overlap 10000 · silent -1 · err 3.5 · loop 05",
+  // Its turn ended and a subagent runs: cmux reports it as needs_input, with the plain wait reason "input".
+  "h-agents: sonnet · waits input · sub 1/2: Explore repo",
+  // A permission ask counts, whatever its subagents do.
+  "h-ask: sonnet · waits permission prompt · sub 1/2: Review diff",
+  "h-seen: sonnet",
+  "@home: " + HOME].join(" | ");
+const NAMES = ["h-seen", "h-over", "h-loop", "h-silent", "h-err", "h-bad", "h-agents", "h-ask"];
+const STATES = { "h-seen": "working", "h-over": "working", "h-loop": "working", "h-silent": "working", "h-err": "idle", "h-bad": "idle", "h-agents": "needs_input", "h-ask": "needs_input" };
+// focus: the session whose tab has the focus; seen: the state of h-seen.
+const newData = (focus, seen) => [{
+  id: "ws-new", title: "ignored", directory: "/work/new", description: newDescription, color: "#336699", selected: true, unread: 0,
+  tabs: NAMES.map((n, i) => tab(i + 1, "[" + n + "] t" + i, { id: N(i + 1), focused: n === focus })),
+  agents: NAMES.map((n, i) => agent(n, N(i + 1), n === "h-seen" ? seen : STATES[n], "claude")),
+  prs: [],
+}];
+const subtree = (n) => { const out = []; const walk = (id) => { const x = node(id); if (!x) return; out.push(x); x.children.forEach(walk); }; if (n) walk(n.id); return out; };
+// The card of a session row (the first one, for a row that also shows in NEEDS YOU) and the texts in it.
+const cardOf = (name) => withText((t) => t === "[" + name + "]").map(tapTarget).find((n) => n && n.props.cornerRadius === 10);
+const rowText = (name) => subtree(cardOf(name)).map((n) => n.props.text).filter((t) => typeof t === "string");
+const lastAt = (name) => reachable().map((n) => n.props.text).lastIndexOf("[" + name + "]");
+const YELLOW = "#FFD60A";
+
+check("health marks: one per row, loop > overlap > silent > err, in red, yellow, yellow and dim", () => {
+  ctx.__setData("workspaces", JSON.stringify(newData("h-err", "working")));
+  must(withText((t) => t === "[h-loop]").length === 1, "the new data did not render");
+  const mark = (t) => withText((x) => x === t).filter((n) => n.props.cornerRadius === 4);
+  must(mark("loop 6").length === 1 && mark("loop 6")[0].props.color === "#FF6B61", "h-loop has no red loop 6 pill");
+  must(rowText("h-loop").filter((t) => /^(loop|overlap|silent|err) \d/.test(t)).length === 1, "h-loop shows more than one health mark: " + rowText("h-loop").join(" | "));
+  must(mark("overlap 2").length === 1 && mark("overlap 2")[0].props.color === YELLOW && rowText("h-over").includes("overlap 2"), "h-over has no yellow overlap 2 pill, or another row has one");
+  must(mark("silent 1").length === 1 && mark("silent 1")[0].props.color === YELLOW && rowText("h-silent").includes("silent 1"), "h-silent has no yellow silent 1 pill, or another row has one");
+  must(mark("err 3").length === 1 && mark("err 3")[0].props.color === META && rowText("h-err").includes("err 3"), "h-err has no dim err 3 pill, or another row has one");
+});
+check("health fields with a bad value are left out, and none is taken for the model", () => {
+  must(!rowText("h-bad").some((t) => /^(loop|overlap|silent|err)\b/.test(t)), "h-bad shows a mark: " + rowText("h-bad").join(" | "));
+  must(rowText("h-bad").includes("sonnet") && rowText("h-loop").includes("sonnet"), "a health field took the place of the model");
+  must(withText((t) => /^(loop|overlap|silent|err)$/.test(t)).length === 0, "a health field shows in the model column");
+});
+check("a session on its agents is not in NEEDS YOU and shows \"agents running\"; a permission ask still counts", () => {
+  must(withText((t) => t === "[h-agents]").length === 1, "h-agents shows in the NEEDS YOU block");
+  must(rowText("h-agents").some((t) => t === "agents running"), "h-agents does not show \"agents running\": " + rowText("h-agents").join(" | "));
+  must(cardOf("h-agents").props.background !== "#FF9F0A26", "h-agents has the orange fill of an ask");
+  must(withText((t) => t === "[h-ask]").length === 2 && rowText("h-ask").includes("asked · permission prompt"), "the permission ask with a running subagent left NEEDS YOU");
+  must(withText((t) => t === "1 need you").length === 1 && withText((t) => t === "2 need you").length === 0, "the head count still counts h-agents");
+  const head = withText((t) => t === "NEEDS YOU")[0];
+  must(head && parentOf(head.id).children.map(node).some((n) => n?.props.text === "1"), "the NEEDS YOU block does not count 1");
+});
+check("a turn that ends in a tab without the focus is \"finished, not seen\"; a session idle at first sight is not", () => {
+  ctx.__setData("workspaces", JSON.stringify(newData("h-err", "idle")));
+  must(cardOf("h-seen").props.background === "#BF5AF226" && rowText("h-seen").includes("finished · not seen"), "h-seen is not marked unseen: " + rowText("h-seen").join(" | "));
+  must(cardOf("h-bad").props.background === "clear", "h-bad was idle from the start and is marked");
+});
+check("the attention sort puts a loop just under the sessions that ask", () => {
+  tap(withText((t) => t === "↑")[0]);
+  const ask = lastAt("h-ask");
+  const loop = lastAt("h-loop");
+  must(ask < loop && loop < lastAt("h-seen") && loop < lastAt("h-over"), "order: " + NAMES.map((n) => n + "@" + lastAt(n)).join(", "));
+  tap(withText((t) => t === "↑")[0]);
+});
+check("the unseen mark clears when the owner focuses the tab, and stays clear after the focus moves on", () => {
+  must(rowText("h-seen").includes("finished · not seen"), "h-seen is not marked unseen before the focus");
+  ctx.__setData("workspaces", JSON.stringify(newData("h-seen", "idle")));
+  must(!rowText("h-seen").includes("finished · not seen"), "the focused tab is still marked unseen");
+  ctx.__setData("workspaces", JSON.stringify(newData("h-err", "idle")));
+  must(cardOf("h-seen").props.background === "clear" && !rowText("h-seen").includes("finished · not seen"), "the mark came back after the focus moved on");
+});
+check("the detail lines name each health field in full; a bad value adds no line", () => {
+  tap(subtree(cardOf("h-bad")).find((n) => n.props.text === "›"));
+  must(!textOf().includes("failed tool") && !textOf().includes("also edited"), "h-bad has a health detail line");
+  tap(subtree(cardOf("h-loop")).find((n) => n.props.text === "›"));
+  for (const l of ["6 failed tool calls in a row", "2 files also edited by another session", "1 subagent silent for 10 min or more", "3 failed tool calls or API errors"]) mustContain(textOf(), l);
+});
+check("rows keep their height and their columns with and without the new fields", () => {
+  const rows = reachable().filter((n) => n.props.cornerRadius === 10 && n.props.borderWidth === 1);
+  must(rows.length === 9 && rows.every((n) => n.props.paddingVertical === 4), "a session row has another form");
+  const seconds = reachable().filter((n) => n.props.minHeight === 16 && n.props.paddingLeading === 19);
+  must(seconds.length === rows.length, "second lines: " + seconds.length + " for " + rows.length + " rows");
+  const widths = (w) => reachable().filter((n) => n.props.width === w).length;
+  must(widths(46) === rows.length && widths(54) === rows.length, "the model and cost columns are not on every row");
+});
+check("a row menu opens the views page on the inside view and on the setup view", () => {
+  for (const [label, v] of [["Show inside the sessions", "inside"], ["Show the setup", "setup"]]) {
+    const item = withText((t) => t === label)[0];
+    must(item, "menu item " + JSON.stringify(label) + " not found");
+    const before = cmuxCalls().length;
+    tap(item);
+    const calls = cmuxCalls().slice(before);
+    must(calls.length === 1 && calls[0].method === "browser.open_split", "got " + JSON.stringify(calls));
+    must(JSON.parse(decodeURIComponent(calls[0].params.url.split("#")[1])).v === v, "the link does not open the " + v + " view");
+  }
+});
+// A third data set: an ask with no wait reason yet (the description trails cmux by one watcher pass), an ask on the
+// screen with the plain reason, and an idle session whose subagent runs, with no next step.
+// New tab ids: the panel keeps the last state per tab id, so ids of the data set above would carry its states over.
+const K = (n) => "CCCCCCCC-0000-0000-0000-00000000000" + n;
+const kidsData = (nowaitReason) => [{
+  id: "ws-kids", title: "ignored", directory: "/work/kids", description: ["kids",
+    "k-nowait: sonnet" + (nowaitReason ? " · waits input" : "") + " · sub 1/2: Explore repo",
+    "k-screen: sonnet · waits input · screen asks · sub 1/2: Lint",
+    "k-idle: sonnet · sub 1/2: Review diff"].join(" | "),
+  color: "#336699", selected: true, unread: 0,
+  tabs: ["k-nowait", "k-screen", "k-idle", "k-other"].map((n, i) => tab(i + 1, "[" + n + "] t" + i, { id: K(i + 1), focused: n === "k-other" })),
+  agents: [agent("k-nowait", K(1), "needs_input", "claude"), agent("k-screen", K(2), "needs_input", "claude"),
+    agent("k-idle", K(3), "idle", "claude"), agent("k-other", K(4), "idle", "claude")],
+  prs: [],
+}];
+check("an ask with no wait reason yet, or a menu on the screen, counts even while a subagent runs", () => {
+  ctx.__setData("workspaces", JSON.stringify(kidsData(false)));
+  must(withText((t) => t === "[k-nowait]").length === 2 && withText((t) => t === "[k-screen]").length === 2, "an ask with a running subagent left NEEDS YOU");
+  must(withText((t) => t === "2 need you").length === 1, "the head count does not count both asks");
+  must(rowText("k-idle").includes("agents running"), "the idle session with a running subagent does not show \"agents running\": " + rowText("k-idle").join(" | "));
+});
+check("when the plain reason arrives, the ask becomes a wait on its agents and its turn end is not seen", () => {
+  ctx.__setData("workspaces", JSON.stringify(kidsData(true)));
+  must(withText((t) => t === "[k-nowait]").length === 1 && withText((t) => t === "1 need you").length === 1, "k-nowait still shows in NEEDS YOU");
+  must(rowText("k-nowait").includes("finished · not seen · agents running"), "k-nowait is not an unseen wait on its agents: " + rowText("k-nowait").join(" | "));
+});
+
 console.log(failed === 0 ? "\nOK: all checks passed (runtime: " + path.basename(path.dirname(runtimePath)) + ")" : "\nFAILED: " + failed + " check(s)");
 process.exit(failed === 0 ? 0 : 1);

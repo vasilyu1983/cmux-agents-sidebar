@@ -23,6 +23,7 @@ with the account name on that account's limit items. Without that file nothing c
 With --next-waiting it changes nothing: it prints "<workspace id> <tab id>" of the session that has waited
 for the owner the longest, or nothing when no session waits.
 """
+import datetime
 import glob
 import json
 import os
@@ -61,6 +62,18 @@ SCREEN_ALLOW = re.compile(r"\b(yes|allow|approve)\b", re.I)
 SCREEN_HIVE = {"working": "working", "asks": "needs_input", "idle": "idle"}  # screen state -> hive page state
 CODEX_TAIL = 2_000_000  # bytes read from the end of a Codex session file
 TAILS = {}  # path -> (change time, lines) of a Codex session file, read once per pass
+# "Inside the session": counts kept per Claude Code session in ~/.cache/cmux-agents/<sid>.inside. No text is kept.
+INSIDE = {}  # session id -> its hive keys of this pass (tl, tn, er, ea, lp, cm, fe, fo)
+EDITS = {}  # session id -> {absolute path of an edited file: time of its last edit}, for the overlap of this pass
+FOLDERS = {}  # session id -> its start folder, for the setup inventory of its workspace
+KINDS = ("tool results", "your messages", "replies", "thinking", "attachments")  # parts of the context, in this order
+EDIT_TOOLS = ("Edit", "Write", "NotebookEdit")
+OVERLAP_SECONDS = 6 * 3600  # two sessions that edited one file in this time overlap on it
+SILENT_SECONDS = 10 * 60  # a subagent that is not finished and wrote no line for this time is silent
+SILENT_MAX = 2 * 3600  # after this time the subagent was stopped, not stuck: it gets no mark
+LOOP_RUN = 5  # this many failed tool results in a row give the "loop" field
+SETUP_FILES = ("CLAUDE.md", "AGENTS.md", "GEMINI.md", ".claude/CLAUDE.md")
+SETUP_FOLDERS = ("skills", "agents", "commands", "rules")  # under .claude: only the entries are counted
 
 
 def run(args):
@@ -137,6 +150,132 @@ def wrong_account(session, account):
     return [f"wrong {wanted}"] if re.fullmatch(ACCOUNT_NAME, wanted) else []
 
 
+def tool_label(name, skill=None):
+    """The label of a tool call: "mcp:<server>" for a tool of an MCP server, "skill:<name>" for the Skill tool,
+    else the tool name. Only A-Z, a-z, 0-9 and "_.:-" stay, at most 40 characters."""
+    if name.startswith("mcp__"):
+        name = "mcp:" + name[5:].split("__", 1)[0]
+    elif name == "Skill":
+        name = "skill:" + (skill if isinstance(skill, str) else "")
+    return re.sub(r"[^A-Za-z0-9_.:-]", "", name)[:40] or "tool"
+
+
+def inside_new():
+    return {"o": 0, "tools": {}, "tn": 0, "er": 0, "ea": 0, "lp": 0, "cm": {}, "fe": {}}
+
+
+def inside_load(path, offset):
+    """The counts in <sid>.inside when they were made at this transcript position, else None: then the caller reads
+    the transcript again from its start, once. A file from before the counts existed is such a case."""
+    try:
+        with open(path) as fh:
+            old = json.loads(fh.read(500000))
+        if not isinstance(old, dict) or old.get("o") != offset:
+            return None
+        state = inside_new()
+        state["o"] = offset
+        for key in ("tn", "er", "ea", "lp"):
+            state[key] = int(old[key])
+        state["tools"] = {str(label): int(count) for label, count in old["tools"].items()}
+        state["cm"] = {kind: int(chars) for kind, chars in old["cm"].items() if kind in KINDS}
+        state["fe"] = {str(path): [int(item[0]), int(item[1])] for path, item in old["fe"].items()}
+        return state
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError, TypeError, KeyError, AttributeError, IndexError) as err:
+        print(f"label-tabs: counts file not read ({type(err).__name__}), the transcript is read again", file=sys.stderr)
+        return None
+
+
+def inside_line(state, line, now):
+    """Adds one transcript line to the counts: tool calls by label, failed tool results (and the run of them at the
+    end), API errors, characters per part of the context, edited files. Only labels, counts, lengths, paths and
+    times are kept, never text. now: the time of an edit whose line has no time (0 on a first read, so that an old
+    edit does not look new)."""
+    if b'"isSidechain":true' in line or not any(mark in line for mark in (
+            b'"type":"assistant"', b'"type":"user"', b'"type":"attachment"', b'"isApiErrorMessage":true')):
+        return
+    try:
+        record = json.loads(line)
+    except ValueError:
+        return
+    if not isinstance(record, dict):
+        return
+    kind, parts = record.get("type"), state["cm"]
+
+    def add(part, chars):
+        parts[part] = parts.get(part, 0) + chars
+
+    if record.get("isApiErrorMessage") is True:
+        state["ea"] += 1
+        return
+    if kind == "attachment":
+        # A prompt snapshot is a copy of the prompt for the record, not a part of the context.
+        if (record.get("attachment") or {}).get("type") != "prompt_snapshot":
+            add("attachments", len(line.rstrip(b"\n")))
+        return
+    if kind not in ("assistant", "user"):
+        return  # "api-request" and "api-request-blob" lines repeat content that is counted already
+    message = record.get("message")
+    content = message.get("content") if isinstance(message, dict) else None
+    if isinstance(content, str):
+        add("your messages" if kind == "user" else "replies", len(content))
+        return
+    for block in content if isinstance(content, list) else []:
+        if not isinstance(block, dict):
+            continue
+        part = block.get("type")
+        if part == "text" and isinstance(block.get("text"), str):
+            add("your messages" if kind == "user" else "replies", len(block["text"]))
+        elif part == "thinking" and isinstance(block.get("thinking"), str):
+            add("thinking", len(block["thinking"]))
+        elif part == "tool_result" and kind == "user":
+            if block.get("content") is not None:
+                add("tool results", len(json.dumps(block["content"], ensure_ascii=False)))
+            failed = block.get("is_error") is True
+            state["er"] += failed
+            state["lp"] = state["lp"] + 1 if failed else 0
+        elif part == "tool_use" and kind == "assistant" and isinstance(block.get("name"), str):
+            given = block.get("input") if isinstance(block.get("input"), dict) else {}
+            label = tool_label(block["name"], given.get("skill"))
+            state["tools"][label] = state["tools"].get(label, 0) + 1
+            state["tn"] += 1
+            path = given.get("file_path") or given.get("notebook_path")
+            if block["name"] in EDIT_TOOLS and isinstance(path, str) and path.startswith("/") and len(path) < 1000:
+                try:
+                    at = int(datetime.datetime.fromisoformat(str(record["timestamp"]).replace("Z", "+00:00")).timestamp())
+                except (KeyError, ValueError, TypeError, OverflowError):
+                    at = int(now)
+                state["fe"][path] = [state["fe"].get(path, [0, 0])[0] + 1, at]
+
+
+def inside_save(path, state):
+    """Writes the counts in one step (a new file that replaces the old one), readable by the owner only. It keeps
+    the 100 most used labels and the 50 newest edited files. Raises OSError."""
+    state["tools"] = dict(sorted(state["tools"].items(), key=lambda item: -item[1])[:100])
+    state["fe"] = dict(sorted(state["fe"].items(), key=lambda item: -item[1][1])[:50])
+    handle, temp = tempfile.mkstemp(dir=os.path.dirname(path), prefix=os.path.basename(path) + ".")  # mode 600
+    with os.fdopen(handle, "w") as fh:
+        json.dump(state, fh, separators=(",", ":"))
+    os.replace(temp, path)
+
+
+def inside_summary(state):
+    """The hive keys of the counts: tl, tn, er, ea, lp, cm, fe. A key with nothing to show is left out."""
+    found = {}
+    if state["tn"]:
+        found["tl"] = [[label, count] for label, count in sorted(state["tools"].items(), key=lambda item: (-item[1], item[0]))[:12]]
+        found["tn"] = state["tn"]
+    found.update({key: state[key] for key in ("er", "ea", "lp") if state[key]})
+    parts = [[kind, state["cm"][kind]] for kind in KINDS if state["cm"].get(kind)]
+    if parts:
+        found["cm"] = parts
+    edits = sorted(state["fe"].items(), key=lambda item: -item[1][1])[:8]
+    if edits:
+        found["fe"] = [[clean(os.path.basename(path), 60), count] for path, (count, _at) in edits]
+    return found
+
+
 def transcript_marks(sid, home):
     """["comp 3", "next you push both repos", "prompt fix the login test"] from the transcript of a Claude Code
     session: how often its context was compacted, the last "Next: ..." line of its last reply, and the start of the
@@ -146,11 +285,17 @@ def transcript_marks(sid, home):
     without such a line, clears the line. A text block that starts with "<" (a system reminder, a command wrapper)
     is not a request; a tool result has no text block. Also "title Fix the login test": the title that Claude Code
     gave the session (its "ai-title" record), or the one the user set with /rename ("custom-title"). A state file
-    from before the title was kept is read again from the start of the transcript, once."""
+    from before the title was kept is read again from the start of the transcript, once.
+    The same read fills the counts in ~/.cache/cmux-agents/<sid>.inside (see inside_line): INSIDE[sid] gets their
+    hive keys, EDITS[sid] the edited files, and the result gets "err 3" (failed tool results and API errors) and
+    "loop 5" (failed tool results in a row at the end, from LOOP_RUN on). The context parts start again from 0
+    at a compaction. Counts that do not match the position (or none yet) make the whole transcript be read again."""
     found = glob.glob(os.path.join(home, "projects", "*", f"{sid}.jsonl"))
     if not found:
         return []
     seen = os.path.expanduser(f"~/.cache/cmux-agents/{sid}.seen")
+    inside = seen[:-len(".seen")] + ".inside"
+    state = None
     offset, count, step, prompt, title, named = 0, 0, "", "", "", False
     try:
         with open(seen) as fh:
@@ -164,16 +309,22 @@ def transcript_marks(sid, home):
         size = os.path.getsize(found[0])
         if size < offset:
             offset, count, step, prompt, title, named = 0, 0, "", "", "", False
+        state = inside_load(inside, offset)
+        if state is None:
+            offset, count, step, prompt, title, named = 0, 0, "", "", "", False
+            state = inside_new()
         if size > offset:
             with open(found[0], "rb") as fh:
                 fh.seek(offset)
                 data = fh.read()
             data = data[:data.rfind(b"\n") + 1]
-            start = offset
+            start, now = offset, time.time() if offset else 0
             for line in data.splitlines(keepends=True):
                 start += len(line)
                 if b'"isCompactSummary":true' in line:
                     count += 1
+                    state["cm"] = {}  # the context parts count since the last compaction; the summary comes next
+                inside_line(state, line, now)
                 # A title that the user set stays; a title from the tool follows the tool.
                 if b'"type":"custom-title"' in line or (b'"type":"ai-title"' in line and not named):
                     try:
@@ -212,13 +363,22 @@ def transcript_marks(sid, home):
                         if len(prompt) > 60:
                             prompt = prompt[:59].rstrip() + "…"  # a cut request shows that it is cut
             offset += len(data)
+            state["o"] = offset
+            # The counts first: when they cannot be written, the position does not move on either.
+            inside_save(inside, state)
             fd = os.open(seen, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
             with os.fdopen(fd, "w") as fh:
                 fh.write(f"{offset}\t{count}\t{step}\t{prompt}\t{title}\t{1 if named else 0}\n")
     except OSError as err:
         print(f"label-tabs: transcript of {sid}: {err}", file=sys.stderr)
+    marks = []
+    if state:
+        INSIDE[sid] = inside_summary(state)
+        EDITS[sid] = {path: at for path, (_count, at) in state["fe"].items()}
+        errors, run_now = state["er"] + state["ea"], state["lp"]
+        marks = ([f"err {errors}"] if errors else []) + ([f"loop {run_now}"] if run_now >= LOOP_RUN else [])
     return (([f"comp {count}"] if count else []) + ([f"next {step}"] if step else [])
-            + ([f"prompt {prompt}"] if prompt else []) + ([f"title {title}"] if title else []))
+            + ([f"prompt {prompt}"] if prompt else []) + ([f"title {title}"] if title else []) + marks)
 
 
 def screen_state(text):
@@ -309,6 +469,7 @@ def claude_names():
             if re.fullmatch(SESSION_ID, sid):
                 fields += transcript_marks(sid, home)
             if cwd.startswith("/") and os.path.isdir(cwd):
+                FOLDERS[sid] = cwd
                 branch, ahead = git_marks(cwd)
                 if ahead:
                     fields.append(f"ahead {min(ahead, 999)}")
@@ -319,12 +480,30 @@ def claude_names():
         if len(group) > 1:
             for fields in group.values():
                 fields.append("dup")
+    for pid, shared in file_overlaps({pid: (info[0], info[6]) for pid, info in names.items()}, time.time()).items():
+        names[pid][3].append(f"overlap {len({path for path, _other in shared})}")
+        INSIDE.setdefault(names[pid][6], {})["fo"] = [[clean(os.path.basename(path), 60), other] for path, other in shared[:5]]
     return names
+
+
+def file_overlaps(sessions, now):
+    """pid -> [(path, name of the other session), ...], newest edit first, for each session that edited a file
+    that another session also edited, both in the last OVERLAP_SECONDS. sessions: pid -> (name, session id);
+    the edits come from EDITS."""
+    recent = {pid: {path: at for path, at in EDITS.get(sid, {}).items() if at >= now - OVERLAP_SECONDS}
+              for pid, (_name, sid) in sessions.items()}
+    found = {}
+    for pid, mine in recent.items():
+        shared = [(mine[path], path, sessions[other][0]) for other, theirs in recent.items()
+                  if sessions[other][1] != sessions[pid][1] for path in mine.keys() & theirs.keys()]
+        if shared:
+            found[pid] = [(path, other) for _at, path, other in sorted(shared, key=lambda item: (-item[0], item[1]))]
+    return found
 
 
 def clean_cache(live_ids):
     """Deletes hand-over files older than KEEP_SECONDS. Only regular files whose name is a session id, or a
-    session id with ".seen";
+    session id with ".seen" or ".inside";
     a symlink is never followed; the file of a session that still runs stays."""
     folder = os.path.expanduser("~/.cache/cmux-agents")
     try:
@@ -336,7 +515,7 @@ def clean_cache(live_ids):
         return
     for entry in entries:
         try:
-            sid = entry.name[:-5] if entry.name.endswith(".seen") else entry.name
+            sid = re.sub(r"\.(seen|inside)$", "", entry.name)
             if (not re.fullmatch(SESSION_ID, sid) or sid in live_ids
                     or not entry.is_file(follow_symlinks=False)
                     or time.time() - entry.stat(follow_symlinks=False).st_mtime < KEEP_SECONDS):
@@ -372,7 +551,8 @@ def hive_places(tree):
 def hive_agent(fields):
     """The description fields of one session, as the hive page's keys: m model, x context %, z context tokens,
     c cost, p PR, l lane, u account, q compactions, ch subagents (the running ones by name, the finished ones as
-    a count)."""
+    a count), sa silent subagents. The fields "err", "loop" and "overlap" are for the panel row; the hive keys of
+    the same counts come from INSIDE."""
     agent = {"k": "claude"}
     for field in fields:
         sub = re.fullmatch(r"sub (\d{1,4})/(\d{1,4})(?:: (.*))?", field)
@@ -398,32 +578,85 @@ def hive_agent(fields):
             agent["u"] = field[5:]
         elif re.fullmatch(r"comp \d{1,4}", field):
             agent["q"] = int(field[5:])
-        elif not field.startswith(("cold ", "waits ", "comp ", "next ", "ahead ", "wrong ", "prompt ", "title ", "screen ", "tok ")) and field != "dup" and "m" not in agent:
+        elif re.fullmatch(r"silent \d{1,4}", field):
+            agent["sa"] = int(field[7:])
+        elif not field.startswith(("cold ", "waits ", "comp ", "next ", "ahead ", "wrong ", "prompt ", "title ", "screen ", "tok ",
+                                   "err ", "loop ", "overlap ", "silent ")) and field != "dup" and "m" not in agent:
             agent["m"] = field
     return agent
 
 
-def write_hive(tree, live, titles, codex=None):
+def setup_inventory(folder):
+    """{"files": [[name, bytes], ...], "skills": 2, "agents": 1, "commands": n, "rules": n, "hooks": n, "mcp": n}
+    for the setup of one start folder; a zero count is left out, and nothing found gives {}. It reads only sizes,
+    folder listings (a name with a leading "." is not counted), the number of keys under "hooks" in
+    .claude/settings.json and under "mcpServers" in .mcp.json: never a value. A missing file is left out; an
+    unreadable one too, with one line on stderr that names the file only."""
+    found, sizes = {}, []
+    for name in SETUP_FILES:
+        try:
+            info = os.stat(os.path.join(folder, name))
+            if os.path.isfile(os.path.join(folder, name)):
+                sizes.append([name, info.st_size])
+        except FileNotFoundError:
+            continue
+        except OSError as err:
+            print(f"label-tabs: setup file {name} not read: {type(err).__name__}", file=sys.stderr)
+    if sizes:
+        found["files"] = sizes
+    for name in SETUP_FOLDERS:
+        try:
+            count = sum(not entry.startswith(".") for entry in os.listdir(os.path.join(folder, ".claude", name)))
+        except (FileNotFoundError, NotADirectoryError):
+            continue
+        except OSError as err:
+            print(f"label-tabs: setup folder .claude/{name} not read: {type(err).__name__}", file=sys.stderr)
+            continue
+        if count:
+            found[name] = count
+    for key, name, part in (("hooks", ".claude/settings.json", "hooks"), ("mcp", ".mcp.json", "mcpServers")):
+        try:
+            with open(os.path.join(folder, name)) as fh:
+                keys = json.loads(fh.read(1_000_000)).get(part)
+        except FileNotFoundError:
+            continue
+        except (OSError, ValueError, AttributeError) as err:
+            print(f"label-tabs: setup file {name} not read: {type(err).__name__}", file=sys.stderr)
+            continue
+        if isinstance(keys, dict) and keys:
+            found[key] = len(keys)
+    return found
+
+
+def write_hive(tree, live, titles, codex=None, inside=None):
     """Writes hive-data.js next to this script: the Claude Code sessions, their tabs and the open tab.
     The hive page loads it every 15 seconds. It holds session titles, so it is readable by the owner only.
     codex: tab id -> (screen state, fields of codex_marks), for the Codex tabs that have a context figure. The page
-    copies every key of a live agent over its picture, so a Codex tab comes in only with its title and its state."""
+    copies every key of a live agent over its picture, so a Codex tab comes in only with its title and its state.
+    inside: tab id -> (hive keys of INSIDE, start folder) per Claude Code tab. A workspace gets "inv", the
+    setup_inventory of the start folder of its first session in `live`."""
     tabs, spaces = hive_places(tree)
-    agents = []
+    agents, folders = [], {}
     for key, name, _waits, _stalled, model, status, _since in live:
         if key not in tabs:
             continue
         agent = hive_agent(model)
+        counts, folder = (inside or {}).get(key, ({}, ""))
+        agent.update(counts)
         agent.update(i=key, w=tabs[key][0], s=status, n=titles.get(key) or f"[{name}]", f=tabs[key][1])
         agents.append(agent)
+        if folder:
+            folders.setdefault(tabs[key][0], folder)
     for key, (state, fields) in sorted((codex or {}).items()):
         if key not in tabs or state not in SCREEN_HIVE:
             continue
         agent = hive_agent(fields)
         agent.update(k="codex", i=key, w=tabs[key][0], s=SCREEN_HIVE[state], n=titles.get(key) or "codex", f=tabs[key][1])
         agents.append(agent)
+    inventories = {space: setup_inventory(folder) for space, folder in folders.items()}
     data = {"t": int(time.time()), "cur": next((tab for tab, (_space, focused) in tabs.items() if focused), ""),
-            "ws": [{"w": space, "n": name, "f": selected} for space, (name, selected) in spaces.items()], "a": agents,
+            "ws": [dict({"w": space, "n": name, "f": selected}, **({"inv": inventories[space]} if inventories.get(space) else {}))
+                   for space, (name, selected) in spaces.items()], "a": agents,
             "tabs": sorted(tabs)}
     folder = os.path.dirname(os.path.abspath(__file__))
     # The change time of the page file: an open page reloads itself when this value changes (after an install).
@@ -603,25 +836,28 @@ def open_prs():
 def subagents_of(sid, home):
     """The subagents that Claude Code recorded for the session, as one field: "sub 2/7: Explore repo; Review diff".
     2 run now, 7 in all; the names are those of the running ones. A subagent counts as running while its record
-    is not finished and its transcript got a line in the last 15 minutes (a killed session leaves it unfinished)."""
-    running, total = [], 0
+    is not finished and its transcript got a line in the last 15 minutes (a killed session leaves it unfinished).
+    A second field, "silent 1": the subagents that are not finished and whose transcript got no line for
+    SILENT_SECONDS (file times only)."""
+    running, total, silent = [], 0, 0
     for meta in glob.glob(os.path.join(home, "projects", "*", sid, "subagents", "*.meta.json")):
         try:
             with open(meta) as fh:
                 record = json.load(fh)
-            fresh = time.time() - os.path.getmtime(meta[:-len(".meta.json")] + ".jsonl") < 900
+            age = time.time() - os.path.getmtime(meta[:-len(".meta.json")] + ".jsonl")
         except (OSError, ValueError):
             continue
         if not isinstance(record, dict):
             continue
         total += 1
-        if not record.get("finished") and fresh:
+        silent += not record.get("finished") and SILENT_SECONDS <= age < SILENT_MAX
+        if not record.get("finished") and age < 900:
             name = re.sub(r"[^\w .,-]", "", str(record.get("description") or record.get("agentType") or "subagent"))
             running.append(name.strip()[:28] or "subagent")
     if not total:
         return []
     names = "; ".join(sorted(running)[:5])
-    return [f"sub {len(running)}/{total}" + (f": {names}" if names else "")]
+    return [f"sub {len(running)}/{total}" + (f": {names}" if names else "")] + ([f"silent {silent}"] if silent else [])
 
 
 def model_of(session, prs, home, account):
@@ -1074,7 +1310,8 @@ def main():
             print(f"{ref}: {wanted}")
         else:
             print(f"label-tabs: rename failed for {ref}: {done.stderr.strip()}", file=sys.stderr)
-    write_hive(tree, live, titles, {key: (states.get(key), fields) for key, fields in codex.items()})
+    write_hive(tree, live, titles, {key: (states.get(key), fields) for key, fields in codex.items()},
+               {key: (INSIDE.get(sid, {}), FOLDERS.get(sid, "")) for key, sid, *_rest in past})
     tabs, spaces = hive_places(tree)
     rows = []
     for key, sid, name, status, model in past:

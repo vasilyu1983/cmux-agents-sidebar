@@ -204,6 +204,13 @@ function sessionsOf(w) {
         const m = /^sub (\d{1,4})\/(\d{1,4})(?:: (.*))?$/.exec(f);
         if (m) s.subs = { run: Number(m[1]), total: Number(m[2]), names: m[3] ? m[3].split("; ") : [] };
       }
+      else if (/^(err|loop|overlap|silent) /.test(f)) {
+        // Health from the watcher: "err 3" failed tool calls and API errors, "loop 6" failed tool calls in a row,
+        // "overlap 2" files that another session also edited, "silent 1" subagents with no output for 10 minutes.
+        // Only a whole number from 1 to 9999 counts; another form is left out (and is not taken for the model).
+        const m = /^(err|loop|overlap|silent) ([1-9]\d{0,3})$/.exec(f);
+        if (m) s[m[1]] = Number(m[2]);
+      }
       else s.model = f;
     }
     models[part.slice(0, at)] = s;
@@ -213,6 +220,10 @@ function sessionsOf(w) {
 const sessionName = (tabTitle) => (/^\[(.+?)(?: [!?])?\]/.exec(tabTitle ?? "") ?? [])[1];
 // Context tokens, short: "420K", "1.2M" (one decimal only from 1M); "" when unknown.
 const tokText = (t) => (!(t > 0) ? "" : t >= 999500 ? (t / 1e6).toFixed(1) + "M" : t >= 1000 ? Math.round(t / 1000) + "K" : String(t));
+// "1 file", "2 files".
+const many = (n, one, more) => n + " " + (n === 1 ? one : more);
+// The fields of the session in a tab: by session name, and by tab id for a tool without a session name.
+const sessFields = (models, tab) => ({ ...(models[sessionName(tab?.title)] ?? {}), ...(models[String(tab?.id ?? "").toUpperCase()] ?? {}) });
 
 // Status vocabulary (workspaces[i].agents[j].status). In-flight states get a
 // strong dot; settled states are muted, matching how a roster reads at a
@@ -224,10 +235,20 @@ const STATUS = {
   ended: { color: "#7f7f7f66", label: "Ended", rank: 3 },
 };
 const statusOf = (a) => STATUS[a.status] ?? { color: "#7f7f7f66", label: a.status, rank: 9 };
-// The state a row shows. A cmux "working" or "needs_input" always wins, and an ended record stays ended (older
-// records of a tab share its session fields). Otherwise "screen asks" / "screen working" from the watcher counts.
+// Running subagents: what cmux reports; when it reports none, what label-tabs.py found in the Claude Code records.
+const runningKids = (a, sess) => ((a.children ?? []).length > 0 ? a.children.filter((c) => c.running).length : sess.subs?.run ?? 0);
+// A session that ended its turn while its subagents still run waits on its agents, not on the owner. cmux can report
+// it as "needs_input". It is that case only with the plain "input" that label-tabs.py writes when the tool names no
+// ask. A named reason (a permission, a question), a menu on the screen, or no reason yet (the description can trail
+// the cmux state by one watcher pass) always asks.
+const onAgents = (a, sess) => a.status === "needs_input" && sess.screen !== "asks"
+  && sess.wait === "input" && runningKids(a, sess) > 0;
+// The state a row shows. A cmux "working" or "needs_input" wins, and an ended record stays ended (older
+// records of a tab share its session fields). A session on its agents shows idle: its turn ended.
+// Otherwise "screen asks" / "screen working" from the watcher counts.
 const lookOf = (a, sess) =>
-  a.status === "working" || a.status === "needs_input" || a.status === "ended" ? a.status
+  onAgents(a, sess) ? "idle"
+    : a.status === "working" || a.status === "needs_input" || a.status === "ended" ? a.status
     : sess.screen === "asks" ? "needs_input" : sess.screen === "working" ? "working" : a.status;
 const dotColor = (row) => (row.done ? DONE_DOT : (STATUS[row.look] ?? statusOf(row.agent)).color);
 
@@ -286,8 +307,14 @@ function pillsOf(a, sess, w) {
   add("wrong", sess.wrong ? "≠ " + sess.wrong : "", ORANGE);
   const alert = PR_ALERT.test(sess.pr ?? "");
   if (alert) add("pr", sess.pr, ORANGE);
+  // One health mark at most, loop > overlap > silent > err. A loop is red, files that another session also edits and
+  // silent subagents are yellow: they come before the context pill. Errors are dim and come after the your-turn mark.
+  const health = sess.loop ? ["loop " + sess.loop, RED_TEXT] : sess.overlap ? ["overlap " + sess.overlap, "#FFD60A", NEUTRAL]
+    : sess.silent ? ["silent " + sess.silent, "#FFD60A", NEUTRAL] : null;
+  if (health) add("health", ...health);
   add("ctx", sess.ctx >= 80 ? sess.ctx + "%" : "", RED_TEXT);
   if (sess.look !== "working" && yours(sess.next)) add("you", "→ you", ORANGE);
+  if (!health) plain("health", sess.err ? "err " + sess.err : "");
   plain("ahead", sess.ahead > 0 ? "↑" + sess.ahead : "");
   plain("dup", sess.dup ? "dup" : "");
   // 10 compactions or more: yellow, a fresh session with a hand-over costs less.
@@ -316,6 +343,31 @@ const pill = (p) =>
     .background(() => p().bg ?? p().color + "26").cornerRadius(4)
     .help(() => p().help ?? null);
 const pillRow = (entry) => ForEach({ items: () => entry().pills, key: (p) => p.id }, pill);
+
+// Tabs whose session ended its turn (working or asking, then idle: a turn end can pass through "needs_input" before
+// its wait reason arrives) while another tab had the focus: "finished, not seen", like
+// the unread flag of cmux. The mark clears when the owner focuses the tab or the session works again. A session that
+// is idle when the panel first sees it gets no mark. Kept in memory only: the one store of the panel is the "@view"
+// part of a description, written on a click; a write from here would run on every data change.
+const lastLook = {};
+const unseenSet = {};
+const unseenTabs = computed(() => {
+  const live = new Set();
+  for (const w of data.workspaces() ?? []) {
+    const models = sessionsOf(w);
+    for (const { a, tab } of onePerTab(w)) {
+      if (!tab) continue;
+      live.add(tab.id);
+      const look = lookOf(a, sessFields(models, tab));
+      if ((w.selected && tab.focused) || look === "working") delete unseenSet[tab.id];
+      else if (look === "idle" && (lastLook[tab.id] === "working" || lastLook[tab.id] === "needs_input")) unseenSet[tab.id] = true;
+      lastLook[tab.id] = look;
+    }
+  }
+  for (const id of Object.keys(lastLook)) if (!live.has(id)) { delete lastLook[id]; delete unseenSet[id]; }
+  // A string, so an unchanged set does not run the list again.
+  return Object.keys(unseenSet).sort().join(",");
+});
 
 // One flat entry list: workspace headers + agent rows, so a single keyed
 // ForEach owns the whole roster (kind is encoded in the key, so templates
@@ -381,8 +433,10 @@ const view = computed(() => {
       const sess = earlier ? {} : { ...(models[sessionName(tabTitle)] ?? {}), ...(models[String(tab?.id ?? "").toUpperCase()] ?? {}) };
       if (!sess.acct) sess.acct = accountMarks().tabs[String(tab?.id ?? "").toUpperCase()] ?? "";
       sess.look = lookOf(a, sess);
-      // "Finished, not seen": the turn ended and the tab has output that the owner has not looked at.
-      sess.done = sess.look === "idle" && Boolean(tab?.hasUnread);
+      // "Finished, not seen": the turn ended and the tab has output that the owner has not looked at, or the panel saw
+      // the turn end while another tab had the focus (unseenTabs).
+      sess.done = sess.look === "idle" && (Boolean(tab?.hasUnread) || (Boolean(tab?.id) && unseenTabs().split(",").includes(tab.id)));
+      const agentsWait = onAgents(a, sess);
       // Every row has the same two lines, so a row keeps its height when its state changes and the list does not jump.
       const settled = (sess.look === "idle" && !sess.done) || sess.look === "ended";
       const stalled = /^\[[^\]]* \?\]/.test(tabTitle);
@@ -395,14 +449,16 @@ const view = computed(() => {
       // Subagents: what cmux reports; when it reports none, what label-tabs.py found in the Claude Code records.
       const subs = (a.children ?? []).length > 0 ? null : sess.subs;
       rows.push({
-        // Order for the attention sort: asked, finished not seen, stalled, context nearly full, working, idle, ended.
-        rank: sess.look === "needs_input" ? 0 : sess.done ? 1 : stalled ? 2 : sess.ctx >= 80 ? 3 : sess.look === "working" ? 4 : sess.look === "idle" ? 5 : 6,
+        // Order for the attention sort: asked, in a loop of failed tool calls, finished not seen, stalled, context
+        // nearly full, working, idle, ended.
+        rank: sess.look === "needs_input" ? 0 : sess.loop ? 1 : sess.done ? 2 : stalled ? 3 : sess.ctx >= 80 ? 4 : sess.look === "working" ? 5 : sess.look === "idle" ? 6 : 7,
         look: sess.look,
         done: sess.done,
         // The second line: "asked" when the agent asks a question or waits for a permission, "finished · not seen"
         // when its turn ended and the tab is unread, "quiet 20m+" when it stalled. "from screen": the state comes
         // from the terminal screen. A plain working row shows no state word: its dot says it.
-        state: [a.status === "needs_input" ? "asked"
+        // A session on its agents shows idle and asks nothing.
+        state: [sess.look === "needs_input" && a.status === "needs_input" ? "asked"
           : sess.look === "needs_input" ? "asked · from screen"
           : sess.done ? "finished · not seen" : "", stalled ? "quiet 20m+" : ""].filter(Boolean).join(" · "),
         sessName: sessionName(tabTitle) ?? "",
@@ -422,8 +478,11 @@ const view = computed(() => {
         // A row with a "+N" pill has no room for the label.
         pills: ((shown) => [...shown,
           ...(shown.length <= 2 && a.status !== "needs_input" && sess.look !== "working" && sess.next ? [{ id: "nextl", text: "next", color: TEXT2, bg: "clear" }] : [])])(cappedPills(pillsOf(a, sess, w))),
-        // The second line: why it waits; else what comes next for a session that does not work; else the request.
-        line2: earlier ? (runs.length > 1 ? runs.length + " earlier runs in this tab" : "earlier run in this tab") : (a.status === "needs_input" && sess.wait) || (sess.look !== "working" && sess.next) || "",
+        // The second line: why it waits ("agents running" for a session on its agents); else what comes next for a
+        // session that does not work; else "agents running" for an idle one whose subagents run; else the request.
+        line2: earlier ? (runs.length > 1 ? runs.length + " earlier runs in this tab" : "earlier run in this tab")
+          : (agentsWait && "agents running") || (a.status === "needs_input" && sess.wait) || (sess.look !== "working" && sess.next)
+            || (sess.look === "idle" && runningKids(a, sess) > 0 && "agents running") || "",
         // The end of the second line, in three columns: the model (the tool when no model is known), the context
         // share (yellow from 50%; from 80% it is a red pill, not a column value) and the cost.
         model: String(sess.model ?? "").split(" ")[0] || String(a.kind ?? ""),
@@ -436,7 +495,7 @@ const view = computed(() => {
         cold: sess.look === "idle" ? String(sess.cold ?? "").replace(/^cold /, "❄") : "",
         folder: String(a.directory ?? ""),
         // Why the session waits, and its context share when that is 80% or more (the row shows it in red).
-        wait: a.status === "needs_input" ? sess.wait ?? "" : "",
+        wait: agentsWait ? "agents running" : a.status === "needs_input" ? sess.wait ?? "" : "",
         key: "a:" + w.id + ":" + a.id,
         kind: "agent",
         focused: !earlier && Boolean(w.selected && tab?.focused),
@@ -444,15 +503,19 @@ const view = computed(() => {
         rowId: w.id + ":" + a.id,
         // Detail lines, shown when the owner opens the row with the "›" mark. Empty values are left out.
         info: [
-          ["state", statusOf(a).label + (a.sinceEpoch && a.status !== "idle" ? " for " + fmtElapsed(epoch - a.sinceEpoch) : "")],
+          ["state", (agentsWait ? STATUS.idle : statusOf(a)).label + (a.sinceEpoch && a.status !== "idle" ? " for " + fmtElapsed(epoch - a.sinceEpoch) : "")],
           ["lane", sess.lane ?? (/\/lane-([^/]+)/.exec(String(a.directory ?? "")) ?? [])[1] ?? ""],
           ["pr", sess.pr ?? ""],
           ["cache", sess.cold ? sess.cold + " tokens to rewrite on the next message" : ""],
-          ["waits", a.status === "needs_input" ? sess.wait ?? "" : ""],
+          ["waits", agentsWait ? "agents running: its subagents still work after its turn ended" : a.status === "needs_input" ? sess.wait ?? "" : ""],
           ["next", a.status === "working" ? "" : sess.next ?? ""],
           ["duplicate", sess.dup ? "another live session works in this folder on this branch" : ""],
           ["not pushed", sess.ahead > 0 ? sess.ahead + " commit(s) that no remote holds" : ""],
           ["compacted", sess.comp > 0 ? sess.comp + " time(s)" + (sess.comp >= 3 ? "; a fresh session with a hand-over costs less context" : "") : ""],
+          ["loop", sess.loop ? many(sess.loop, "failed tool call", "failed tool calls") + " in a row" : ""],
+          ["overlap", sess.overlap ? many(sess.overlap, "file", "files") + " also edited by another session" : ""],
+          ["silent", sess.silent ? many(sess.silent, "subagent", "subagents") + " silent for 10 min or more" : ""],
+          ["errors", sess.err ? many(sess.err, "failed tool call or API error", "failed tool calls or API errors") : ""],
           ["tool", a.name],
           ["account", sess.acct || (accountMarks().primary && /claude|codex/.test(String(a.kind ?? "")) ? accountMarks().primary + " (primary)" : "")],
           ["rule", sess.wrong ? "the folder rule names " + sess.wrong + "; start the session again on that account" : ""],
@@ -675,12 +738,15 @@ const counts = computed(() => {
     // The earlier runs of a tab that hosts a live session count as one, as they share one row.
     const live = new Set((w.agents ?? []).filter((a) => a.status !== "ended").map((a) => a.panelId));
     const folded = new Set();
+    const models = sessionsOf(w);
     for (const a of w.agents ?? []) {
       if (a.status === "ended" && live.has(a.panelId)) {
         if (folded.has(a.panelId)) continue;
         folded.add(a.panelId);
       }
-      if (c[a.status] !== undefined) c[a.status] += 1;
+      // A session on its agents counts as idle, as its row shows it: it does not need you.
+      const status = a.status === "needs_input" && onAgents(a, sessFields(models, tabOf(w, a))) ? "idle" : a.status;
+      if (c[status] !== undefined) c[status] += 1;
     }
   }
   return c;
@@ -1006,6 +1072,8 @@ function rowMenu(entry) {
     Button(() => "Copy name" + (entry().sessName ? ": " + entry().sessName : ""), () => clipboard.write(entry().sessName || entry().tabTitle)),
     Button("Copy folder", () => clipboard.write(entry().folder)),
     Button("Show in timeline", () => openViews("timeline", entry().sessName)),
+    Button("Show inside the sessions", () => openViews("inside")),
+    Button("Show the setup", () => openViews("setup")),
     Button(() => (entry().prText ? "Copy PR " + entry().prText.split(" ")[0] : "No PR for this session"),
       () => { if (entry().prText) clipboard.write(entry().prText.split(" ")[0]); }),
   ];

@@ -7,7 +7,7 @@
 <!-- The hive graph of the cmux Agents panel. The panel opens this page with its data after "#" in the link:
      workspaces, their sessions, and the subagents of each session. Every 15 seconds the page also loads
      hive-data.js, a local file next to it that label-tabs.py writes, and brings the picture up to date.
-     A switch at the top changes the view: Hive, Timeline, Cost, Limits, Queue, Context, Rhythm. Timeline, Limits,
+     A switch at the top changes the view: Hive, Timeline, Cost, Limits, Queue, Context, Inside, Rhythm, Setup. Timeline, Limits,
      Queue and Rhythm also read history-data.js, the local history that label-tabs.py keeps (states, times, costs, samples of context and cost, marks, subagent runs
      and limit figures; no request or reply text).
      It loads nothing from the network. It stores two words in the browser's local storage: the last view and the
@@ -17,6 +17,10 @@
 <style>
   :root { --bg: #f6f6f7; --fg: #1c1c1e; --dim: #6e6e73; --line: #c7c7cc; --card: #ffffff; }
   @media (prefers-color-scheme: dark) { :root { --bg: #1c1c1e; --fg: #f2f2f7; --dim: #98989d; --line: #48484a; --card: #2c2c2e; } }
+  /* The Inside view: two grey tones for tools, and one colour per kind of context content. The kinds are a checked
+     categorical set in this order (blue, aqua, violet, magenta, green), one step per mode; they mean nothing about models. */
+  :root { --tool: #636366; --tool-ext: #aeaeb2; --cm: #2a78d6; }
+  @media (prefers-color-scheme: dark) { :root { --tool: #aeaeb2; --tool-ext: #6e6e73; --cm: #3987e5; } }
   body { margin: 0; padding: 16px; background: var(--bg); color: var(--fg); font: 13px -apple-system, system-ui, sans-serif; }
   h1 { font-size: 15px; margin: 0 0 4px; }
   p { margin: 0 0 12px; color: var(--dim); }
@@ -72,11 +76,30 @@ const cut = (text, n) => { const s = String(text ?? ""); return s.length > n ? s
 // Only known keys with the expected type pass. The link and the live file both go through here.
 const text = (v, n) => (typeof v === "string" ? v.slice(0, n) : "");
 const ident = (v) => (typeof v === "string" && /^[0-9A-Fa-f-]{1,40}$/.test(v) ? v.toUpperCase() : "");
+const isCount = (v) => Number.isFinite(v) && v >= 0;
+const count = (v) => (isCount(v) ? v : 0);
+// A list of [text, value] pairs: at most max of them, the text cut to n characters; a text value is cut to 40.
+const pairs = (v, max, n, ok) => (Array.isArray(v) ? v : []).slice(0, max).filter((p) => Array.isArray(p) && p.length === 2 && text(p[0], n) && ok(p[1]))
+  .map((p) => [text(p[0], n), typeof p[1] === "string" ? text(p[1], 40) : p[1]]);
+// The kinds of content in a context window, in the fixed order of their colours (the order is part of the colour check).
+const CM = [["tool results"], ["your messages"], ["replies"], ["thinking"], ["attachments"]];
+// What the folder of a workspace holds for its agents, besides its instruction files.
+const SETUP = [["skills", "skills"], ["agents", "agents"], ["commands", "commands"], ["rules", "rules"], ["hooks", "hooks"], ["mcp", "MCP servers"]];
+const tidyInv = (v) => {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return null;
+  const out = { files: pairs(v.files, 20, 80, isCount) };
+  for (const [key] of SETUP) out[key] = count(v[key]);
+  return out;
+};
 function tidyAgent(a) {
   if (!a || typeof a !== "object") return null;
   const out = { n: text(a.n, 200), k: text(a.k, 40), s: text(a.s, 20), i: ident(a.i), w: ident(a.w), f: a.f === true,
     m: text(a.m, 60), x: Number.isFinite(a.x) ? a.x : null, c: text(a.c, 20), p: text(a.p, 60), l: text(a.l, 60), u: text(a.u, 16),
-    q: Number.isFinite(a.q) ? a.q : 0, z: Number.isFinite(a.z) && a.z > 0 ? a.z : null };
+    q: Number.isFinite(a.q) ? a.q : 0, z: Number.isFinite(a.z) && a.z > 0 ? a.z : null,
+    // The inside of a session. Missing parts become empty, so a new live record also clears an old figure.
+    tl: pairs(a.tl, 12, 40, isCount), tn: count(a.tn), er: count(a.er), ea: count(a.ea), lp: count(a.lp), sa: count(a.sa),
+    cm: pairs(a.cm, 5, 20, isCount).filter((p) => CM.some((c) => c[0] === p[0])), fe: pairs(a.fe, 8, 80, isCount),
+    fo: pairs(a.fo, 5, 80, (v) => typeof v === "string" && v !== "") };
   if (Array.isArray(a.ch)) {
     out.ch = a.ch.slice(0, 40).filter((c) => c && typeof c === "object").map((c) => ({ n: text(c.n, 60), r: c.r === true }));
   }
@@ -88,7 +111,7 @@ function tidy(raw) {
     t: Number.isFinite(raw.t) ? raw.t : 0,
     v: text(raw.v, 12), sel: text(raw.sel, 60),
     ws: raw.ws.slice(0, 200).filter((w) => w && typeof w === "object").map((w) => ({
-      n: text(w.n, 120), c: text(w.c, 9), w: ident(w.w), f: w.f === true,
+      n: text(w.n, 120), c: text(w.c, 9), w: ident(w.w), f: w.f === true, inv: tidyInv(w.inv),
       a: (Array.isArray(w.a) ? w.a : []).slice(0, 300).map(tidyAgent).filter(Boolean),
     })),
   };
@@ -115,7 +138,7 @@ function merge(pic, raw) {
     if (!lw.w) continue;
     let w = pic.ws.find((x) => x.w === lw.w || x.a.some((a) => a.w === lw.w)) || pic.ws.find((x) => !x.w && x.a.length === 0 && x.n === lw.n);
     if (!w) { w = { n: lw.n, c: "", a: [] }; pic.ws.push(w); }
-    w.w = lw.w; w.f = lw.f;
+    w.w = lw.w; w.f = lw.f; w.inv = lw.inv;
     if (lw.n) w.n = lw.n;
   }
   pic.ws = pic.ws.filter((w) => !w.w || live.ws.some((lw) => lw.w === w.w));
@@ -347,6 +370,25 @@ function section(svg, y, w, title, note) {
   if (note) svg.appendChild(el("text", { class: "sub", x: w - 2, y: y + 12, "text-anchor": "end", style: "font-size:11px" }, note));
   return y + 22;
 }
+// Cards in a grid: as many columns of 360 or more as fit, and the cards of a row as tall as the tallest one.
+// draw(item, width) gives [group, height, hover text]; the group draws from its own top left corner. Returns the y under the grid.
+function grid(svg, y, W, list, draw) {
+  const GAP = 12, cols = Math.max(1, Math.floor((W + GAP) / (360 + GAP))), CW = (W - (cols - 1) * GAP) / cols, cards = list.map((item) => draw(item, CW));
+  for (let r = 0; r * cols < cards.length; r++) {
+    const row = cards.slice(r * cols, r * cols + cols), h = Math.max(...row.map((c) => c[1]));
+    row.forEach(([g, , tip], k) => {
+      const box = el("rect", { class: "box", x: 0.5, y: 0.5, width: CW - 1, height: h, rx: 10, style: "stroke-opacity:.5" });
+      if (tip) box.appendChild(el("title", {}, tip));
+      g.insertBefore(box, g.firstChild);
+      g.setAttribute("transform", "translate(" + k * (CW + GAP) + "," + y + ")");
+      svg.appendChild(g);
+    });
+    y += h + GAP;
+  }
+  return y - GAP;
+}
+// A size in bytes as "830 B", "4.2 KB" or "1.3 MB".
+const kb = (b) => (b < 1024 ? Math.round(b) + " B" : b < 1048576 ? (b / 1024).toFixed(1) + " KB" : (b / 1048576).toFixed(1) + " MB");
 
 // ---- Timeline: one lane per session, one block per state ----
 const RANGES = [["auto", 0], ["1h", 3600], ["6h", 21600], ["24h", 86400], ["7d", 604800]];
@@ -893,6 +935,122 @@ function drawContext(svg) {
     + coverage(["Claude Code", "Codex", ...rows.map((a) => toolOf(a.k))]);
 }
 
+// ---- Inside: what each open session does: its tools, what fills its context, its errors and its files ----
+const WARN = "#FFD60A", BAD = "#FF6B61";
+const calls = (a) => a.tn || a.tl.reduce((sum, t) => sum + t[1], 0);
+const hasInside = (a) => calls(a) > 0 || a.cm.length > 0 || a.fe.length > 0 || a.fo.length > 0 || a.er + a.ea + a.lp + a.sa > 0;
+const plural = (n, one, many) => n + " " + (n === 1 ? one : many);
+function insideCard(a, CW) {
+  const go = goOf(a), g = el("g", go ? { class: "go", tabindex: 0, role: "link" } : {}), IW = CW - 32, R = 16 + IW;
+  const name = sessName(a.n) ? "[" + sessName(a.n) + "]" : a.n || a.k;
+  g.appendChild(el("text", { x: 16, y: 26, style: "font-size:13px;font-weight:600" }, cut(name, Math.floor(IW / 8))));
+  g.appendChild(el("text", { class: "sub", x: 16, y: 42, style: "font-size:11px" }, cut([a.wn, a.m].filter(Boolean).join(" · "), Math.floor(IW / 6.4))));
+  let y = 58;
+  const head = (title, note) => {
+    g.appendChild(el("text", { x: 16, y: y + 11, style: "font-size:11px;font-weight:700;fill:var(--dim)" }, title));
+    if (note) g.appendChild(el("text", { class: "sub", x: R, y: y + 11, "text-anchor": "end", style: "font-size:11px" }, note));
+    y += 19;
+  };
+  const quiet = (line) => { g.appendChild(el("text", { class: "sub", x: 16, y: y + 11, style: "font-size:11px" }, line)); y += 17; };
+  // Tools: the top 6 labels, then the rest as "other". MCP servers and skills take the second grey.
+  const top = a.tl.slice(0, 6), shown = top.reduce((sum, t) => sum + t[1], 0), other = Math.max(0, calls(a) - shown);
+  const bars = [...top.map(([t, n]) => [t, n, /^(mcp|skill):/.test(t) ? "var(--tool-ext)" : "var(--tool)"]), ...(other > 0 ? [["other", other, "var(--tool)"]] : [])];
+  head("Tools", calls(a) ? plural(calls(a), "call", "calls") : "");
+  const most = Math.max(1, ...bars.map((b) => b[1])), bx = 16 + 118, bw = IW - 118 - 46;
+  for (const [t, n, color] of bars) {
+    g.appendChild(el("text", { x: 16, y: y + 11, style: "font-size:11px" }, cut(t, 18)));
+    g.appendChild(track(bx, y + 3, bw, 9));
+    const bar = el("rect", { x: bx, y: y + 3, width: Math.max(3, (n / most) * bw), height: 9, rx: 4.5, style: "fill:" + color });
+    bar.appendChild(el("title", {}, (t === "other" ? "other tools" : t) + " · " + plural(n, "call", "calls")));
+    g.appendChild(bar);
+    g.appendChild(el("text", { x: R, y: y + 11, "text-anchor": "end", style: "font-size:11px;font-weight:600" }, String(n)));
+    y += 17;
+  }
+  if (!bars.length) quiet("no tool calls yet");
+  // Context, estimate: one bar per kind in the fixed order, all in one colour with the share beside it.
+  // Five hues cannot stay apart for every colour vision when a kind is missing, so the name carries the kind.
+  y += 8;
+  head("Context, estimate", "by characters since the last compaction");
+  const parts = CM.map(([kind]) => [kind, (a.cm.find((c) => c[0] === kind) || [0, 0])[1]]).filter((p) => p[1] > 0);
+  const sum = parts.reduce((s, p) => s + p[1], 0);
+  if (!sum) quiet("not known yet");
+  for (const [kind, v] of parts) {
+    const share = Math.round((v / sum) * 100);
+    g.appendChild(el("text", { x: 16, y: y + 11, style: "font-size:11px" }, kind === "attachments" ? "setup, reminders" : kind));
+    g.appendChild(track(bx, y + 3, bw, 9));
+    const bar = el("rect", { x: bx, y: y + 3, width: Math.max(3, (v / sum) * bw), height: 9, rx: 4.5, style: "fill:var(--cm)" });
+    bar.appendChild(el("title", {}, (kind === "attachments" ? "attachments: instructions, skill and tool lists, hook output, files" : kind) + " · " + share + "% · " + tokens(v) + " characters"));
+    g.appendChild(bar);
+    g.appendChild(el("text", { x: R, y: y + 11, "text-anchor": "end", style: "font-size:11px;font-weight:600" }, share + "%"));
+    y += 17;
+  }
+  // Errors: failed tool results and API errors; a run of 5 failures or more at the end gets a red pill.
+  y += 8;
+  head("Errors");
+  if (a.er + a.ea + a.lp === 0) quiet("no errors");
+  else {
+    g.appendChild(el("text", { x: 16, y: y + 11, style: "font-size:12px" }, plural(a.er, "failed tool call", "failed tool calls") + " · " + plural(a.ea, "API error", "API errors")));
+    y += 18;
+    if (a.lp >= 5) {
+      const label = a.lp + " failed in a row", pw = label.length * 6.8 + 22;
+      const pill = el("rect", { x: 16, y: y + 1, width: pw, height: 20, rx: 10, style: "fill:color-mix(in srgb, " + BAD + " 20%, var(--card));stroke:" + BAD + ";stroke-opacity:.7" });
+      pill.appendChild(el("title", {}, "the last " + a.lp + " tool results failed: the session may be stuck"));
+      g.appendChild(pill);
+      g.appendChild(el("text", { x: 16 + pw / 2, y: y + 15, "text-anchor": "middle", style: "font-size:11px;font-weight:700;fill:" + BAD + ";pointer-events:none" }, label));
+      y += 26;
+    }
+  }
+  // Files: the most edited ones, a file that another session also edited first and with the warning colour.
+  const others = new Map(a.fo), counts = new Map(a.fe);
+  const files = [...a.fo.map((f) => f[0]), ...a.fe.map((f) => f[0])].filter((f, k, all) => all.indexOf(f) === k)
+    .sort((p, q) => (others.has(q) ? 1 : 0) - (others.has(p) ? 1 : 0) || (counts.get(q) || 0) - (counts.get(p) || 0)).slice(0, 5);
+  if (files.length) {
+    y += 8;
+    head("Files");
+    for (const f of files) {
+      // A file that another session also edited takes a second line that names the other session.
+      const by = others.get(f), n = counts.get(f), right = n ? plural(n, "edit", "edits") : "", h = by ? 32 : 17;
+      const row = el("rect", { x: 10, y: y - 1, width: IW + 12, height: h, rx: 4, style: by ? "fill:color-mix(in srgb, " + WARN + " 22%, var(--card))" : "fill:transparent" });
+      row.appendChild(el("title", {}, f + (n ? " · " + plural(n, "edit", "edits") : "") + (by ? " · also edited by " + by + ": the two sessions can overwrite each other" : "")));
+      g.appendChild(row);
+      if (by) g.appendChild(el("rect", { x: 10, y: y - 1, width: 3, height: h, rx: 1.5, fill: WARN }));
+      g.appendChild(el("text", { x: 16, y: y + 11, style: "font-size:11px;pointer-events:none" + (by ? ";font-weight:600" : "") }, cut(f, Math.floor((IW - 70) / 6.8))));
+      g.appendChild(el("text", { class: "sub", x: R, y: y + 11, "text-anchor": "end", style: "font-size:11px;pointer-events:none" }, right));
+      if (by) g.appendChild(el("text", { x: 16, y: y + 26, style: "font-size:11px;pointer-events:none" }, cut("also edited by " + by, Math.floor(IW / 6.6))));
+      y += h + 1;
+    }
+  }
+  if (a.sa > 0) {
+    y += 8;
+    const dot = el("circle", { cx: 20, cy: y + 7, r: 4, fill: WARN });
+    dot.appendChild(el("title", {}, "a subagent that reported nothing for 10 minutes may be stuck"));
+    g.appendChild(dot);
+    g.appendChild(el("text", { x: 30, y: y + 11, style: "font-size:12px" }, plural(a.sa, "subagent", "subagents") + " silent for 10 min or more"));
+    y += 18;
+  }
+  if (go) jump(g, go);
+  return [g, y + 12, a.n];
+}
+function drawInside(svg) {
+  // A stuck run of failures first, then a file that two sessions edit, then errors, then the busiest.
+  const urgent = (a) => (a.lp >= 5 ? 4 : 0) + (a.fo.length ? 2 : 0) + (a.er + a.ea ? 1 : 0);
+  const rows = agents().filter(hasInside).sort((p, q) => urgent(q) - urgent(p) || calls(q) - calls(p));
+  if (rows.length === 0) {
+    empty(svg, ["Nothing inside the sessions known yet.", "The watcher fills this view after the next reply of a Claude Code session.", ...onlyOthers(["Claude Code"])]);
+    return "Inside: no data." + coverage(["Claude Code"]);
+  }
+  const W = pageWidth(), overlaps = new Set(rows.flatMap((a) => a.fo.map((f) => a.wn + "\n" + f[0]))).size;
+  const failing = rows.filter((a) => a.er + a.ea > 0).length, silent = rows.reduce((s, a) => s + a.sa, 0);
+  let y = tiles(svg, [[String(rows.reduce((s, a) => s + calls(a), 0)), "tool calls, open sessions", ""], [String(failing), failing === 1 ? "session with errors" : "sessions with errors", failing ? BAD : ""],
+    [String(overlaps), overlaps === 1 ? "file edited by two sessions" : "files edited by two sessions", ""], [String(silent), "silent subagents", ""]]);
+  y = grid(svg, y, W, rows, insideCard);
+  size(svg, W, y + 6);
+  legendItems = [["var(--tool)", "tool calls (and other)"], ["var(--tool-ext)", "MCP servers and skills"], ["var(--cm)", "share of the context, by kind"],
+    [WARN, "a file that another session also edited"], [BAD, "5 or more failed tool calls in a row"]];
+  return "What each open session does inside: the sessions to look at first come first. The context parts are an estimate. Click a card to go to its tab."
+    + coverage(["Claude Code"]);
+}
+
 // ---- Rhythm: when the agents worked, by hour and day ----
 function drawRhythm(svg) {
   const now = hist.t || Math.floor(Date.now() / 1000), DAYS = 7;
@@ -984,9 +1142,68 @@ function drawRhythm(svg) {
     + coverage(["Claude Code"]);
 }
 
+// ---- Setup: what the folder of each workspace gives its agents ----
+const LONG_FILE = 40 * 1024;  // an instruction file over this size costs much context in every session
+function setupCard(w, CW) {
+  const g = el("g", {}), IW = CW - 32, R = 16 + IW, files = w.inv.files, total = files.reduce((s, f) => s + f[1], 0);
+  g.appendChild(el("text", { x: 16, y: 26, style: "font-size:13px;font-weight:600" }, cut(w.n || "no name", Math.floor(IW / 8))));
+  g.appendChild(el("text", { class: "sub", x: 16, y: 42, style: "font-size:11px" }, files.length ? plural(files.length, "instruction file", "instruction files") + " · " + kb(total) : "no instruction files"));
+  let y = 56;
+  for (const [name, b] of files) {
+    const long = b > LONG_FILE;
+    const row = el("rect", { x: 10, y: y - 1, width: IW + 12, height: 18, rx: 4, style: long ? "fill:color-mix(in srgb, " + WARN + " 22%, var(--card))" : "fill:transparent" });
+    row.appendChild(el("title", {}, name + " · " + kb(b) + (long ? ": a long instruction file costs context in every session" : "")));
+    g.appendChild(row);
+    if (long) g.appendChild(el("rect", { x: 10, y: y - 1, width: 3, height: 18, rx: 1.5, fill: WARN }));
+    g.appendChild(el("text", { x: 16, y: y + 12, style: "font-size:12px;pointer-events:none" + (long ? ";font-weight:600" : "") }, cut(name, Math.floor((IW - 70) / 7))));
+    g.appendChild(el("text", { x: R, y: y + 12, "text-anchor": "end", style: "font-size:11px;pointer-events:none" + (long ? ";font-weight:600" : ";fill:var(--dim)") }, kb(b)));
+    y += 19;
+  }
+  // The counts as chips in rows; a count of 0 shows no chip.
+  const chips = SETUP.filter(([key]) => w.inv[key] > 0);
+  if (chips.length) {
+    let x = 16;
+    y += 8;
+    for (const [key, label] of chips) {
+      const t = label + " " + w.inv[key], cw = t.length * 6.6 + 18;
+      if (x + cw > R && x > 16) { x = 16; y += 26; }
+      const chip = el("rect", { x, y, width: cw, height: 20, rx: 10, style: "fill:color-mix(in srgb, var(--fg) 7%, var(--card));stroke:var(--line)" });
+      chip.appendChild(el("title", {}, w.inv[key] + " " + label + " in this folder"));
+      g.appendChild(chip);
+      g.appendChild(el("text", { x: x + cw / 2, y: y + 14, "text-anchor": "middle", style: "font-size:11px;font-weight:600;pointer-events:none" }, t));
+      x += cw + 6;
+    }
+    y += 20;
+  }
+  return [g, y + 14, w.n];
+}
+function drawSetup(svg) {
+  // A workspace with no file and only zero counts has no setup either.
+  const found = (w) => w.inv && (w.inv.files.length > 0 || SETUP.some(([key]) => w.inv[key] > 0));
+  const have = pic.ws.filter(found), none = pic.ws.filter((w) => !found(w)).map((w) => w.n || "no name");
+  const noneLine = "no setup files found: " + none.join(", ");
+  if (have.length === 0) {
+    empty(svg, ["No setup figures yet.", "The watcher reads the instruction files and agent folders of each workspace.", ...(none.length ? [cut(noneLine, 96)] : [])]);
+    return "Setup: no data.";
+  }
+  const W = pageWidth(), total = have.reduce((s, w) => s + w.inv.files.reduce((t, f) => t + f[1], 0), 0);
+  let y = tiles(svg, [[String(have.length), have.length === 1 ? "workspace with setup" : "workspaces with setup", ""], [kb(total), "instruction files, all workspaces", ""]]);
+  y = grid(svg, y, W, have, setupCard);
+  if (none.length) {
+    const line = el("text", { class: "sub", x: 2, y: y + 24, style: "font-size:12px" }, cut(noneLine, Math.floor(W / 6.6)));
+    line.appendChild(el("title", {}, noneLine));
+    svg.appendChild(line);
+    y += 32;
+  }
+  size(svg, W, y + 6);
+  legendItems = [[WARN, "instruction file over 40 KB: it costs context in every session"], ["var(--line)", "chip = how many of a kind the folder holds"]];
+  return "What the folder of each workspace gives its agents: instruction files with their sizes, and counts of skills, agents, commands, rules, hooks and MCP servers."
+    + " This shows what exists in the folder, not what was loaded into the window.";
+}
+
 // ---- The switch and the page loop ----
 const VIEWS = [["hive", "Hive", null], ["timeline", "Timeline", drawTimeline], ["cost", "Cost", drawCost], ["flow", "Flow", drawFlow], ["limits", "Limits", drawLimits],
-  ["queue", "Queue", drawQueue], ["context", "Context", drawContext], ["rhythm", "Rhythm", drawRhythm]];
+  ["queue", "Queue", drawQueue], ["context", "Context", drawContext], ["inside", "Inside", drawInside], ["rhythm", "Rhythm", drawRhythm], ["setup", "Setup", drawSetup]];
 const stored = (key, fallback) => { try { return localStorage.getItem(key) || fallback; } catch (err) { return fallback; } };
 const store = (key, value) => { try { localStorage.setItem(key, value); } catch (err) { console.warn("hive: the view is not remembered", err); } };
 

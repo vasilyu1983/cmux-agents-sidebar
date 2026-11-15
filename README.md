@@ -9,7 +9,7 @@ It is made for people who run many agent sessions at the same time: Claude Code,
 
 A drawing of a cmux window with the panel, with sample names.
 
-The panel opens a page of eight views of the same sessions. Four of them:
+The panel opens a page of ten views of the same sessions. Four of them:
 
 | | |
 |---|---|
@@ -34,7 +34,7 @@ All pictures in this file are renders with sample names and sample figures.
 | Subagents | `▸ 2 sub` on a row opens the subagent rows. The count comes from cmux, or from the Claude Code records when cmux reports none |
 | Details | `›` on a row opens state, tool, folder, branch, ports, first and last request |
 | Right-click menu | Go to session, copy name, copy folder, copy PR number, fast commands |
-| `views ↗` | A page of pictures in a cmux browser tab, with a switch at the top: Hive, Timeline, Cost, Limits, Queue, Context, Rhythm (see "The views page"). The Hive view is a graph: workspace → session → subagent. It updates every 15 seconds. The open tab has a blue box. A click on a session goes to its tab, and the page follows you to another workspace |
+| `views ↗` | A page of pictures in a cmux browser tab, with a switch at the top: Hive, Timeline, Cost, Limits, Queue, Context, Inside, Rhythm, Setup (see "The views page"). The Hive view is a graph: workspace → session → subagent. It updates every 15 seconds. The open tab has a blue box. A click on a session goes to its tab, and the page follows you to another workspace |
 | Next waiting | `next-waiting.sh` goes to the Claude Code session that has waited for you the longest |
 | `Limits` | Next to `Here` and `All`: the rate limits of each agent tool on this Mac, per window (5 hours, week), with the reset time and the age of the figure. With an accounts file: one line per tool and account. The panel remembers the choice |
 | Search | Type in `Search agents`: rows stay when the text is in the tab title (with the session name), the tool, the account, the workspace name or the folder. Capital letters do not matter. A search text looks in every workspace, also with `Here` on. A chip narrows the result further. While `Limits` is on, a search text shows the sessions again |
@@ -56,6 +56,9 @@ All pictures in this file are renders with sample names and sample figures.
 | Request | The last request that you typed, with `…` when it is cut, on the second line of a session that works. A notice that the tool added (a text that starts with `<`) is never shown as a request |
 | Cards and pills | Each session is a rounded card: orange tint when it asks, purple when it finished and you did not look. Its marks are small coloured pills under the name, by priority: the wrong-account mark `≠ work`, a PR that needs you, `83%`, `→ you`, `↑2`, `dup`, `⟳3`, `❄190K`, PR, account, folder. A row shows the first 2; `+N` names the rest on hover, and the row details list all of them. The tool has no pill: the model column names it |
 | Stalled | A session with no output for 20 minutes shows `quiet 20m+` in orange on its second line |
+| Health | One mark per row, the worst first: `loop 6` (red: 6 failed tool calls in a row), `overlap 2` (yellow: 2 files also edited by another session), `silent 1` (yellow: a subagent with no output for 10 minutes to 2 hours), `err 3` (grey: failed tool calls or API errors). The row details list all of them |
+| On its agents | A session that ended its turn while its subagents still run shows `agents running` and is not counted in `NEEDS YOU` until they end. A permission or a question always counts |
+| Not seen | A session that ended its turn in a tab without focus is `finished · not seen` until you open the tab (kept until the panel reloads) |
 | `state` | Next to `↑`: groups the rows by state in place of by workspace: `NEEDS YOU`, `FINISHED · NOT SEEN`, `RUNNING`, `RECENT` (idle under 1 hour), `IDLE`. Each row then carries its workspace as a pill. Not saved across reloads |
 | Limit bars | Each live limit window has a bar and its percent in fixed columns: green, orange from 50%, red from 80%. Each limit line of the strip has a small bar too. The `train` line leaves out clauses such as `refused none` |
 | Empty list | `No sessions yet` when no session runs. `Nothing matches` when a chip, an account, `Here` or the search hides every session; `Clear filters` resets the view and the search |
@@ -121,7 +124,7 @@ A row shows at most 2 pills. Their order of priority is: `≠`, a PR that needs 
 
 ### The views page
 
-`views ↗` opens one page with eight views. The page opens on the view that you used last. A click on a session, in any view, goes to its tab.
+`views ↗` opens one page with ten views. The page opens on the view that you used last. A click on a session, in any view, goes to its tab.
 
 | View | The picture | The question it answers | Data |
 |------|-------------|-------------------------|------|
@@ -132,7 +135,9 @@ A row shows at most 2 pills. Their order of priority is: `≠`, a PR that needs 
 | Limits | One card per limit window: the share in big figures, a verdict (`about 81% at the reset` or `100% Sat 19:57`), the readings, then a dashed line to the reset. A red card reaches 100% before the reset | Will I hit a limit before it resets? | History |
 | Queue | One bar per waiting session; the longest wait is first. Orange asks you, pale green ended its turn. Below, `How fast you answer`: the waits of the last 7 days that ended with your answer, counted by length, with the median as a figure | Who waits for me longest? How long do I keep agents waiting? | Live and history |
 | Context | One gauge per session, fullest first, with the number of compactions (`⟳`). `–` = not known: after a compaction or a resume Claude Code gives no figure until the next reply. The line under a gauge is the share over the last 6 hours: it falls at a compaction; the dotted line is 80% | Which session must I compact or restart? | Live and history |
+| Inside | One card per Claude Code session: tool calls by tool (MCP servers and skills in a second grey), an estimate of what fills the context by kind, failed tool calls and API errors, the edited files, files that another session also edited (yellow), silent subagents. Sessions with 5 failures in a row come first | What does each agent do inside, and is one stuck? | Live |
 | Rhythm | A grid of hours × the last 7 days, then a calendar of days (a week per row, up to 5 weeks); darker = more agent work | When do my agents work? | History |
+| Setup | One card per workspace: the instruction files with their sizes, and counts of skills, agents, commands, rules, hooks and MCP servers. A file over 40 KB is yellow. It shows what the folder holds, not what was loaded | What does this workspace give its agents? | Live |
 
 ![Timeline view: a strip with the number of agents at work, then one lane per session with blue, orange and pale green blocks, marks for compactions, and the worked and waited times at the right](examples/view-timeline.png)
 
@@ -155,7 +160,7 @@ The pictures are renders of `scripts/hive.html` with sample data.
 - The history covers Claude Code sessions. Other tools publish no session state.
 - A gap in a lane is a time when the watcher did not run (the Mac slept, or the watcher was stopped).
 - The forecast is a straight line from the last readings. It knows nothing about your plans.
-- From the panel: right-click a row → `Show in timeline`; right-click a limit line → `Show the limit forecast`; right-click a cost line → `Show the cost map`.
+- From the panel: right-click a row → `Show in timeline`; right-click a limit line → `Show the limit forecast`; right-click a cost line → `Show the cost map`; right-click a row → `Show inside the sessions` or `Show the setup`.
 
 The `Limits` view with several accounts: one line per tool and account, red from 80%. A drawing with sample names, made from `examples/limits.html`.
 
@@ -239,6 +244,7 @@ Files that appear later, while the kit runs:
 |------|------------|---------|
 | `~/.cache/cmux-agents/<session id>` | The status line | Model, context, cost and limit figures of one session |
 | `~/.cache/cmux-agents/<session id>.seen` | `label-tabs.py` | How far the transcript was read, the compaction count, the last `Next:` line, the start of the last request and the session title |
+| `~/.cache/cmux-agents/<session id>.inside` | `label-tabs.py` | Counts from the transcript: tool calls per tool, errors, characters per part of the context, and the paths of edited files (mode 600) |
 | `~/.cache/cmux-agents/limit-warned` | `label-tabs.py` | The limit windows that already got a warning, so each one warns once |
 | `~/.config/cmux/scripts/hive-data.js` | `label-tabs.py` | The data of the hive page; it holds your session titles (mode 600) |
 | `~/.config/cmux/scripts/history-data.js` | `label-tabs.py` | The history for the Timeline, Cost, Limits, Queue, Context and Rhythm views: at most 30 days (mode 600) |
@@ -432,13 +438,22 @@ Without a watcher of your own the strip shows only the limit lines, one per tool
 - Everything stays on your Mac. No script calls the network.
 - `label-tabs.py` reads the environment of your own agent processes to find two values, `CMUX_SURFACE_ID` and `CODEX_HOME`. It keeps nothing else from it.
 - The only message that the kit sends is a local cmux notification for a limit warning.
-- `label-tabs.py` reads the transcripts of your live Claude Code sessions on disk. One line of the last reply, the `Next:` line, goes into the workspace description and the hive data file; nothing else leaves the transcript.
+- `label-tabs.py` reads the transcripts of your live Claude Code sessions on disk. One line of the last reply, the `Next:` line, goes into the workspace description and the hive data file; no other reply text leaves the transcript.
 - From the same transcript `label-tabs.py` takes the title of the session (the one you set with `/rename`, else the one the tool gave it), cut to 48 characters. It goes into the workspace description and into `~/.cache/cmux-agents/<session id>.seen`, and the panel shows it on a tab with no title of its own.
 - The start of your last request (60 characters) also goes into the workspace description.
 - For a tab that runs Codex, OpenCode, Grok or Antigravity, `label-tabs.py` asks cmux for the last 30 lines on screen (`cmux read-screen`). It tests them for two fixed interface lines and keeps one word: `working`, `asks` or `idle`. No screen text is stored or shown.
 - `label-tabs.py` keeps a history file, `~/.config/cmux/scripts/history-data.js`, for the views page. Every 15 seconds it records, per live Claude Code session: the session id, the session name (the one you gave it, else the short one of the tool, at most 60 characters), the workspace name, the state (working, needs input, idle) with start and end times, the model, the context share, the cost and the account name. It also records each limit figure with its time; a sample of the context share and the cost per session (one per minute at most, when a figure changed, kept for one day); the time of each compaction and of each cold prompt cache; and per subagent of a live session its agent type (for example `Explore`) with the start and end time, taken from the file times of its transcript. It holds no request text and no reply text. It keeps 30 days, is readable by you only (mode 600), and never leaves your Mac. `uninstall.sh` removes it.
 - For the context share of a Codex tab, `label-tabs.py` reads token counters (numbers only) from the newest Codex session file of that Codex folder. It keeps no text from that file.
-- For the `?` mark, `label-tabs.py` also reads the file times of the subagent transcripts of a session. It reads no content from them.
+- From the same part of the transcript `label-tabs.py` also keeps counts in `~/.cache/cmux-agents/<session id>.inside` (mode 600). It keeps:
+  - the name of each tool that the session called, with a count. A tool of an MCP server counts under the server name. A skill counts under the skill name.
+  - the number of tool results that failed, the number of API errors, and how many tool results failed in a row at the end.
+  - the number of characters per part of the context since the last compaction: tool results, your messages, replies, thinking and attachments (instructions, skill and tool lists, hook output, files). Only the lengths, never the text.
+  - the full path of each file that the session edited, with a count and a time. At most 50 paths.
+  - It keeps no message text, no tool input and no tool output. The hive data file gets the counts, and the file names without their folders.
+- `label-tabs.py` compares the edited paths of your live sessions, to find two sessions that edited the same file in the last 6 hours. The hive data file then names the file and the other session.
+- Four numbers also go into the workspace description: the errors, the failed tool results in a row, the files that overlap with another session, and the silent subagents.
+- For each workspace `label-tabs.py` looks at the start folder of its first session. It keeps the names and sizes of `CLAUDE.md`, `AGENTS.md`, `GEMINI.md` and `.claude/CLAUDE.md`. It counts the entries in `.claude/skills`, `.claude/agents`, `.claude/commands` and `.claude/rules`. It reads no file in those folders. From `.claude/settings.json` it counts the keys under `hooks`, and from `.mcp.json` the keys under `mcpServers`. It never keeps or shows a value from these files. The counts go into the hive data file only.
+- For the `?` mark, `label-tabs.py` also reads the file times of the subagent transcripts of a session. It reads no content from them. These file times and the "finished" mark in the subagent record give the count of silent subagents: not finished, and no line for 10 minutes.
 - The views page stores two words in the browser's local storage of its cmux tab: the last view and the last time range.
 - `~/.cache/cmux-agents` is created with mode 700.
 - The panel writes to the clipboard only from a menu item that you click.

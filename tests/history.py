@@ -176,5 +176,149 @@ for bad in ("0", "10000000", "12x", "-5", " 420000"):
           not any(f.startswith("tok ") for f in watcher.model_of({"sessionId": SID}, {}, claude, "")))
 check("a bad token field is never taken as the model", "m" not in watcher.hive_agent(["tok 12x"]))
 
+# Inside the session: counts from made-up transcript lines. Labels, counts, lengths and paths are kept, never text.
+import contextlib
+import io
+import stat
+
+SECRET = "sk-made-up-secret-0000"
+check("an MCP tool is counted by its server", watcher.tool_label("mcp__shop-db__run_query") == "mcp:shop-db")
+check("the Skill tool is counted by its skill", watcher.tool_label("Skill", "review-pr") == "skill:review-pr")
+check("a label keeps only A-Z a-z 0-9 _.:- and 40 characters",
+      watcher.tool_label("Bad name!$/" + "x" * 60) == ("Badname" + "x" * 60)[:40])
+check("a skill that is not text puts no input into the label", watcher.tool_label("Skill", {"skill": SECRET}) == "skill:")
+
+os.environ["TMPDIR"] = box  # claude_names looks for an owner board there; the made-up folder has none
+dot_claude = os.path.join(box, ".claude")
+cache = os.path.join(box, ".cache", "cmux-agents")
+now_iso = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
+old_iso = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime(time.time() - 7 * 3600))
+
+
+def line(**record):
+    return json.dumps(record, separators=(",", ":")) + "\n"
+
+
+def use(name, at=now_iso, **given):
+    return line(type="assistant", timestamp=at, message={"content": [{"type": "tool_use", "name": name, "input": given}]})
+
+
+def result(failed):
+    return line(type="user", message={"content": [{"type": "tool_result", "is_error": failed, "content": SECRET}]})
+
+
+attachment = line(type="attachment", attachment={"content": SECRET})
+mine = os.path.join(dot_claude, "projects", "p", SID + ".jsonl")
+write(mine, line(type="user", message={"content": [{"type": "text", "text": "fix it"}]})
+      + line(type="assistant", message={"content": [{"type": "thinking", "thinking": "plan"}, {"type": "text", "text": "ok "}]})
+      + use("Bash", command=SECRET) + use("Edit", file_path="/work/shop/app.py", old_string=SECRET)
+      + use("mcp__shop-db__run_query", sql=SECRET) + use("Skill", skill="review-pr")
+      + use("Write", at=old_iso, file_path="/work/shop/old.py", content=SECRET)
+      + result(False) + result(True) * 6 + attachment
+      + line(type="assistant", isApiErrorMessage=True, message={"content": [{"type": "text", "text": SECRET}]})
+      # An "api-request" line repeats content: its tool call must not count.
+      + line(type="api-request", message={"content": [{"type": "tool_use", "name": "Bash", "input": {}}]}, body={"type": "assistant"}))
+errors = io.StringIO()
+with contextlib.redirect_stderr(errors):
+    marks = watcher.transcript_marks(SID, dot_claude)
+got = watcher.INSIDE[SID]
+check("tool calls are counted per label, largest first, without the repeated api-request line",
+      got.get("tn") == 5 and got.get("tl") == [["Bash", 1], ["Edit", 1], ["Write", 1], ["mcp:shop-db", 1], ["skill:review-pr", 1]])
+check("failed tool results, API errors and the run of failures at the end are counted",
+      (got.get("er"), got.get("ea"), got.get("lp")) == (6, 1, 6))
+check("the panel row gets err (results and API errors) and loop", "err 7" in marks and "loop 6" in marks)
+result_chars = len(json.dumps(SECRET)) * 7
+check("the context parts are lengths in the fixed order",
+      got.get("cm") == [["tool results", result_chars], ["your messages", 6], ["replies", 3], ["thinking", 4],
+                        ["attachments", len(attachment) - 1]])
+check("edited files are kept by name, newest first", got.get("fe") == [["app.py", 1], ["old.py", 1]])
+inside_file = os.path.join(cache, SID + ".inside")
+check("the counts file is readable by the owner only", stat.S_IMODE(os.stat(inside_file).st_mode) == 0o600)
+
+with open(mine, "a") as fh:
+    fh.write(line(type="user", isCompactSummary=True, message={"content": "summary"})
+             + line(type="assistant", message={"content": [{"type": "text", "text": "after"}]}) + result(False))
+marks = watcher.transcript_marks(SID, dot_claude)
+got = watcher.INSIDE[SID]
+check("a compaction starts the context parts again; the summary counts after it",
+      got.get("cm") == [["tool results", len(json.dumps(SECRET))], ["your messages", 7], ["replies", 5]] and "comp 1" in marks)
+check("only new lines are read: the tool counts do not double", got.get("tn") == 5 and got.get("er") == 6)
+check("a tool result without error ends the run", "lp" not in got and not any(m.startswith("loop ") for m in marks))
+os.unlink(inside_file)  # a state from before the counts existed: the transcript is read again from its start, once
+marks = watcher.transcript_marks(SID, dot_claude)
+check("without a counts file the transcript is read again, and nothing counts twice",
+      watcher.INSIDE[SID].get("tn") == 5 and "comp 1" in marks and os.path.exists(inside_file))
+
+# A second session edits app.py now (an overlap) and old.py, which the first one edited 7 hours ago (none).
+write(os.path.join(dot_claude, "projects", "p", OTHER + ".jsonl"),
+      use("Edit", file_path="/work/shop/app.py") + use("Write", file_path="/work/shop/old.py"))
+space, space2 = os.path.join(box, "ws"), os.path.join(box, "ws2")
+os.makedirs(space2, exist_ok=True)
+for pid, name, sid, folder in ((101, "api-3f", SID, space), (102, "web-9c", OTHER, space2)):
+    write(os.path.join(dot_claude, "sessions", f"{pid}.json"),
+          json.dumps({"name": name, "pid": pid, "sessionId": sid, "cwd": folder, "status": "busy"}))
+
+# Subagents of the first session: one not finished and quiet for 20 minutes (silent), one finished, one at work.
+agents = os.path.join(dot_claude, "projects", "p", SID, "subagents")
+for agent, record, age in (("a1", {"agentType": "Explore"}, 1200), ("a2", {"agentType": "Plan", "finished": True}, 1200),
+                           ("a3", {"agentType": "Review"}, 60)):
+    write(os.path.join(agents, agent + ".meta.json"), json.dumps(record))
+    write(os.path.join(agents, agent + ".jsonl"), "{}\n", age=age)
+check("a subagent that is not finished and wrote nothing for 10 minutes is silent",
+      watcher.subagents_of(SID, dot_claude) == ["sub 1/3: Review", "silent 1"])
+check("the silent count reaches the hive agent as sa, not as the model", watcher.hive_agent(["silent 1"]) == {"k": "claude", "sa": 1})
+check("the new panel fields are never taken as the model",
+      "m" not in watcher.hive_agent(["err 3", "loop 5", "overlap 1", "silent x"]))
+
+# The setup of a made-up start folder, with secret-looking values in its settings files.
+write(os.path.join(space, "CLAUDE.md"), "abc")
+write(os.path.join(space, ".claude", "CLAUDE.md"), "x")
+for entry in ("skills/a/SKILL.md", "skills/b/SKILL.md", "skills/.DS_Store", "agents/r.md"):
+    write(os.path.join(space, ".claude", entry), "")
+write(os.path.join(space, ".claude", "settings.json"),
+      json.dumps({"hooks": {"PreToolUse": [], "Stop": []}, "env": {"TOKEN": SECRET}}))
+write(os.path.join(space, ".mcp.json"), json.dumps({"mcpServers": {"db": {"env": {"KEY": SECRET}}, "web": {}}}))
+write(os.path.join(space2, ".claude", "settings.json"), "{" + SECRET)  # not JSON: left out, its text not shown
+inventory = {"files": [["CLAUDE.md", 3], [".claude/CLAUDE.md", 1]], "skills": 2, "agents": 1, "hooks": 2, "mcp": 2}
+with contextlib.redirect_stderr(errors):
+    check("the setup inventory has sizes and counts only", watcher.setup_inventory(space) == inventory)
+    check("an unreadable settings file is left out", watcher.setup_inventory(space2) == {})
+check("a folder with no setup gives nothing", watcher.setup_inventory(os.path.join(box, "codex")) == {})
+
+with contextlib.redirect_stderr(errors):
+    names = watcher.claude_names()
+check("two sessions that edited one file in the last 6 hours overlap on it, an older edit does not",
+      "overlap 1" in names[101][3] and "overlap 1" in names[102][3]
+      and watcher.INSIDE[SID].get("fo") == [["app.py", "web-9c"]] and watcher.INSIDE[OTHER].get("fo") == [["app.py", "api-3f"]])
+
+# The hive data: written into the made-up folder, not next to the real script.
+watcher.__file__ = os.path.join(box, "scripts", "label-tabs.py")
+os.makedirs(os.path.dirname(watcher.__file__), exist_ok=True)
+tree = {"windows": [{"ref": "workspace:1", "id": "ws-1", "description": space, "selected": True,
+                     "panes": [{"ref": "surface:1", "id": "tab-1", "focused": True}, {"ref": "surface:2", "id": "tab-2"}]}]}
+live = [("TAB-1", "api-3f", None, False, names[101][3], "working", 0), ("TAB-2", "web-9c", None, False, names[102][3], "working", 0)]
+with contextlib.redirect_stderr(errors):
+    watcher.write_hive(tree, live, {}, None, {key: (watcher.INSIDE.get(sid, {}), watcher.FOLDERS.get(sid, ""))
+                                              for key, sid in (("TAB-1", SID), ("TAB-2", OTHER))})
+with open(os.path.join(box, "scripts", "hive-data.js")) as fh:
+    hive_text = fh.read()
+hive = json.loads(hive_text[hive_text.index("(", hive_text.index("hiveLive(")) + 1:hive_text.rindex(")")])
+first = hive["a"][0]
+check("the hive agent gets the counts", first.get("tn") == 5 and first.get("fo") == [["app.py", "web-9c"]] and first.get("sa") == 1
+      and first.get("m") == "Fable 5.2 high")
+check("a workspace gets the inventory of the start folder of its first session", hive["ws"][0].get("inv") == inventory)
+
+with open(inside_file) as fh:
+    stored = fh.read()
+outputs = [stored, hive_text, json.dumps(watcher.INSIDE), json.dumps(names), errors.getvalue()]
+check("no message text, tool input, tool output or settings value reaches any output", not any(SECRET in out for out in outputs))
+
+DEAD = "77777777-2222-3333-4444-555555555555"
+write(os.path.join(cache, DEAD + ".inside"), "{}", age=15 * 86400)
+os.utime(inside_file, (time.time() - 15 * 86400, time.time() - 15 * 86400))
+watcher.clean_cache({SID})
+check("an old counts file of an ended session goes, a live session's stays",
+      not os.path.exists(os.path.join(cache, DEAD + ".inside")) and os.path.exists(inside_file))
+
 print("OK: all history checks passed" if not failed else f"FAILED: {failed} check(s)")
 sys.exit(1 if failed else 0)
