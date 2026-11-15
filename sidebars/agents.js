@@ -1160,8 +1160,10 @@ function bandRow(entry) {
 }
 
 // A thin line in the workspace colour on the left of each row: the rows read as the inside of their group.
+// It is faint and takes the whole height of its row, so the lines of a group read as one rail and the status dot
+// beside it stays the strongest mark. "height" is the least height, for a row with little text.
 const guide = (entry, height) =>
-  Rectangle().fill(() => seen(entry().wsColor)).opacity(0.7).frame({ width: 2, height });
+  Rectangle().fill(() => seen(entry().wsColor)).opacity(0.35).frame({ width: 2, minHeight: height, maxHeight: "infinity" });
 
 // "[name] title" where the title only repeats the name (a session with a custom name): show it once.
 const rowTitle = (t) => {
@@ -1372,7 +1374,7 @@ const card = (entry, row) => row
 // the pills, then why it waits, what comes next or the request, and at the end model, context share and cost.
 function agentRow(entry) {
   const hot = () => entry().look === "needs_input" || entry().stalled;
-  return card(entry, HStack({ spacing: 8 }, [guide(entry, 34), VStack({ spacing: 4 }, [
+  return card(entry, HStack({ spacing: 8 }, [guide(entry, 42), VStack({ spacing: 4 }, [
     titleLine(entry),
     // The texts are plain parts of the line: a text inside a wrapper is cut while the line still has space.
     // No spacing of the line: an empty pill place would add a gap. Each part has its own 5 pt margin.
@@ -1391,7 +1393,7 @@ function agentRow(entry) {
       cell(Text(() => entry().tokText).font(10).monospaced().lineLimit(1).color(CTX_INK), 29, "trailing").marginLeading(5),
       cell(Text(() => entry().costText).font(10).monospaced().lineLimit(1).color(COST_INK), 49, "trailing").marginLeading(5),
     ]).paddingLeading(UNDER_TITLE).frame({ minHeight: 16 }),
-  ])]).paddingVertical(4));
+  ]).paddingVertical(4)]));
 }
 
 // Child (subagent) row: under the title of its parent with a tree tick. Running

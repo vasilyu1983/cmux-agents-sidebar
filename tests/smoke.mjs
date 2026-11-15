@@ -348,7 +348,7 @@ check("render shows the waiting reason, context share and your-turn mark", () =>
 check("every session row has the same two lines, whatever its state", () => {
   // A row must not change its height when its state changes, or the list jumps under the pointer.
   const rows = reachable().filter((n) => n.props.cornerRadius === 10 && n.props.borderWidth === 1);
-  must(rows.length >= 6 && rows.every((n) => n.props.paddingVertical === 4), "a session row has another form");
+  must(rows.length >= 6 && rows.every((n) => { const [rail, text] = n.children.map(node); return rail.props.minHeight === 42 && rail.props.opacity === 0.35 && text.props.paddingVertical === 4; }), "a session row has another form");
   const seconds = reachable().filter((n) => n.props.minHeight === 16 && n.props.paddingLeading === 19);
   must(seconds.length === rows.length, "second lines: " + seconds.length + " for " + rows.length + " rows");
 });
@@ -757,7 +757,7 @@ check("the detail lines name each health field in full; a bad value adds no line
 });
 check("rows keep their height and their columns with and without the new fields", () => {
   const rows = reachable().filter((n) => n.props.cornerRadius === 10 && n.props.borderWidth === 1);
-  must(rows.length === 9 && rows.every((n) => n.props.paddingVertical === 4), "a session row has another form");
+  must(rows.length === 9 && rows.every((n) => { const [rail, text] = n.children.map(node); return rail.props.minHeight === 42 && rail.props.opacity === 0.35 && text.props.paddingVertical === 4; }), "a session row has another form");
   const seconds = reachable().filter((n) => n.props.minHeight === 16 && n.props.paddingLeading === 19);
   must(seconds.length === rows.length, "second lines: " + seconds.length + " for " + rows.length + " rows");
   const widths = (w) => reachable().filter((n) => n.props.width === w).length;
