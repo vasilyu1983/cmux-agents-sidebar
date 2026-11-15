@@ -612,7 +612,7 @@ function drawCost(svg) {
       const box = el("g", go ? { class: "go", tabindex: 0, role: "link" } : {});
       const rect = el("rect", { x: x0 + 0.5, y: y0 + 0.5, width: bw, height: bh, rx: Math.min(8, bh / 2),
         style: "fill:color-mix(in srgb, " + model[1] + (a.closed ? " 10%" : " 24%") + ", var(--card));stroke:" + model[1] + ";stroke-opacity:.75" + (a.closed ? ";stroke-dasharray:4 3" : "") });
-      rect.appendChild(el("title", {}, a.n + " · " + (a.m || a.k) + " · " + a.c + (a.closed ? " · closed" : "")));
+      rect.appendChild(el("title", {}, a.n + " · " + (a.m || a.k) + " · " + a.c + (a.u ? " · " + a.u : "") + (a.closed ? " · closed" : "")));
       box.appendChild(rect);
       if (bh >= 58 && bw >= 120) {
         box.appendChild(el("text", { x: x0 + 12, y: y0 + 30, style: "font-size:22px;font-weight:600" }, a.c));
@@ -798,6 +798,8 @@ function drawLimits(svg) {
     // The head of the card: the name, the share in big figures, and the verdict.
     const head = el("text", { x: left + 18, y: top + 26, style: "font-size:13px;font-weight:700" }, (TOOL_NAMES[c.tool] || c.tool) + " · " + c.win);
     if (c.acct) head.appendChild(el("tspan", { fill: acctColor(c.acct), style: "font-weight:600" }, "  " + c.acct));
+    // With cards of named accounts beside it, the card of the usual folder says which one it is, as in Flow.
+    else if (charts.some((o) => o.tool === c.tool && o.acct)) head.appendChild(el("tspan", { fill: "#98989d", style: "font-weight:600" }, "  main account"));
     svg.appendChild(head);
     svg.appendChild(el("text", { x: left + 18, y: top + 62, style: "font-size:30px;font-weight:700;fill:" + color }, last[3] + "%"));
     svg.appendChild(el("text", { class: "sub", x: left + 18, y: top + 78, style: "font-size:11px" }, "used · resets in " + dur(c.reset - now) + (now - last[5] > 600 ? " · last reading " + dayTime(last[5]) : "")));
