@@ -1300,7 +1300,8 @@ const kidsBadge = (entry) =>
 // "›" at the end of a row opens its detail lines and shows on hover only; "⌄" closes them and stays in view.
 const infoMark = (entry) =>
   Text(() => (openInfo()[entry().rowId] ? "⌄" : "›"))
-    .font(11).monospaced().color(TEXT2).paddingHorizontal(4)
+    // 14 pt semibold in a fixed 14 pt place: the 11 pt glyph was thin and read as cut off.
+    .font(14).monospaced().weight("semibold").color(TEXT2).frame({ width: 14, height: 14 })
     .showOnHover(() => !openInfo()[entry().rowId])
     .onTap(() => flip(openInfo, setOpenInfo, entry().rowId));
 
