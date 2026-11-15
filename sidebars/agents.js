@@ -717,17 +717,10 @@ const limits = computed(() => {
     const primary = (m[1] === "claude" || m[1] === "codex") ? accountMarks().primary : "";
     const label = TOOLS[m[1]] + (m[6] ? " " + m[6] : primary ? " " + primary : "");
     // The key carries the form (with or without a bar), because a row's template is fixed per key.
-    out.push({ key: "limit" + out.length + m[1] + m[2] + (bar >= 0 ? ":b" : ""), label, value, color, copy: label + " " + value, bar, pct, rest, wsId: newest.wsId, tool: Object.keys(TOOLS).indexOf(m[1]), acct: m[6] ?? "" });
+    out.push({ key: "limit" + out.length + m[1] + m[2] + (bar >= 0 ? ":b" : ""), label, value, color, copy: label + " " + value, bar, pct, rest, wsId: newest.wsId, tool: Object.keys(TOOLS).indexOf(m[1]), acct: m[6] || primary });
   }
   // Lines of one tool stay together, and inside a tool the lines of one account.
   out.sort((a, b) => a.tool - b.tool || (a.acct < b.acct ? -1 : a.acct > b.acct ? 1 : 0));
-  // The tools and accounts with no limit data share one dim line, in place of one line each.
-  const none = out.filter((x) => x.bar < 0 && x.value === "no limit data on this Mac");
-  if (none.length) {
-    for (const x of none) out.splice(out.indexOf(x), 1);
-    const names = none.map((x) => x.label).join(", ");
-    out.push({ key: "limit-nodata", label: "no data", value: names, color: META, copy: "no limit data on this Mac: " + names, bar: -1, wsId: newest.wsId, acct: "" });
-  }
   // The cost estimate per account, summed over the sessions that report one (Claude Code only).
   const sums = {};
   for (const w of accountMarks().primary ? data.workspaces() ?? [] : []) {
@@ -743,6 +736,38 @@ const limits = computed(() => {
     out.push({ key: "cost-" + who, label: "cost " + who, value, color: "secondary", copy: "cost " + who + " " + value, wsId: data.selectedId(), acct: who });
   }
   if (out.length === 0) out.push({ key: "limit-none", label: "limits", value: "no data yet: the watcher writes it within 15 seconds", color: META, copy: "", wsId: data.selectedId() });
+  return out;
+});
+// The Limits view groups the lines of limits() per account: a muted header with the account name, then its tools with
+// their windows (the tool name once), the tools with no data on one muted line, and the cost line of the account.
+// The tools with no account come last, in a group "other". With no account name at all, there is no header.
+const limitRows = computed(() => {
+  const all = limits();
+  if (all.length === 1 && all[0].key === "limit-none") return all.map((x) => ({ ...x, kind: "text", tname: x.label }));
+  const groups = {};
+  const group = (who) => (groups[who] ??= { wins: [], none: [], cost: null });
+  for (const x of all) {
+    if (x.key.startsWith("cost-")) group(x.acct).cost = x;
+    else if (x.bar < 0 && x.value === "no limit data on this Mac") group(x.acct).none.push(x);
+    else group(x.acct).wins.push(x);
+  }
+  const primary = accountMarks().primary;
+  const names = Object.keys(groups).filter(Boolean).sort((a, b) => (b === primary) - (a === primary) || (a < b ? -1 : a > b ? 1 : 0));
+  const out = [];
+  for (const who of groups[""] ? [...names, ""] : names) {
+    const g = groups[who];
+    if (who || names.length) out.push({ key: "head-" + who, kind: "head", label: who || "other", first: out.length === 0 });
+    let last = -1;
+    for (const x of g.wins) {
+      out.push({ ...x, kind: "win", tname: x.tool === last ? "" : TOOLS[Object.keys(TOOLS)[x.tool]] });
+      last = x.tool;
+    }
+    if (g.none.length) {
+      const text = g.none.map((x) => TOOLS[Object.keys(TOOLS)[x.tool]]).join(", ");
+      out.push({ key: "limit-nodata-" + who, kind: "none", tname: "no data", value: text, color: META, copy: "no limit data on this Mac: " + (who ? who + " " : "") + text, bar: -1, wsId: g.none[0].wsId, acct: who });
+    }
+    if (g.cost) out.push({ ...g.cost, kind: "cost", tname: "cost" });
+  }
   return out;
 });
 
@@ -1130,9 +1155,16 @@ function stripRow(entry) {
     ]);
 }
 
-// A line of the Limits view, in fixed columns so the bars line up: label, bar, percent (primary from 80%), then
-// the window, reset time and age. A line without a live window, and a cost line, shows its text after the label.
-function limitRow(entry, width) {
+// A line of the Limits view, in fixed columns so the bars line up: tool, bar, percent (primary from 80%), then
+// the window, reset time and age. A line without a live window, and a cost line, shows its text after the tool column.
+// The account name of a group is a small muted header with space above it (no box, no rule).
+const limitHead = (entry) =>
+  HStack({ spacing: 0 }, [
+    Text(() => entry().label).font(10).monospaced().weight("semibold").color(META).lineLimit(1).truncation("tail"),
+    Spacer(),
+  ]).paddingHorizontal(10).paddingTop(() => (entry().first ? 0 : 8));
+function limitRow(entry) {
+  if (entry().kind === "head") return limitHead(entry);
   const cells = entry().bar >= 0
     ? [
       usedBar(() => entry().bar, 60, 5),
@@ -1142,11 +1174,11 @@ function limitRow(entry, width) {
     ]
     : [Text(() => entry().value).font(10).monospaced().color(() => entry().color).lineLimit(3).truncation("tail").layoutPriority(1).help(() => entry().value)];
   return HStack({ spacing: 8, alignment: "top" }, [
-    cell(Text(() => entry().label).font(10).monospaced().color(TEXT2).lineLimit(1), width, "leading"),
+    cell(Text(() => entry().tname).font(10).monospaced().color(() => (entry().kind === "win" ? TEXT2 : META)).lineLimit(1), 66, "leading"),
     ...cells,
     Spacer(),
   ])
-    .paddingHorizontal(10)
+    .paddingLeading(18).paddingTrailing(10)
     .frame({ maxWidth: "infinity" })
     .onTap(() => cmux("workspace.select", { workspace_id: entry().wsId }))
     .contextMenu([
@@ -1447,7 +1479,7 @@ sidebar(() =>
 
     optional("strip", () => strip().length, () => VStack({ spacing: 2 }, [ForEach({ items: strip, key: (s) => s.key }, (s) => stripRow(s))])),
     // The Limits view takes the place of the session list.
-    optional("limits", limitsShown, () => VStack({ spacing: 5 }, [ForEach({ items: limits, key: (s) => s.key }, (s) => limitRow(s, limits().some((x) => x.acct) ? 120 : 58))])),
+    optional("limits", limitsShown, () => VStack({ spacing: 3 }, [ForEach({ items: limitRows, key: (s) => s.key }, (s) => limitRow(s))])),
 
     HStack({ spacing: 0 }, [
       HStack({ spacing: 6 }, [

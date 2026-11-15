@@ -553,6 +553,48 @@ check("Limits bars are 60 x 5 with a 3 pt minimum fill; a line with no data has 
   tap(withText((t) => t === "Limits")[0]);
   must(!reachable().some((n) => n.props.width === 60 && n.props.height === 5), "a second click on Limits did not close the view");
 });
+// The Limits view groups the lines per account: the name once as a header, the tool name once, the cost inside the group.
+const G = (n) => "EEEEEEEE-0000-0000-0000-00000000000" + n;
+const limitsFixture = (limitsText, extra = []) => JSON.stringify([{
+  id: "ws-acc", title: "ignored", directory: "/work/acc", color: "#336699", selected: true, unread: 0,
+  description: ["/work/acc", "@home: " + HOME, ...extra, "@limits: " + limitsText, "s-one: opus · acct work · $15.91", "s-two: sonnet · $2.00"].join(" | "),
+  tabs: [tab(1, "[s-one] t", { id: G(6), focused: true }), tab(2, "[s-two] t", { id: G(7) })],
+  agents: [agent("s-one", G(6), "idle", "claude"), agent("s-two", G(7), "idle", "claude")], prs: [],
+}]);
+const limitsTexts = () => withText(() => true).map((n) => n.props.text);
+check("the Limits view groups one account: its name once, the tool name once, the cost line in the group", () => {
+  ctx.__setData("workspaces", limitsFixture("claude,5h,7,21:20,1794650000,work;claude,week,1,Sun 10:00,1794650000,work;claude,week,75,Wed 23:00,1794650000;codex,week,4,Wed 10:19,1794650000;claude,,,,0,team-a;codex,,,,0,team-a;opencode,,,,0;grok,,,,0", ["@primary: personal"]));
+  tap(withText((t) => t === "Limits")[0]);
+  const first = limitsTexts();
+  const all = first.slice(first.lastIndexOf("personal"));  // the account chip above the view has a name too
+  const from = 0;
+  const seq = all.slice(from).filter((t) => /^(personal|work|team-a|other|Claude|Codex|no data|cost|\$.* session.*|OpenCode, Grok|Claude, Codex|\d+%|5h · .*|week · .*)$/.test(t));
+  must(JSON.stringify(seq) === JSON.stringify([
+    "personal", "Claude", "75%", "week · resets Wed 23:00", "Codex", "4%", "week · resets Wed 10:19", "cost", "$2.00 · 1 session",
+    "team-a", "no data", "Claude, Codex",
+    "work", "Claude", "7%", "5h · resets 21:20", "1%", "week · resets Sun 10:00", "cost", "$15.91 · 1 session",
+    "other", "no data", "OpenCode, Grok",
+  ]), "the grouped view reads " + JSON.stringify(seq));
+  // Each account name is a header once, and "Claude work" no longer repeats on every line.
+  for (const name of ["personal", "work", "team-a", "other"]) must(all.filter((t) => t === name).length === 1, name + " is not named once");
+  must(!all.some((t) => /^Claude (personal|work)$/.test(t) || /^cost (work|personal)$/.test(t)), "an old flat label is still there");
+  // The no-data tools of a group stay on one muted line; the line copies its account.
+  const none = withText((t) => t === "Claude, Codex")[0];
+  must(none.props.color === META, "the no-data line is not muted");
+  // The bars keep their 60 x 5 size and the cost lines their menu.
+  must(reachable().filter((n) => n.type === "capsule" && n.props.width === 60 && n.props.height === 5).length === 4, "not four 60 x 5 bars");
+  tap(withText((t) => t === "Limits")[0]);
+});
+check("the Limits view of one account with no accounts file has no header and still names a tool with no data", () => {
+  ctx.__setData("workspaces", limitsFixture("claude,5h,30,21:20,1794650000;claude,week,10,Sun 10:00,1794650000;codex,,,,0;grok,,,,0"));
+  tap(withText((t) => t === "Limits")[0]);
+  const all = limitsTexts();
+  must(!all.includes("other") && !all.includes("personal"), "a header shows with one nameless account: " + JSON.stringify(all));
+  must(all.filter((t) => t === "Claude").length === 1, "Claude is named more than once: " + JSON.stringify(all));
+  must(withText((t) => t === "Codex, Grok").length === 1, "the tools with no data are not named on one line");
+  tap(withText((t) => t === "Limits")[0]);
+  ctx.__setData("workspaces", JSON.stringify(workspaces));
+});
 check("a head count filters the list, a second tap clears it; the idle count has no tap", () => {
   must(!tapTarget(withText((t) => t === "2 idle")[0]), "the idle count is tappable");
   tap(withText((t) => t === "1 need you")[0]);
