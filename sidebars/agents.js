@@ -323,6 +323,9 @@ function timeText(a, epoch) {
 
 // The text before the first " | " of a workspace description: the project folder.
 const descHead = (w) => descOf(w).split(" | ")[0];
+// The group name: the repository of a lane or worktree folder ("@repo:" from label-tabs.py), else the folder.
+const repoOf = (w) => (descOf(w).split(" | ").find((p) => p.startsWith("@repo: ")) ?? "").slice(7, 47);
+const groupName = (w) => repoOf(w) || dirTail(descHead(w)) || dirTail(w.directory) || w.title;
 const dirTail = (d) => {
   const parts = String(d ?? "").split("/").filter((p) => p.length > 0);
   return parts.length ? parts[parts.length - 1] : "";
@@ -335,7 +338,7 @@ function pillsOf(a, sess, w) {
   const out = [];
   const add = (id, text, color, bg) => { if (text) out.push({ id, text: String(text), color, bg }); };
   const plain = (id, text) => add(id, text, META, NEUTRAL);
-  const wsName = dirTail(descHead(w)) || dirTail(w.directory) || w.title;
+  const wsName = groupName(w);
   if (byState()) add("ws", wsName, w.color || "#8E8E93");
   add("wrong", sess.wrong ? "≠ " + sess.wrong : "", ORANGE);
   const alert = PR_ALERT.test(sess.pr ?? "");
@@ -506,7 +509,7 @@ const view = computed(() => {
         sessName: sessionName(tabTitle) ?? "",
         sessTitle: sess.title ?? "",
         // The name on the workspace band: the second line leaves the folder out when it only repeats this name.
-        wsName: dirTail(descHead(w)) || dirTail(w.directory) || w.title,
+        wsName: groupName(w),
         // The PR of the lane branch where the session works, with the state from your merge tool: "#644 needs grant".
         prText: sess.pr ?? "",
         acct: sess.acct ?? "",
@@ -605,7 +608,7 @@ const view = computed(() => {
       wsId: w.id,
       // The project folder names the group. w.title is the title of the focused tab, which reads like one more session.
       // The description starts with the project folder; w.directory follows the focused tab (it read "app" for one project).
-      wsTitle: dirTail(descHead(w)) || dirTail(w.directory) || w.title,
+      wsTitle: groupName(w),
       wsColor: w.color || "#8E8E93",
       count: rows.length,
       cost: costOf(w),
@@ -951,7 +954,7 @@ function hiveUrl(mark, view, sel) {
           : hiveSubs(sess.subs),
       });
     }
-    ws.push({ n: dirTail(descHead(w)) || w.title, c: w.color || "#8E8E93", f: mark ? mark.ws === w.id : Boolean(w.selected), a: agents });
+    ws.push({ n: groupName(w), c: w.color || "#8E8E93", f: mark ? mark.ws === w.id : Boolean(w.selected), a: agents });
   }
   if (!home) return "";
   return "file://" + home + "/.config/cmux/scripts/hive.html#" + encodeURIComponent(JSON.stringify({ t: data.clock()?.epoch ?? 0, v: view ?? "", sel: sel ?? "", ws }));

@@ -1221,6 +1221,31 @@ def project_part(folder):
     return f"@proj: {rel}={','.join(names)}" if names else ""
 
 
+REPO_NAMES = {}  # folder -> (repository name, time asked)
+
+
+def repo_part(folder):
+    """"@repo: app" when the workspace folder is a git clone whose origin repository has another name than the
+    folder (a lane or worktree folder such as "fix-logs" of the repository "app"). The panel names the group after it.
+    Only the last part of the origin URL is kept, without ".git". Asked once in 10 minutes per folder."""
+    folder = os.path.expanduser(folder) if folder.startswith("~/") else folder
+    if not (folder.startswith("/") and os.path.isdir(folder)):
+        return ""
+    name, at = REPO_NAMES.get(folder, ("", 0))
+    if time.time() - at > 600:
+        name = ""
+        try:
+            got = subprocess.run(["git", "-C", folder, "config", "--get", "remote.origin.url"], capture_output=True,
+                                 text=True, timeout=3, env={**os.environ, "GIT_OPTIONAL_LOCKS": "0"})
+            last = re.split(r"[/:]", got.stdout.strip().rstrip("/"))[-1] if got.returncode == 0 else ""
+            last = last[:-4] if last.endswith(".git") else last
+            name = last if re.fullmatch(r"[A-Za-z0-9._-]{1,40}", last) and last not in (".", "..") else ""
+        except (OSError, subprocess.TimeoutExpired) as err:
+            print(f"label-tabs: git in {folder}: {err}", file=sys.stderr)
+        REPO_NAMES[folder] = (name, time.time())
+    return f"@repo: {name}" if name and name != os.path.basename(folder.rstrip("/")) else ""
+
+
 LIMIT_READINGS = []  # [tool, window, account, share used in %, reset time (epoch, 0 = unknown), time seen] of one pass
 
 
@@ -1455,6 +1480,18 @@ def workspaces(node, found):
             workspaces(value, found)
 
 
+def workspace_folders():
+    """ref -> current folder of each workspace, from cmux (the tree has no folder). {} when cmux does not answer."""
+    try:
+        listed = run(["cmux", "rpc", "workspace.list"])
+        data = json.loads(listed.stdout) if listed.returncode == 0 else {}
+    except (OSError, ValueError, subprocess.TimeoutExpired) as err:
+        print(f"label-tabs: workspace.list: {err}", file=sys.stderr)
+        return {}
+    rows = data.get("workspaces") or (data.get("result") or {}).get("workspaces") or []
+    return {str(w.get("ref")): str(w.get("current_directory") or "") for w in rows if isinstance(w, dict)}
+
+
 def set_models(tree, models, strip):
     """Keeps "<text> | @train: ... | api-3f: Fable 5.2 high · ctx 42% · $12.34 · waits permission prompt | ..."
     in each workspace description. The Agents panel reads it: a panel gets the description from cmux, but no file,
@@ -1462,21 +1499,24 @@ def set_models(tree, models, strip):
     replaced only when `strip` names that workspace."""
     found = {}
     workspaces(tree, found)
+    folders = workspace_folders()
     if not strip and found:
         # No watcher names a strip workspace: the workspace that already carries "@home" (else the first one)
         # gets fresh general parts, and keeps its other "@" parts.
         target = next((ref for ref, old in found.items() if " | @home: " in old), next(iter(found)))
         kept = [part for part in found[target].split(" | ")[1:]
-                if part.startswith("@") and not part.startswith(("@home: ", "@week: ", "@limits: ", "@tools: ", "@primary: ", "@accts: ", "@cfg: ", "@proj: "))]
+                if part.startswith("@") and not part.startswith(("@home: ", "@week: ", "@limits: ", "@tools: ", "@primary: ", "@accts: ", "@cfg: ", "@proj: ", "@repo: "))]
         strip = {target: kept + general_marks()}
     for workspace, old in found.items():
         parts = old.split(" | ")
-        kept = [part for part in parts[1:] if part.startswith("@") and not part.startswith("@proj: ")]
+        kept = [part for part in parts[1:] if part.startswith("@") and not part.startswith(("@proj: ", "@repo: "))]
         # "@view" and "@pin" belong to the panel (the saved chips, sort, folds and pinned sessions): they stay when
         # the strip parts are replaced.
         marks = strip[workspace] + [part for part in kept if part.startswith(("@view: ", "@pin: "))] if workspace in strip else kept
-        project = project_part(parts[0].rstrip("/"))
-        wanted = " | ".join(parts[:1] + marks + sorted(models.get(workspace, []) + ([project] if project else [])))
+        # The folder is the first part of the description when the owner wrote one, else the workspace folder of cmux.
+        folder = parts[0].strip().rstrip("/") or folders.get(workspace, "")
+        own = [part for part in (project_part(parts[0].rstrip("/")), repo_part(folder)) if part]
+        wanted = " | ".join(parts[:1] + marks + sorted(models.get(workspace, []) + own))
         if wanted == old:
             continue
         done = run(["cmux", "workspace-action", "--action", "set-description", "--workspace", workspace,
