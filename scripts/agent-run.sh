@@ -30,6 +30,16 @@ start() {
   real="$(command -v "$tool")" || die "$tool is not on PATH"
   # A copy or link of this script named like the tool would call itself without end.
   [ "$real" -ef "$0" ] && die "$tool on PATH is this script; call the real tool from a shell function"
+  # In a cmux tab the tool's name is a shell function that runs cmux's own wrapper, and the wrapper adds
+  # the hooks that report the session to cmux. A script does not see that function, so it calls the wrapper.
+  local wrap=""
+  if [ -n "${CMUX_SURFACE_ID:-}" ] && [ -n "${CMUX_BUNDLED_CLI_PATH:-}" ]; then
+    case "$tool" in
+      claude) wrap="${CMUX_BUNDLED_CLI_PATH%/*}/cmux-claude-wrapper" ;;
+      grok) wrap="${CMUX_BUNDLED_CLI_PATH%/*}/grok" ;;
+    esac
+  fi
+  if [ -n "$wrap" ] && [ -x "$wrap" ] && ! [ "$wrap" -ef "$0" ]; then exec "$wrap" "$@"; fi
   exec "$tool" "$@"
 }
 
