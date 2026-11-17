@@ -1623,7 +1623,7 @@ function detailRow(entry) {
   return HStack({ spacing: 6 }, [
     ZStack({}, [guide(entry, 16)]).frame({ width: 13 }),
     // Advice of a design review: values 11.5 pt in the system font (monospace only for paths and names), quieter
-    // 10 pt labels in a 72 pt column, 4 pt between lines and 12 pt between groups, problems first in amber.
+    // 10 pt labels in a 72 pt column, 4 pt between lines and 8 pt between groups, problems first in amber.
     VStack({ spacing: 4 }, [
       ForEach({ items: () => entry().warns, key: (l) => l.id }, (l) =>
         HStack({ spacing: 0 }, [Text(() => l().value).font(11.5).weight("medium").color(WARN_INK).lineLimit(2).truncation("tail"), Spacer()])),
@@ -1634,7 +1634,7 @@ function detailRow(entry) {
             ? Text(() => l().value).font(10.5).monospaced().color(VALUE_INK).lineLimit(2).truncation("middle")
             : Text(() => l().value).font(11.5).color(VALUE_INK).lineLimit(3).truncation("tail"),
           Spacer(),
-        ]).paddingTop(() => (l().gap ? 12 : 0))),
+        ]).paddingTop(() => (l().gap ? 8 : 0))),  // 12 pt read as holes around one-line groups
     ])
       .paddingHorizontal(10).paddingVertical(8)
       .background("#FFFFFF0A")

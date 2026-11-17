@@ -510,7 +510,7 @@ check("detail lines leave out what the row shows, start each group with a gap, a
   must(withText((t) => t === "prompt").length >= 1 && withText((t) => t === "prompt").every((n) => n.props.font === 10 && !n.props.monospaced), "a label is not a 10 pt system label");
   must(!labels.some((t) => /^<event/.test(t ?? "")), "a notice of the tool shows as the last ask");
   const branch = withText((t) => t === "branch")[0];
-  must(branch && parentOf(parentOf(branch.id).id).props.paddingTop === 12, "the work group does not start with a 12 pt gap");
+  must(branch && parentOf(parentOf(branch.id).id).props.paddingTop === 8, "the work group does not start with an 8 pt gap");
   // All lines sit in one shaded area, and the group line beside it keeps the 13 pt column of the row gutter.
   // label → its 64 pt cell → its line → the list of lines → the shaded area.
   const up = (n, k) => (k ? up(parentOf(n.id), k - 1) : n);
