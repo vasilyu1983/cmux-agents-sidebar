@@ -615,7 +615,8 @@ const view = computed(() => {
           ["silent", sess.silent ? many(sess.silent, "subagent", "subagents") + " silent for 10 min or more" : "", "warn"],
           ["duplicate", sess.dup ? "duplicate: another live session works in this folder on this branch" : "", "warn"],
           // Three compactions or more is a problem: a fresh session with a hand-over costs less context.
-          ["compacted", sess.comp > 0 ? (sess.comp >= 3 ? "compacted " + sess.comp + "×: start a fresh session" : sess.comp + "×") : "", sess.comp >= 3 ? "warn" : "run"],
+          // The count is on the row (⟳17), so the problem line gives only the advice.
+          ["compacted", sess.comp > 0 ? (sess.comp >= 3 ? "compacted often: start a fresh session" : sess.comp + "×") : "", sess.comp >= 3 ? "warn" : "run"],
           ["cache", sess.cold ? sess.cold + " tokens to rewrite on the next message" : "", "run"],
           // The model line adds the version and effort to the one word of the row ("Opus 5.5 medium").
           ["model", sess.model ?? "", "run"],
@@ -631,8 +632,9 @@ const view = computed(() => {
           ["folder", String(a.directory ?? "").replace(/^\/Users\/[^/]+/, "~"), "work"],
           ["ports", (tab?.ports ?? []).join(", "), "work"],
           // A text that starts with "<" or "[SYSTEM" is a notice that the tool added (an event, a reminder), not an
-          // ask of the owner. The same text twice shows once.
-          ...((asks) => asks.filter((l, k) => l[1] && !/^(<|\[SYSTEM)/.test(l[1].trim()) && asks.findIndex((m) => m[1] === l[1]) === k))([
+          // ask of the owner. The same text twice shows once, and a one-word ask ("done", "closed") says too little.
+          ...((asks) => asks.filter((l, k) => l[1] && !/^(<|\[SYSTEM)/.test(l[1].trim()) && /\s/.test(l[1].trim())
+            && asks.findIndex((m) => m[1] === l[1]) === k))([
             ["first ask", a.title ?? "", "history"],
             ["last ask", tab?.latestPrompt ?? "", "history"],
             ["prompt", sess.prompt ?? "", "history"],

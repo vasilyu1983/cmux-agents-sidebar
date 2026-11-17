@@ -486,6 +486,8 @@ check("the Show details menu item opens the detail lines of its row", () => {
   must(!textOf().includes("duplicate"), "lead-1 details already open");
   tap(item());
   mustContain(textOf(), "duplicate");
+  // lead-1 compacted 3 times: its ⟳3 pill has the count, so the problem line gives only the advice.
+  mustContain(textOf(), "compacted often: start a fresh session");
   must(item().props.text === "Hide details", "the item did not change to Hide details");
   const open = withText((t) => t === "⌄");
   must(open.length > 0 && open.every((n) => n.props.showOnHover === false), "the open detail mark is not always in view");
@@ -498,12 +500,13 @@ check("detail lines leave out what the row shows, start each group with a gap, a
     id: "ws-bare", title: "ignored", directory: "/work/bare", color: "#336699", selected: true, unread: 0,
     description: ["/work/bare", "@home: " + HOME, "d-1: opus · acct team · ctx 20% · $3.00 · title Ship it · prompt ship the fix"].join(" | "),
     tabs: [tab(1, "[d-1] t", { id: T(7), branch: "lane/x", latestPrompt: "<event kind=\"repl-eval\">" })],
-    agents: [agent("d-1", T(7), "idle", "claude")], prs: [],
+    agents: [{ ...agent("d-1", T(7), "idle", "claude"), title: "closed" }], prs: [],
   }]));
   tap(withText((t) => t === "›")[0]);
   const labels = withText(() => true).map((n) => n.props.text);
   for (const gone of ["tool", "cost", "title", "context", "last prompt"]) must(!labels.includes(gone), "the details still have a " + gone + " line");
   must(labels.includes("prompt") && labels.includes("ship the fix"), "the details lost the prompt");
+  must(!labels.includes("closed") && !labels.includes("first ask"), "a one-word ask still has a line");
   // A plain value reads in the 11.5 pt system font; a path or a name of a branch stays monospaced.
   must(withText((t) => t === "ship the fix").length >= 1 && withText((t) => t === "ship the fix").every((n) => n.props.font === 11.5 && !n.props.monospaced && n.props.color === "#E6E6EA"), "a plain value is not 11.5 pt system text");
   must(withText((t) => t === "lane/x").length >= 1 && withText((t) => t === "lane/x").every((n) => n.props.monospaced === true), "a branch name is not monospaced");
