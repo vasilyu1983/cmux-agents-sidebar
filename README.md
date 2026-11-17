@@ -173,7 +173,8 @@ Examples, with flags from each tool's `--help`:
 | Claude Code | `profile claude sandbox --settings ~/.claude/worker-sandbox.json` | Adds a settings file to your own settings |
 | Claude Code | `profile claude plan --permission-mode plan` | Starts in plan mode |
 | Codex | `profile codex sandbox --sandbox workspace-write` | Sets the sandbox policy (`read-only`, `workspace-write`, `danger-full-access`) |
-| OpenCode | `profile opencode plan --agent plan` | Starts with another agent of your OpenCode config |
+| OpenCode | `profile opencode plan --agent plan` | Starts with another agent of your OpenCode config. OpenCode has no sandbox flag |
+| Grok | `profile grok sandbox --sandbox workspace` | Sets the sandbox profile (`workspace` is built in; your own go in `~/.grok/sandbox.toml`). Grok refuses to start with a profile it does not know |
 | Grok | `profile grok plan --permission-mode plan` | Sets the permission mode |
 
 Rules:

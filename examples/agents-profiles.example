@@ -21,5 +21,7 @@ profile codex readonly --sandbox read-only
 # OpenCode: start with another agent of your OpenCode config.
 profile opencode plan --agent plan
 
-# Grok: the permission mode (default, acceptEdits, auto, dontAsk, bypassPermissions, plan).
+# Grok: a sandbox profile ("workspace" is built in; define your own in ~/.grok/sandbox.toml), or the
+# permission mode (default, acceptEdits, auto, dontAsk, bypassPermissions, plan).
+profile grok sandbox --sandbox workspace
 profile grok plan --permission-mode plan
