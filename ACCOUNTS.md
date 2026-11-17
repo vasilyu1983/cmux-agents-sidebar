@@ -148,7 +148,7 @@ only way to change it.
 
 | | Shared through links | Separate for each account |
 |---|---|---|
-| Claude Code | Settings, instructions, hooks, rules, skills, agents, commands, output styles, plugins, status line, workflows, key bindings, teams | The login, sessions and `/resume`, project memory, history, MCP servers added at user level, folder trust answers |
+| Claude Code | Settings, instructions, hooks, rules, skills, agents, commands, output styles, plugins, status line, workflows, key bindings, teams | The login, sessions and `/resume`, project memory, history, MCP servers added at user level and every MCP sign-in (a plugin's server too), folder trust answers |
 | Codex | `config.toml`, `AGENTS.md`, `instructions.md`, `hooks.json`, rules, skills, agents, plugins, key bindings | The login, sessions, memories, history |
 | OpenCode | Nothing is linked; its settings stay in `~/.config/opencode` | The login and the sessions |
 | Grok Build | Nothing is linked; `GROK_HOME` holds the settings too | Everything: settings, login, sessions, skills, plugins, logs |

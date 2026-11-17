@@ -494,7 +494,7 @@ What an account folder shares: `agents-account-add.sh` links a fixed list of set
 
 | Tool | Linked | Separate for each account |
 |---|---|---|
-| Claude Code | `settings.json`, `CLAUDE.md`, `hooks`, `rules`, `skills`, `agents`, `commands`, `output-styles`, `plugins`, `statusline-command.sh`, `workflows`, `keybindings.json`, `teams` | The login, sessions and `/resume`, project memory, history, MCP servers added at user level |
+| Claude Code | `settings.json`, `CLAUDE.md`, `hooks`, `rules`, `skills`, `agents`, `commands`, `output-styles`, `plugins`, `statusline-command.sh`, `workflows`, `keybindings.json`, `teams` | The login, sessions and `/resume`, project memory, history, MCP servers added at user level and every MCP sign-in (a plugin's server too) |
 | Codex | `config.toml`, `AGENTS.md`, `instructions.md`, `hooks.json`, `rules`, `skills`, `agents`, `plugins`, `keybindings.json` | The login, sessions, memories, history |
 | OpenCode | nothing; its settings stay in `~/.config/opencode` | The login and the sessions |
 | Grok Build | nothing; `GROK_HOME` holds the settings too, so the account starts with its own | Everything: settings, login, sessions, skills, plugins, logs |
@@ -518,6 +518,21 @@ Limits to know:
 - The folder does not separate every sign-in. `ANTHROPIC_AUTH_TOKEN` and `CLAUDE_CODE_OAUTH_TOKEN` in the environment rank above the login of any folder; so does `ANTHROPIC_API_KEY` outside cmux (the cmux wrapper removes it). Claude Code stores a Console sign-in without an API key outside the folder.
 - The linked `settings.json` applies to every account. If it sets `apiKeyHelper`, a credential in `env`, `forceLoginMethod` or `forceLoginOrgUUID`, all accounts get that sign-in rule, and `forceLoginOrgUUID` can refuse the login of the second account. In that case give the account its own `settings.json` in place of the link.
 - With an accounts file, the launcher removes an inherited `CLAUDE_CONFIG_DIR`, `CODEX_HOME` or `GROK_HOME` when the chosen account uses the normal folder. It leaves `XDG_DATA_HOME` alone.
+- MCP servers and their sign-ins belong to one account folder. `claude mcp add --scope user` adds a server to the folder it runs in, and a sign-in to a server (PostHog, Stripe and the like) is stored for that folder only. A plugin's server shows in every account, because `plugins` is linked, but it says "needs authentication" until you sign in on that account too. Add and sign in once per account, with the folder set (`work` is the example account):
+
+  ```
+  CLAUDE_CONFIG_DIR=~/.claude-work claude mcp list
+  ```
+
+  ```
+  CLAUDE_CONFIG_DIR=~/.claude-work claude mcp add posthog https://mcp.posthog.com/mcp --transport http --scope user
+  ```
+
+  ```
+  CLAUDE_CONFIG_DIR=~/.claude-work claude mcp login posthog
+  ```
+
+  A session that was open before the sign-in does not see it: type `/mcp` there and reconnect, or start a new session. Do not copy sign-in files or Keychain items from one folder to another; each account gets its own grant.
 - The plan terms of each tool are your responsibility. Separate accounts for separate work are one thing; several accounts to pass a usage limit can break the terms.
 - The scripts read, copy and move no login token. They make folders and links, write one line of text, and set one variable.
 
