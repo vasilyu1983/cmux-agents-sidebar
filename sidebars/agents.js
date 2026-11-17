@@ -359,6 +359,16 @@ const dirTail = (d) => {
 };
 
 const PR_ALERT = /needs grant|refused|blocked/;
+// The pills a row shows: 2 places and "+N" (cappedPills), then a bare "next" label when a place is free and the
+// text of the line is the next step. A row with a "+N" pill has no room for the label.
+const finishPills = (raw, nextl) => ((shown) => [...shown,
+  ...(shown.length <= 2 && nextl ? [{ id: "nextl", text: "next", color: TEXT2, bg: "clear" }] : [])])(cappedPills(raw));
+// The model that most rows of a group use; the first in tab order wins a tie. None for an empty group.
+const usualModel = (rows) => {
+  const n = {};
+  for (const r of rows) if (r.model) n[r.model] = (n[r.model] ?? 0) + 1;
+  return Object.keys(n).sort((x, y) => n[y] - n[x])[0] ?? "";
+};
 // The pills of a row, in the order in which they matter. Orange: the owner is needed. Red: context 80% or more.
 // An account keeps its colour, the view by state adds the workspace in its colour, every other pill is neutral.
 function pillsOf(a, sess, w) {
@@ -383,11 +393,9 @@ function pillsOf(a, sess, w) {
   // 10 compactions or more: yellow, a fresh session with a hand-over costs less.
   add("comp", sess.comp >= 3 ? "⟳" + sess.comp : "", sess.comp >= 10 ? "#FFD60A" : META, NEUTRAL);
   plain("cold", sess.look === "idle" ? String(sess.cold ?? "").replace(/^cold /, "❄") : "");
-  if (!alert) plain("pr", sess.pr);
   // The account has a pill, in its colour. The tool has none: the end of the second line names the model or the tool.
+  // A PR without an alert and the lane folder are not exceptions: they are in the detail lines only.
   add("tool", sess.acct, acctColor(sess.acct));
-  const tail = dirTail(a.directory).replace(/^lane-/, "");
-  if (tail !== wsName) plain("dir", tail);
   return out;
 }
 // The second line shows 2 pills, each cut to 10 characters; "+N" stands for the rest and names them on hover.
@@ -549,8 +557,8 @@ const view = computed(() => {
           .find((t) => t && !/^(<|\[SYSTEM)/.test(t))?.slice(0, 120) ?? "",
         // After the pills, a bare "next" label when the text of the line is the next step and not the request.
         // A row with a "+N" pill has no room for the label.
-        pills: ((shown) => [...shown,
-          ...(shown.length <= 2 && a.status !== "needs_input" && sess.look !== "working" && sess.next ? [{ id: "nextl", text: "next", color: TEXT2, bg: "clear" }] : [])])(cappedPills(pillsOf(a, sess, w))),
+        rawPills: pillsOf(a, sess, w),
+        nextl: a.status !== "needs_input" && sess.look !== "working" && Boolean(sess.next),
         // The second line: why it waits ("agents running" for a session on its agents); else what comes next for a
         // session that does not work; else "agents running" for an idle one whose subagents run; else the request.
         line2: earlier ? (runs.length > 1 ? runs.length + " earlier runs in this tab" : "earlier run in this tab")
@@ -628,6 +636,16 @@ const view = computed(() => {
     // Same order as the tabs of the workspace; waiting sessions also show in the top block.
     // The "attention" toggle puts the sessions that need the owner first, and keeps tab order inside each rank.
     rows.sort((x, y) => x.tabIndex - y.tabIndex);
+    // Items 7 and 8: what every row of the group shares moves to the band. The account when all rows have the same
+    // one, the model that most rows use. Rows outside their group (the top block, the view by state) keep both.
+    for (const r of rows) r.pills = finishPills(r.rawPills, r.nextl);
+    const groupAcct = rows.length && rows.every((r) => r.acct && r.acct === rows[0].acct) ? rows[0].acct : "";
+    const groupModel = usualModel(rows);
+    const inGroup = (r) => ({
+      ...r,
+      pills: groupAcct ? finishPills(r.rawPills.filter((p) => p.id !== "tool"), r.nextl) : r.pills,
+      model: r.model === groupModel ? "" : r.model,
+    });
     // "Close finished": the idle sessions of the group that are not pinned and not the open one. The menu is built
     // with the row, so the key carries the list and the menu is built again when it changes.
     const finished = rows.filter((r) => r.look === "idle" && !r.focused && r.surfaceId && !pinsOf(w).includes(r.sessName))
@@ -645,6 +663,8 @@ const view = computed(() => {
       wsTitle: groupName(w),
       wsColor: w.color || "#8E8E93",
       count: rows.length,
+      acct: groupAcct,
+      model: groupModel,
       cost: costOf(w),
       unread: w.unread ?? 0,
       folded: Boolean(collapsed()[w.id]) && !query().trim(),
@@ -660,7 +680,7 @@ const view = computed(() => {
     // A search looks inside folded groups too: a match in a folded group must show.
     if (collapsed()[w.id] && !query().trim()) continue;
     // A waiting session also shows in the top block; its copy in the workspace has its own key.
-    for (const r of rows) if (!r.pinned) expand(r.look === "needs_input" ? { ...r, key: r.key + ":w" } : r, out);
+    for (const r of rows) if (!r.pinned) expand(r.look === "needs_input" ? { ...inGroup(r), key: r.key + ":w" } : inGroup(r), out);
   }
   // "Needs you": every waiting session of every workspace, longest wait first, above the groups.
   waiting.sort((x, y) => (x.agent.sinceEpoch ?? 0) - (y.agent.sinceEpoch ?? 0));
@@ -1304,6 +1324,9 @@ function bandRow(entry) {
             Circle({ size: 6 }).fill(DONE_DOT),
             Text(() => String(entry().unread)).font(10).monospaced().color(PURPLE_TEXT),
           ])),
+        // What all rows share: the account in its colour, and the model that most of them use.
+        Text(() => entry().acct ?? "").font(10).monospaced().weight("medium").lineLimit(1).fixedSize().color(() => acctColor(entry().acct)),
+        Text(() => entry().model ?? "").font(10).monospaced().weight("medium").lineLimit(1).fixedSize().color(MODEL_INK),
         // The session count and the summed cost estimate of the workspace's sessions (Claude Code only).
         Text(() => String(entry().count) + (entry().cost >= 1 ? " · $" + Math.round(entry().cost) : ""))
           .font(10).monospaced().lineLimit(1).fixedSize().color(META),
@@ -1590,17 +1613,16 @@ const titleParts = (entry) => {
 // shows its name dim.
 // 11.5 pt: the system monospaced font is wider than a terminal font, so 11.5 here reads as 12 pt in the terminal.
 const TITLE_PT = 11.5;
-const PROFILE_INK = "#5AC8E0";
 const titleLine = (entry) => {
   const a = () => entry().agent;
   return HStack({ spacing: 6 }, [
     // Both parts are plain texts of the row and rank above the gap, so a title is cut only when the row is full.
     // A text inside a wrapper (a ForEach, an inner HStack) is cut while the row still has space.
-    // A session with a start profile ("sandbox") has a shield before its name, and the name in teal. The mark is part
-    // of the name text: a separate text would leave a gap on every row without a profile.
+    // A session with a start profile ("sandbox") has a shield before its name. The mark is part of the name text, in
+    // its colour: a separate text would leave a gap on every row without one, and a hue of its own read as "working".
     Text(() => (entry().profile ? "\u26E8 " : "") + titleParts(entry).name)
       .font(TITLE_PT).monospaced().weight("semibold").lineLimit(1).truncation("tail").layoutPriority(3)
-      .color(() => (a().status === "ended" || entry().old ? META : entry().profile ? PROFILE_INK : "primary")),
+      .color(() => (a().status === "ended" || entry().old ? META : "primary")),
     Text(() => titleParts(entry).rest).font(TITLE_PT).monospaced().lineLimit(1).truncation("tail").layoutPriority(2).color(META),
     unreadBadge(entry),
     Spacer(),

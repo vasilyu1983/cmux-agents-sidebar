@@ -227,10 +227,11 @@ check("render shows the work marks: ahead count and duplicate", () => {
 });
 check("a row shows 2 pills by priority, then a +N pill that names the rest; a long pill is cut", () => {
   // The pills are cut to 10 characters, so a row needs little width for them.
-  const more = withText((t) => t === "+5");
+  // The lane folder is not an exception, so it has no pill: it is in the detail lines.
+  const more = withText((t) => t === "+4");
   // lead-1 waits, so it shows twice: in the top block and in its workspace. Both rows have the same form.
-  must(more.length === 2, "expected a \"+5\" pill on both rows of lead-1, got " + more.length);
-  must(more[0].props.help === "↑2 · dup · ⟳3 · work · a1", "help of +5 is " + JSON.stringify(more[0].props.help));
+  must(more.length === 2, "expected a \"+4\" pill on both rows of lead-1, got " + more.length);
+  must(more[0].props.help === "↑2 · dup · ⟳3 · work", "help of +4 is " + JSON.stringify(more[0].props.help));
   for (const t of ["83%", "→ you"]) must(withText((x) => x === t).length > 0, "pill " + t + " not shown");
   const pills = reachable().filter((n) => n.props.cornerRadius === 4 && typeof n.props.text === "string");
   must(pills.length > 0 && pills.every((n) => n.props.text.length <= 10), "a pill is longer than 10 characters: " + pills.map((n) => n.props.text).filter((t) => t.length > 10).join(", "));
@@ -364,7 +365,7 @@ check("every session row has the same two lines, whatever its state", () => {
 });
 check("render shows the cold-cache mark of the idle session", () => mustContain(rendered, "❄5m"));
 check("render shows the account of a session and of a tab named in @accts", () => {
-  mustContain(helpText(), "· work ·");  // lead-1: the account pill is behind its "+N" pill
+  mustContain(helpText(), "⟳3 · work");  // lead-1: the account pill is behind its "+N" pill
   must(withText((t) => t === "personal").some((n) => n.props.cornerRadius === 4), "no account pill \"personal\" on a row");
   // helper-6 is a one-line row with no tool pill: its @accts account shows in the account chip count.
   // A chip holds its label and its count as two texts.
@@ -536,7 +537,7 @@ check("the state button groups the rows into sections by state, and a second cli
 });
 check("a row carries its marks as pills: account, your-turn mark and compaction count", () => {
   const all = textOf();
-  mustContain(helpText(), "· work ·");  // past the second pill: named by "+N"
+  mustContain(helpText(), "⟳3 · work");  // past the second pill: named by "+N"
   mustContain(all, "→ you");
   mustContain(helpText(), "⟳3");
 });
@@ -837,7 +838,8 @@ check("health marks: one per row, loop > overlap > silent, in red, yellow and ye
 });
 check("health fields with a bad value are left out, and none is taken for the model", () => {
   must(!rowText("h-bad").some((t) => /^(loop|overlap|silent|err)\b/.test(t)), "h-bad shows a mark: " + rowText("h-bad").join(" | "));
-  must(rowText("h-bad").includes("sonnet") && rowText("h-loop").includes("sonnet"), "a health field took the place of the model");
+  // Both rows use sonnet, the usual model of their group, so the band names it once and the rows leave it out.
+  must(withText((t) => t === "sonnet").length >= 1 && !rowText("h-bad").includes("sonnet"), "a health field took the place of the model");
   must(withText((t) => /^(loop|overlap|silent|err)$/.test(t)).length === 0, "a health field shows in the model column");
 });
 check("a session on its agents is not in NEEDS YOU and shows \"agents running\"; a permission ask still counts", () => {
@@ -927,7 +929,8 @@ check("a workspace whose description holds no folder is named by its folder, not
   }]));
   must(withText((t) => t === "bare").length >= 1, "the group is not named \"bare\"");
   must(withText((t) => t.startsWith("| b-one")).length === 0, "the label text shows as a group name");
-  must(rowText("b-one").some((t) => /sonnet/i.test(t)), "the session lost its fields: " + rowText("b-one").join(" | "));
+  // The one row of the group: its model is on the band, its cost on the row.
+  must(withText((t) => t === "sonnet").length >= 1 && rowText("b-one").includes("$1.00"), "the session lost its fields: " + rowText("b-one").join(" | "));
 });
 check("a tab title that the shell left (user@host, or a start command with a variable) is not shown as the work", () => {
   ctx.__setData("workspaces", JSON.stringify([{
@@ -1052,6 +1055,21 @@ check("a session with a start profile has a shield before its name; a field that
   }]));
   must(withText((t) => t === "\u26E8 [b-sb]").length >= 1, "no shield on b-sb: " + JSON.stringify(withText((t) => /b-sb/.test(t)).map((n) => n.props.text)));
   must(withText((t) => t === "\u26E8 [b-no]" || t === "\u26E8 [b-bad]").length === 0, "a session without a plain profile got a shield");
+});
+
+// What every row of a group shares moves to the band: the account when all rows have it, the model most rows use.
+check("a group whose rows share an account and a model names both once on its band, and the rows leave them out", () => {
+  ctx.__setData("workspaces", JSON.stringify([{
+    id: "ws-bare", title: "ignored", directory: "/work/bare", color: "#336699", selected: true, unread: 0,
+    description: ["/work/bare", "@home: " + HOME, "g-1: opus · acct team · $1.00", "g-2: opus · acct team · $2.00", "g-3: sonnet · acct team"].join(" | "),
+    tabs: [tab(1, "[g-1] t", { id: B(1) }), tab(2, "[g-2] t", { id: B(2) }), tab(3, "[g-3] t", { id: B(3) })],
+    agents: [agent("g-1", B(1), "idle", "claude"), agent("g-2", B(2), "idle", "claude"), agent("g-3", B(3), "idle", "claude")], prs: [],
+  }]));
+  must(withText((t) => t === "team").some((n) => n.props.cornerRadius !== 4), "the band does not name the shared account");
+  must(!withText((t) => t === "team").some((n) => n.props.cornerRadius === 4), "a row still has the shared account pill");
+  must(withText((t) => t === "opus").length === 1, "the usual model is not named once (on the band)");
+  must(rowText("g-3").includes("sonnet"), "a row with another model does not name it");
+  ctx.__setData("workspaces", JSON.stringify(workspaces));
 });
 
 check("a tool from @tools gets a flat item with a neutral dot and starts by its command word", () => {
