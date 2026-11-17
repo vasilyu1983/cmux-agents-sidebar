@@ -1617,7 +1617,7 @@ function detailRow(entry) {
     ZStack({}, [guide(entry, 16)]).frame({ width: 13 }),
     VStack({ spacing: 2 }, [ForEach({ items: () => entry().lines, key: (l) => l.id }, (l) =>
       HStack({ spacing: 8 }, [
-        cell(Text(() => l().label).font(10).monospaced().color(META), 58, "leading"),
+        cell(Text(() => l().label).font(10).monospaced().color(META), 64, "leading"),  // "compacted" needs 64 pt
         Text(() => l().value).font(10).monospaced().color(TEXT2).lineLimit(2).truncation("tail"),
         Spacer(),
       ]).paddingTop(() => (l().gap ? 6 : 0)))])
