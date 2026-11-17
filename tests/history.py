@@ -397,6 +397,18 @@ try:
     check("a built-in tool is listed when its folder exists and its command is found; a folder alone is not enough",
           watcher.read_tools() == [("gemini", "gemini", "Gemini CLI")] and asked == [["cursor-agent", "gemini"]])
     check("the description part names it as id=command=label", watcher.tools_part() == "@tools: gemini=gemini=Gemini CLI")
+    # Start profiles: only the names reach the description, never the arguments (they may hold paths).
+    check("no profiles file gives no part", watcher.profiles_part() == "")
+    with open(os.path.join(tools_home, ".config", "cmux", "agents-profiles"), "w") as fh:
+        fh.write("# c\nprofile claude sandbox --settings ~/.claude/worker-sandbox.json\nprofile codex sandbox --sandbox workspace-write\n"
+                 "profile claude plan --permission-mode plan\nprofile claude sandbox --again\nprofile claude normal --x\n"
+                 "profile agy x --y\nprofile claude $(id) --z\nprofile claude bare\n")
+    err = io.StringIO()
+    with contextlib.redirect_stderr(err):
+        part = watcher.profiles_part()
+    check("profile names per tool, first line wins, bad lines skipped by number, no argument in the part",
+          part == "@profiles: claude=sandbox,plan;codex=sandbox" and err.getvalue().count("skipped") == 4
+          and "$(id)" not in err.getvalue() and "worker" not in part)
     bad_lines = ["tool a $(id) ~/.mytool Aaa", "tool b a;b ~/.mytool Bbb", "tool c ../x ~/.mytool Ccc", "tool d x y ~/.mytool Ddd",
                  "tool e ok ~/.mytool $(id)", "tool f ok /etc Fff", "tool g ok ~/../x Ggg", "tool claude ok ~/.mytool Claude",
                  "tool H ok ~/.mytool Hhh", "tool i ok ~/.mytool", "tool j ok .mytool Jjj", "tool k " + "x" * 25 + " ~/.mytool Kkk",

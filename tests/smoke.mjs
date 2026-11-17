@@ -1018,6 +1018,26 @@ check("an account name that is not plain (it could carry shell text) gives no me
   must(JSON.stringify(once) === JSON.stringify(["Terminal", "a", "ok-1"]), "menu items: " + JSON.stringify(once));
 });
 
+// Start profiles: "@profiles" gives names only. An account becomes a submenu "normal" + names, and a name reaches the
+// shell only as AGENT_PROFILE=<plain name>; agent-run.sh reads the arguments from the user's own file.
+check("a start profile nests under the account and starts with AGENT_PROFILE; a name that is not plain gives no item", () => {
+  ctx.__setData("workspaces", JSON.stringify([{
+    id: "ws-bare", title: "ignored", directory: "/work/bare", color: "#336699", selected: true, unread: 0,
+    description: ["/work/bare", "@home: " + HOME, "@limits: claude,,,,0;codex,,,,0,team", "@profiles: claude=sandbox,$(id),normal,A b;agy=x;codex=ro", "b-one: sonnet"].join(" | "),
+    tabs: [tab(1, "[b-one] t", { id: B(5), focused: true })], agents: [agent("b-one", B(5), "idle", "claude")], prs: [],
+  }]));
+  const once = [...new Set(withText((t) => ["Claude", "Codex", "normal", "sandbox", "ro", "$(id)", "A b", "x"].includes(t)).map((n) => n.props.text))];
+  must(JSON.stringify(once) === JSON.stringify(["Claude", "normal", "sandbox", "Codex", "ro"]), "menu items: " + JSON.stringify(once));
+  const run = (label, i = 0) => { const before = cmuxCalls().length; tap(withText((t) => t === label)[i]); return cmuxCalls().slice(before); };
+  const cmd = (inner) => "\"$SHELL\" -lic '" + inner + "; exec \"$SHELL\" -l'";
+  let calls = run("sandbox");
+  must(calls.length === 1 && calls[0].params.initial_command === cmd('AGENT_PROFILE=sandbox "$HOME/.config/cmux/scripts/agent-run.sh" claude'), "sandbox: " + JSON.stringify(calls));
+  calls = run("ro");
+  must(calls.length === 1 && calls[0].params.initial_command === cmd('AGENT_PROFILE=ro AGENT_ACCOUNT=team "$HOME/.config/cmux/scripts/agent-run.sh" codex'), "ro: " + JSON.stringify(calls));
+  calls = run("normal");
+  must(calls.length === 1 && calls[0].params.initial_command === cmd('"$HOME/.config/cmux/scripts/agent-run.sh" claude'), "normal: " + JSON.stringify(calls));
+});
+
 check("a tool from @tools gets a flat item with a neutral dot and starts by its command word", () => {
   ctx.__setData("workspaces", JSON.stringify([{
     id: "ws-bare", title: "ignored", directory: "/work/bare", color: "#336699", selected: true, unread: 0,

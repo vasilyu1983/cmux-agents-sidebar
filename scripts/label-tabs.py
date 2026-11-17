@@ -264,6 +264,32 @@ def tools_part():
     return "@tools: " + ";".join(found) if found else ""
 
 
+def profiles_part():
+    """"@profiles: claude=sandbox,plan;codex=sandbox" for the start menu: the profile names of
+    ~/.config/cmux/agents-profiles ("profile <tool> <name> <arguments...>"), at most 8 per tool. Only the names
+    reach the description; agent-run.sh reads the arguments itself when a profile starts."""
+    found = {}
+    try:
+        with open(os.path.expanduser("~/.config/cmux/agents-profiles")) as fh:
+            lines = fh.read(20000).splitlines()
+    except FileNotFoundError:
+        return ""
+    except (OSError, ValueError) as err:
+        print(f"label-tabs: profiles file not read: {err}", file=sys.stderr)
+        return ""
+    for number, line in enumerate(lines, 1):
+        words = line.split()
+        if not words or words[0].startswith("#"):
+            continue
+        if (words[0] == "profile" and len(words) >= 4 and words[1] in ACCOUNT_TOOLS
+                and re.fullmatch(ACCOUNT_NAME, words[2]) and words[2] != "normal"):
+            names = found.setdefault(words[1], [])
+            if words[2] not in names and len(names) < 8:
+                names.append(words[2])
+        else:
+            print(f"label-tabs: profiles file: line {number} skipped", file=sys.stderr)
+    return "@profiles: " + ";".join(f"{tool}={','.join(names)}" for tool, names in found.items()) if found else ""
+
 def wrong_account(session, account):
     """["wrong <name>"] when the folder rules name another account for the start folder of a Claude Code session
     than the one it runs on; [] without rules. `account` is "" for the normal folder. A rule name with no
@@ -1179,6 +1205,9 @@ def general_marks():
     tools = tools_part()
     if tools:
         found.append(tools)
+    profiles = profiles_part()
+    if profiles:
+        found.append(profiles)
     configs = config_part()
     if configs:
         found.append(configs)
@@ -1506,7 +1535,7 @@ def set_models(tree, models, strip):
         # gets fresh general parts, and keeps its other "@" parts.
         target = next((ref for ref, old in found.items() if " | @home: " in old), next(iter(found)))
         kept = [part for part in found[target].split(" | ")[1:]
-                if part.startswith("@") and not part.startswith(("@home: ", "@week: ", "@limits: ", "@tools: ", "@primary: ", "@accts: ", "@cfg: ", "@proj: ", "@repo: "))]
+                if part.startswith("@") and not part.startswith(("@home: ", "@week: ", "@limits: ", "@tools: ", "@profiles: ", "@primary: ", "@accts: ", "@cfg: ", "@proj: ", "@repo: "))]
         strip = {target: kept + general_marks()}
     for workspace, old in found.items():
         parts = old.split(" | ")

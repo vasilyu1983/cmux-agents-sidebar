@@ -148,7 +148,7 @@ A row shows at most 2 pills. Their order of priority is: `≠`, a PR that needs 
 Right-click a workspace header. The menu has these parts, from top to bottom:
 
 1. `Terminal`: a plain terminal tab.
-2. One item per tool found on this Mac. A tool with 2 or more accounts is a submenu: the tool's normal folder first, marked `★ default`, then the other accounts. A tool with one account is one item.
+2. One item per tool found on this Mac. A tool with 2 or more accounts is a submenu: the tool's normal folder first, marked `★ default`, then the other accounts. A tool with one account is one item. With start profiles (below), each account is a submenu too: `normal`, then the profile names.
 3. `Add account`, a submenu with one item per tool that has accounts (`Claude…`). It opens a tab that asks for a name and runs `agents-account-add.sh`.
 4. `Open config`, a submenu that opens a config file in your editor, in a new tab of the workspace (see "Open config" below). It is also in the right-click menu of a session row.
 
@@ -157,6 +157,32 @@ Right-click a workspace header. The menu has these parts, from top to bottom:
 A drawing with sample names. The menu is a system menu: it cannot draw a logo or a text colour. The items are plain names with no colour mark, because a colour per tool is used nowhere else in the panel.
 
 Claude Code, Codex, OpenCode and Grok start through `agent-run.sh`, with the account you pick. Antigravity (`agy`) and the extra tools below have one account and start by their own command.
+
+#### Start profiles
+
+A start profile is a named set of extra arguments, for example a sandbox settings file. It works with every account of the tool. Write one line per profile in `~/.config/cmux/agents-profiles` (copy [examples/agents-profiles.example](examples/agents-profiles.example)):
+
+```
+profile <tool> <name> <arguments...>
+```
+
+Examples, with flags from each tool's `--help`:
+
+| Tool | Line | Effect |
+|------|------|--------|
+| Claude Code | `profile claude sandbox --settings ~/.claude/worker-sandbox.json` | Adds a settings file to your own settings |
+| Claude Code | `profile claude plan --permission-mode plan` | Starts in plan mode |
+| Codex | `profile codex sandbox --sandbox workspace-write` | Sets the sandbox policy (`read-only`, `workspace-write`, `danger-full-access`) |
+| OpenCode | `profile opencode plan --agent plan` | Starts with another agent of your OpenCode config |
+| Grok | `profile grok plan --permission-mode plan` | Sets the permission mode |
+
+Rules:
+
+- `tool` is `claude`, `codex`, `opencode` or `grok`. Antigravity and the extra tools have no profiles.
+- `name` holds `a-z`, `0-9` and `-`, at most 16 characters. `normal` is taken: it means no profile. At most 8 names per tool reach the menu, and the first line for a tool and name wins.
+- The arguments go to the tool before your own, as separate words. No shell reads them, so quotes, `$VAR` and `*` stay literal. A word that starts with `~/` means your home folder.
+- The panel sends only the name, as `AGENT_PROFILE=<name>`. `agent-run.sh` reads the arguments from your file. In a terminal, `AGENT_PROFILE=sandbox agent-run.sh claude` does the same.
+- In a cmux tab, Claude Code starts through cmux's wrapper, which adds its own `--settings` for the session hooks. The wrapper merges your `--settings` file with its hooks (it uses `node` for that), so the panel still sees the session.
 
 #### More terminal agents
 
@@ -372,6 +398,7 @@ Files that appear later, while the kit runs:
 | `~/.config/cmux/scripts/history-data.js` | `label-tabs.py` | The history for the Timeline, Cost, Limits, Queue, Context and Rhythm views: at most 30 days (mode 600) |
 | `~/.config/cmux/agents-accounts` | You, or `agents-account-add.sh` | The account list and the folder rules |
 | `~/.config/cmux/agents-tools` | You | Start-menu tools of your own, one `tool` line each (see "The start menu") |
+| `~/.config/cmux/agents-profiles` | You | Start profiles, one `profile` line each (see "Start profiles") |
 | `~/.cache/cmux-agents/tools-on-path` | `label-tabs.py` | Which tool commands your login shell found; asked at most once in 10 minutes (mode 600) |
 
 The `statusLine` key that it adds:
@@ -473,7 +500,7 @@ default personal
 Two scripts:
 
 - `scripts/agents-account-add.sh <tool> <name>` makes the folder `~/.<tool>-<name>` and adds the `account` line. With `--dry-run` it only prints. At the end it prints the one login command; you run it and log in yourself.
-- `scripts/agent-run.sh <tool> [arguments]` chooses the account and starts the tool with your arguments unchanged. `agent-run.sh --which <tool>` prints the name. `AGENT_ACCOUNT=<name>` overrides the rules for one start. An unknown name or a missing folder is an error, and the tool does not start.
+- `scripts/agent-run.sh <tool> [arguments]` chooses the account and starts the tool with your arguments unchanged. `agent-run.sh --which <tool>` prints the name. `AGENT_ACCOUNT=<name>` overrides the rules for one start. `AGENT_PROFILE=<name>` adds the arguments of a start profile. An unknown name or a missing folder is an error, and the tool does not start.
 
 To use the launcher for every start, add one line to `~/.zshrc` (or `~/.bashrc`) yourself:
 
@@ -579,9 +606,10 @@ Without a watcher of your own the strip shows only the limit lines, one per tool
 - Everything stays on your Mac. No script calls the network.
 - `label-tabs.py` reads the environment of your own agent processes to find two values, `CMUX_SURFACE_ID` and `CODEX_HOME`. It keeps nothing else from it.
 - The only message that the kit sends is a local cmux notification for a limit warning.
-- A start item of a workspace menu opens a tab with one fixed command: `agent-run.sh`, a tool from a fixed list of four (`claude`, `codex`, `opencode`, `grok`), and an account name that holds only `a-z`, `0-9` and `-`. For Antigravity the command is the fixed word `agy`. For an extra tool the command is one checked word (`a-z`, `0-9`, `-`; no path, no argument) that the login shell finds by name. An `Add account` item opens a tab that asks you for a name and passes it to `agents-account-add.sh`, which checks it. No other text reaches the shell. The launcher sets the tool's one folder variable and reads no login data.
+- A start item of a workspace menu opens a tab with one fixed command: `agent-run.sh`, a tool from a fixed list of four (`claude`, `codex`, `opencode`, `grok`), an account name and, for a start profile, a profile name (`AGENT_PROFILE`); both hold only `a-z`, `0-9` and `-`. For Antigravity the command is the fixed word `agy`. For an extra tool the command is one checked word (`a-z`, `0-9`, `-`; no path, no argument) that the login shell finds by name. An `Add account` item opens a tab that asks you for a name and passes it to `agents-account-add.sh`, which checks it. No other text reaches the shell. The launcher sets the tool's one folder variable and reads no login data.
 - An `Open config` item opens a tab with one fixed command: `sh -c` runs `${EDITOR:-vi}` on one path, `$HOME/<folder>/<file>`. The file name comes from a fixed table (the table above), and the folder is a path below your home folder of plain characters (`a-z`, `A-Z`, `0-9`, `.`, `_`, `-`; no `..`), from the accounts file or from the workspace folder. The watcher and the panel both check every part, and no title, PR text or other free text reaches the command. `label-tabs.py` only tests with `os.path.isfile` whether each file of the table exists. It opens no config file, reads no value, and publishes the folder and the file name in the workspace description (`@cfg:` for the user files, `@proj:` for the project files).
 - For each workspace folder that is a git clone, `label-tabs.py` asks git for the origin URL (`git config --get remote.origin.url`, once in 10 minutes; the folder comes from cmux `workspace.list` when the description names none) and keeps only its last part, the repository name. When that name differs from the folder name (a lane or worktree folder), it writes `@repo: <name>` into the workspace description, and the panel names the group after the repository. The rest of the URL, such as the host and owner, is not kept.
+- `label-tabs.py` reads your own file `~/.config/cmux/agents-profiles` and writes only the tool and profile names into the workspace description (`@profiles:`). The arguments stay in the file; `agent-run.sh` reads them when a profile starts and passes them to the tool as separate words, with no shell.
 - For the extra tools of the start menu, `label-tabs.py` does three things. It checks with `os.path.isdir` whether the data folder of each listed tool exists, and reads nothing inside it. It asks your login shell `command -v <name>` for the command names of the tools whose folder exists, at most once in 10 minutes, and keeps the answer (tool commands found or not) in `~/.cache/cmux-agents/tools-on-path` (mode 600). It reads your own file `~/.config/cmux/agents-tools`. The ids, commands and labels of the tools found go into the workspace description (`@tools:`), and the panel checks every part again before it builds a command.
 - `label-tabs.py` reads the transcripts of your live Claude Code sessions on disk. One line of the last reply, the `Next:` line, goes into the workspace description and the hive data file; no other reply text leaves the transcript.
 - From the same transcript `label-tabs.py` takes the title of the session (the one you set with `/rename`, else the one the tool gave it), cut to 48 characters. It goes into the workspace description and into `~/.cache/cmux-agents/<session id>.seen`, and the panel shows it on a tab with no title of its own.

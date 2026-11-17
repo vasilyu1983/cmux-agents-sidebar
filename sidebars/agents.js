@@ -628,7 +628,7 @@ const view = computed(() => {
     out.push({
       // An empty workspace is a thin line, not a band: the key carries the form, as for the rows.
       // The start menu is built with the row, so the key also carries its items.
-      key: "h:" + w.id + (rows.length ? "" : ":e") + ":" + launchList().map((x) => x.tool + "." + x.acct + (x.cmd ?? "") + (x.name ?? "")).join(",") + ":" + cfgKey(w.id) + ":f" + finished.map((f) => f.surfaceId).join(","),
+      key: "h:" + w.id + (rows.length ? "" : ":e") + ":" + launchList().map((x) => x.tool + "." + x.acct + (x.cmd ?? "") + (x.name ?? "") + "/" + x.profiles.join("/")).join(",") + ":" + cfgKey(w.id) + ":f" + finished.map((f) => f.surfaceId).join(","),
       launch: launchList(),
       finished,
       kind: "header",
@@ -736,6 +736,21 @@ const extraTools = computed(() => {
   }
   return Object.values(found);
 });
+// Start profiles: "@profiles: claude=sandbox,plan;codex=sandbox" (names only; agent-run.sh reads the arguments from
+// ~/.config/cmux/agents-profiles). A name holds a-z, 0-9 and "-", so it can reach the shell as AGENT_PROFILE.
+const PROFILE = /^[a-z0-9-]{1,16}$/;
+const profiles = computed(() => {
+  const found = {};
+  for (const w of data.workspaces() ?? []) {
+    const part = descOf(w).split(" | ").find((p) => p.startsWith("@profiles: "));
+    for (const item of part ? part.slice(11).split(";").slice(0, 8) : []) {
+      const [tool, names, ...more] = item.split("=");
+      if (more.length || !LAUNCH.includes(tool)) continue;
+      found[tool] = (names ?? "").split(",").filter((n) => PROFILE.test(n) && n !== "normal").slice(0, 8);
+    }
+  }
+  return found;
+});
 const launchList = computed(() => {
   const found = {};
   for (const w of data.workspaces() ?? []) {
@@ -750,7 +765,8 @@ const launchList = computed(() => {
   // The tool's normal folder first, then the other accounts by name. The other tools come last, by name.
   const rank = (t) => (STARTS.includes(t) ? STARTS.indexOf(t) : STARTS.length);
   return [...Object.values(found), ...extraTools()].sort((a, b) => rank(a.tool) - rank(b.tool) || (a.tool < b.tool ? -1 : a.tool > b.tool ? 1 : 0) || (a.acct < b.acct ? -1 : a.acct > b.acct ? 1 : 0))
-    .map((x) => ({ ...x, label: PLAIN[x.tool] || x.cmd ? "" : (x.acct || primary || "default") + (x.acct ? "" : "  \u2605 default") }));
+    .map((x) => ({ ...x, profiles: (LAUNCH.includes(x.tool) && profiles()[x.tool]) || [],
+      label: PLAIN[x.tool] || x.cmd ? "" : (x.acct || primary || "default") + (x.acct ? "" : "  \u2605 default") }));
 });
 const limits = computed(() => {
   const epoch = data.clock()?.epoch ?? 0;
@@ -1088,11 +1104,13 @@ function newTab(wsId) {
 // account name holds only a-z, 0-9 and "-", so no text from a description reaches the shell. A tool from "@tools" starts by its
 // one checked command word (EXTRA_CMD), with no account and no argument. The login shell runs it
 // (your PATH), and a shell stays in the tab when the tool ends. "initial_command" checked with `cmux rpc`, 2026-11-15.
-function launch(wsId, item) {
+// A profile adds AGENT_PROFILE=<name> (checked by PROFILE, and only for a LAUNCH tool that lists it).
+function launch(wsId, item, profile) {
   const who = item.acct || accountMarks().primary;
   const extra = item.cmd !== undefined;
   if (!wsId || !(extra ? EXTRA_ID.test(item.tool) && !TOOLS[item.tool] && EXTRA_CMD.test(item.cmd) : STARTS.includes(item.tool)) || !/^[a-z0-9-]{0,16}$/.test(who)) return;
-  const run = extra ? item.cmd : PLAIN[item.tool] ?? (who ? "AGENT_ACCOUNT=" + who + " " : "") + '"$HOME/.config/cmux/scripts/agent-run.sh" ' + item.tool;
+  if (profile !== undefined && !(LAUNCH.includes(item.tool) && PROFILE.test(profile) && (item.profiles ?? []).includes(profile))) return;
+  const run = extra ? item.cmd : PLAIN[item.tool] ?? (profile ? "AGENT_PROFILE=" + profile + " " : "") + (who ? "AGENT_ACCOUNT=" + who + " " : "") + '"$HOME/.config/cmux/scripts/agent-run.sh" ' + item.tool;
   cmux("surface.create", { workspace_id: wsId, focus: true, initial_command: '"$SHELL" -lic \'' + run + '; exec "$SHELL" -l\'' });
 }
 
@@ -1184,12 +1202,16 @@ const bandMenu = (entry) => {
   // Plain names, no colour marks: a colour per tool is used nowhere else in the panel. A tool that is not one of
   // the five has its label in the item.
   const name = (t) => TOOLS[t] ?? items.find((x) => x.tool === t).name;
+  // With profiles, an account is a submenu: "normal" (no profile), then each profile name.
+  const one = (x, title) => x.profiles?.length
+    ? Menu(title, [Button("normal", () => launch(ws(), x)), Divider(), ...x.profiles.map((p) => Button(p, () => launch(ws(), x, p)))])
+    : Button(title, () => launch(ws(), x));
   const start = tools.map((t) => {
     const mine = items.filter((x) => x.tool === t);
-    if (mine.length < 2) return Button(name(t), () => launch(ws(), mine[0]));
+    if (mine.length < 2) return one(mine[0], name(t));
     const first = mine.filter((x) => !x.acct), rest = mine.filter((x) => x.acct);
-    return Menu(name(t), [...first.map((x) => Button(x.label, () => launch(ws(), x))), ...(first.length && rest.length ? [Divider()] : []),
-      ...rest.map((x) => Button(x.label, () => launch(ws(), x)))]);
+    return Menu(name(t), [...first.map((x) => one(x, x.label)), ...(first.length && rest.length ? [Divider()] : []),
+      ...rest.map((x) => one(x, x.label))]);
   });
   const adds = tools.filter((t) => LAUNCH.includes(t)).map((t) => Button(TOOLS[t] + "…", () => addAccount(ws(), t)));
   const done = entry().finished ?? [];

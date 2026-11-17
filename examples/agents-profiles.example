@@ -1,0 +1,25 @@
+# Start profiles for coding-agent tools. Copy to ~/.config/cmux/agents-profiles and keep the lines you want.
+#
+# profile <tool> <name> <arguments...>
+#   tool: claude, codex, opencode or grok
+#   name: a-z, 0-9 and -, up to 16 characters; "normal" is taken (it means no profile)
+#   arguments: passed to the tool before your own, as separate words. No shell reads them, so quotes,
+#              $VAR and * stay literal. A word that starts with ~/ means your home folder.
+#
+# The start menu then shows each account as a submenu: normal, then the profile names.
+# The panel sends only the name (AGENT_PROFILE=<name>); agent-run.sh reads the arguments from this file.
+# The first line for a tool and name wins. The flags below are from each tool's --help; check them for your version.
+
+# Claude Code: an extra settings file (for example sandbox rules), or plan mode.
+profile claude sandbox --settings ~/.claude/worker-sandbox.json
+profile claude plan --permission-mode plan
+
+# Codex: the sandbox policy (read-only, workspace-write, danger-full-access).
+profile codex sandbox --sandbox workspace-write
+profile codex readonly --sandbox read-only
+
+# OpenCode: start with another agent of your OpenCode config.
+profile opencode plan --agent plan
+
+# Grok: the permission mode (default, acceptEdits, auto, dontAsk, bypassPermissions, plan).
+profile grok plan --permission-mode plan

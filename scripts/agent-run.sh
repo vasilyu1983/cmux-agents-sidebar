@@ -5,6 +5,8 @@
 #   agent-run.sh --which <tool>    prints the account name, or "default" for the tool's normal folder
 # Accounts and rules come from ~/.config/cmux/agents-accounts (see examples/agents-accounts.example).
 # Without that file the tool starts exactly as before. AGENT_ACCOUNT=<name> overrides the rules for one start.
+# AGENT_PROFILE=<name> adds the arguments of that profile line of ~/.config/cmux/agents-profiles (see
+# examples/agents-profiles.example) before your own. They pass to the tool as separate words; no shell reads them.
 # The script sets one folder variable for the tool. It reads no login data.
 set -u
 conf="$HOME/.config/cmux/agents-accounts"
@@ -23,6 +25,28 @@ case "$tool" in
   *) die "no account support for this tool (supported: claude, codex, opencode, grok)" ;;
 esac
 
+# The profile: "profile <tool> <name> <arguments...>". A word that starts with "~/" means your home folder.
+extra=()
+if [ -n "${AGENT_PROFILE:-}" ] && [ "$which_only" = 0 ]; then
+  name_ok "$AGENT_PROFILE" || die "AGENT_PROFILE is not a valid profile name"
+  pconf="$HOME/.config/cmux/agents-profiles"
+  [ -f "$pconf" ] || die "profile '$AGENT_PROFILE': $pconf is missing"
+  found=0; n=0
+  while IFS= read -r line || [ -n "$line" ]; do
+    n=$((n + 1))
+    # Split into words with globbing off, so "*" stays a word. No here-string: bash 3.2 writes it to a temp file.
+    set -f; w=(${line%$'\r'}); set +f
+    [ "${w[0]:-}" = profile ] && [ "${w[1]:-}" = "$tool" ] && [ "${w[2]:-}" = "$AGENT_PROFILE" ] || continue
+    [ "${#w[@]}" -ge 4 ] || die "profile line $n: write 'profile <tool> <name> <arguments...>'"
+    for a in "${w[@]:3}"; do
+      case "$a" in "~/"*) a="$HOME/${a#"~/"}" ;; esac
+      extra+=("$a")
+    done
+    found=1; break
+  done <"$pconf"
+  [ "$found" = 1 ] || die "no line 'profile $tool $AGENT_PROFILE ...' in $pconf"
+fi
+
 choice=""
 start() {
   if [ "$which_only" = 1 ]; then echo "${choice:-default}"; exit 0; fi
@@ -39,8 +63,9 @@ start() {
       grok) wrap="${CMUX_BUNDLED_CLI_PATH%/*}/grok" ;;
     esac
   fi
-  if [ -n "$wrap" ] && [ -x "$wrap" ] && ! [ "$wrap" -ef "$0" ]; then exec "$wrap" "$@"; fi
-  exec "$tool" "$@"
+  # Bash 3.2 (macOS) calls an empty array unset under "set -u", hence the ${extra[@]+...} form.
+  if [ -n "$wrap" ] && [ -x "$wrap" ] && ! [ "$wrap" -ef "$0" ]; then exec "$wrap" ${extra[@]+"${extra[@]}"} "$@"; fi
+  exec "$tool" ${extra[@]+"${extra[@]}"} "$@"
 }
 
 [ -f "$conf" ] || start "$@"

@@ -28,5 +28,6 @@ Left for you, by hand:
 - Remove the line "source ~/.config/cmux/scripts/agents-shell.sh" from ~/.zshrc or ~/.bashrc, if you added it.
 - The status line: ~/.claude/statusline-command.sh and the "statusLine" entry in ~/.claude/settings.json.
 - Accounts: ~/.config/cmux/agents-accounts and the account folders (they hold logins; log out first).
+- Start profiles: ~/.config/cmux/agents-profiles, if you made it.
 - Backup files that end in ".bak" beside the installed files.
 MSG
