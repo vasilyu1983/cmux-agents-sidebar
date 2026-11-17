@@ -469,10 +469,12 @@ const view = computed(() => {
   const expand = (r, into) => {
     into.push(r);
     if (openInfo()[r.rowId]) {
-      r.info.forEach((l, i) => into.push({
-        key: "d:" + r.key + ":" + l[0], kind: "detail", wsId: r.wsId, wsColor: r.wsColor, surfaceId: r.surfaceId,
-        label: l[0], value: l[1], last: i === r.info.length - 1, gap: i > 0 && r.info[i - 1][2] !== l[2],
-      }));
+      // All detail lines are one item: the list puts 3 pt between items, which broke the group line at every line.
+      into.push({
+        key: "d:" + r.key + ":" + r.info.map((l) => l[0] + "=" + l[1]).join("|"), kind: "detail", wsId: r.wsId,
+        wsColor: r.wsColor, surfaceId: r.surfaceId,
+        lines: r.info.map((l, i) => ({ id: l[0], label: l[0], value: l[1], gap: i > 0 && r.info[i - 1][2] !== l[2] })),
+      });
     }
     if (!openKids()[r.rowId]) return;
     // Records from disk carry a name and a state, no times and no id: the position is the key.
@@ -1608,16 +1610,23 @@ const infoMark = (entry) =>
 const UNDER_TITLE = 9;
 
 // One detail line under an agent row: a dim label and its value.
+// The detail lines of an open row: one shaded area beside the group line, which runs on at the same place as in the
+// rows (the 13 pt column of the gutter), so the group keeps one unbroken line and the area carries "inside this row".
 function detailRow(entry) {
-  return HStack({ spacing: 8 }, [
-    guide(entry, 16),
-    HStack({ spacing: 8 }, [
-      cell(Text(() => entry().label).font(10).monospaced().color(META), 58, "leading"),
-      Text(() => entry().value).font(10).monospaced().color(TEXT2).lineLimit(2).truncation("tail"),
-      Spacer(),
-    ]).paddingLeading(UNDER_TITLE).paddingTop(() => (entry().gap ? 6 : 0)),
+  return HStack({ spacing: 6 }, [
+    ZStack({}, [guide(entry, 16)]).frame({ width: 13 }),
+    VStack({ spacing: 2 }, [ForEach({ items: () => entry().lines, key: (l) => l.id }, (l) =>
+      HStack({ spacing: 8 }, [
+        cell(Text(() => l().label).font(10).monospaced().color(META), 58, "leading"),
+        Text(() => l().value).font(10).monospaced().color(TEXT2).lineLimit(2).truncation("tail"),
+        Spacer(),
+      ]).paddingTop(() => (l().gap ? 6 : 0)))])
+      .paddingHorizontal(8).paddingVertical(6)
+      .background("#FFFFFF0A")
+      .cornerRadius(8)
+      .frame({ maxWidth: "infinity" }),
   ])
-    .paddingLeading(9).paddingTrailing(10)
+    .paddingLeading(9).paddingTrailing(8)
     .frame({ maxWidth: "infinity" })
     .marginLeading(inset(entry))
     .onTap(() => jump(entry()));

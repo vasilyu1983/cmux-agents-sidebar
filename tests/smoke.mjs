@@ -507,6 +507,12 @@ check("detail lines leave out what the row shows, start each group with a gap, a
   must(!labels.some((t) => /^<event/.test(t ?? "")), "a notice of the tool shows as the last ask");
   const branch = withText((t) => t === "branch")[0];
   must(branch && parentOf(parentOf(branch.id).id).props.paddingTop === 6, "the work group does not start with a 6 pt gap");
+  // All lines sit in one shaded area, and the group line beside it keeps the 13 pt column of the row gutter.
+  // label → its 58 pt cell → its line → the list of lines → the shaded area.
+  const up = (n, k) => (k ? up(parentOf(n.id), k - 1) : n);
+  const area = up(branch, 4);
+  must(area.props.background === "#FFFFFF0A" && up(withText((t) => t === "folder")[0], 4).id === area.id, "the detail lines are not in one shaded area");
+  must(parentOf(area.id).children.map(node).some((m) => m && m.props.width === 13), "the group line beside the details is not in the 13 pt gutter column");
   ctx.__setData("workspaces", JSON.stringify(workspaces));
 });
 check("the info mark opens detail lines", () => {
