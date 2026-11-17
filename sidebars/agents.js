@@ -654,12 +654,13 @@ const view = computed(() => {
     rows.sort((x, y) => x.tabIndex - y.tabIndex);
     // Items 7 and 8: what every row of the group shares moves to the band. The account when all rows have the same
     // one, the model that most rows use. Rows outside their group (the top block, the view by state) keep both.
-    for (const r of rows) r.pills = finishPills(r.rawPills, r.nextl);
+    // The bare "next" label stands first on the line, so it marks the next step only when no state words come before it.
+    for (const r of rows) r.pills = finishPills(r.rawPills, r.nextl && !r.state);
     const groupAcct = rows.length && rows.every((r) => r.acct && r.acct === rows[0].acct) ? rows[0].acct : "";
     const groupModel = usualModel(rows);
     const inGroup = (r) => ({
       ...r,
-      pills: groupAcct ? finishPills(r.rawPills.filter((p) => p.id !== "tool"), r.nextl) : r.pills,
+      pills: groupAcct ? finishPills(r.rawPills.filter((p) => p.id !== "tool"), r.nextl && !r.state) : r.pills,
       model: r.model === groupModel ? "" : r.model,
     });
     // "Close finished": the idle sessions of the group that are not pinned and not the open one. The menu is built
@@ -1700,7 +1701,8 @@ function agentRow(entry) {
     // No spacing of the line: an empty pill place would add a gap. Each part has its own 5 pt margin.
     HStack({ spacing: 0 }, [
       ...pillRow(entry),
-      Text(() => [entry().state, entry().line2 || entry().prompt].filter(Boolean).join(" · "))
+      // After state words ("finished · not seen"), the next step carries its own "next": the label would stand before them.
+      Text(() => [entry().state, (entry().state && entry().nextl ? "next " : "") + (entry().line2 || entry().prompt)].filter(Boolean).join(" · "))
         .font(11).monospaced().lineLimit(1).truncation("tail").layoutPriority(-1)
         .color(() => (hot() ? ORANGE : entry().done ? PURPLE_TEXT : META))
         .marginLeading(() => (entry().pills.length ? 5 : 0)),

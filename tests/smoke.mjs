@@ -320,8 +320,8 @@ check("a tab with no title of its own shows the title of its session; the reques
   must(withText((t) => t === "sonnet").some((n) => n.props.font === 10 && n.props.weight === "medium" && n.props.color === "#BDB2E8"), "old-5 has no lavender model column");
   must(withText((t) => t === "12%").some((n) => n.props.font === 10 && n.props.color === "#A9C0D4"), "old-5 has no slate context column");
   must(withText((t) => t === "$1.20").some((n) => n.props.font === 10 && n.props.color === "#D8BE8C"), "lead-1 has no sand cost column");
-  // worker-2 does not work and has a next step: a bare "next" label stands before the text of its second line.
-  must(withText((t) => t === "next").some((n) => n.props.background === "clear" && n.props.color === "#D1D1D6"), "no bare next label on worker-2");
+  // worker-2 does not work, is unread and has a next step: "next" stands after its state words, not before them.
+  must(withText((t) => /not seen · next the lead merges$/.test(t)).length >= 1, "worker-2 does not read \"… not seen · next the lead merges\"");
   must(withText((t) => t.endsWith("the lead merges")).length >= 1, "worker-2 does not show its next step");
   const widths = (w) => reachable().filter((n) => n.props.width === w).length;
   must(widths(27) >= 6 && widths(27) === widths(49) && widths(29) === 0, "the two number columns are not on every row, or the token column is back");
@@ -1110,6 +1110,24 @@ check("two or more empty workspaces fold into one line that opens on a click; a 
 check("the new mark keeps its own width on one line, so a full row cannot squeeze it into one letter a line", () => {
   const marks = withText((t) => t === "new");
   must(marks.length >= 1 && marks.every((n) => n.props.fixedSize === true && n.props.lineLimit === 1), "a new mark can wrap");
+});
+
+check("after state words the next step says next itself, and no bare next label stands before the state", () => {
+  ctx.__setData("workspaces", JSON.stringify([{
+    id: "ws-bare", title: "ignored", directory: "/work/bare", color: "#336699", selected: false, unread: 0,
+    description: ["/work/bare", "@home: " + HOME, "n-1: opus · next the lead merges"].join(" | "),
+    tabs: [tab(1, "[n-1] t", { id: B(1), hasUnread: true })], agents: [agent("n-1", B(1), "idle", "claude")], prs: [],
+  }]));
+  must(withText((t) => t === "finished · not seen · next the lead merges").length === 1, "the line is not \"finished · not seen · next the lead merges\": " + rowText("n-1").join(" | "));
+  must(withText((t) => t === "next").length === 0, "a bare next label stands before the state words");
+  // A seen row has no state words, so the bare label stays at the start of the line.
+  ctx.__setData("workspaces", JSON.stringify([{
+    id: "ws-bare", title: "ignored", directory: "/work/bare", color: "#336699", selected: false, unread: 0,
+    description: ["/work/bare", "@home: " + HOME, "n-1: opus · next the lead merges"].join(" | "),
+    tabs: [tab(1, "[n-1] t", { id: B(1) })], agents: [agent("n-1", B(1), "idle", "claude")], prs: [],
+  }]));
+  must(withText((t) => t === "next").length === 1 && withText((t) => t === "the lead merges").length === 1, "a seen row lost its bare next label: " + rowText("n-1").join(" | "));
+  ctx.__setData("workspaces", JSON.stringify(workspaces));
 });
 
 check("a tool from @tools gets a flat item with a neutral dot and starts by its command word", () => {
