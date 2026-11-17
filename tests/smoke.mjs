@@ -677,7 +677,9 @@ check("the Limits view groups one account: its name once, the tool name once, th
   must(withText((t) => ["Here", "ended", "train"].includes(t)).length === 0 && !reachable().some((n) => n.type === "textfield"), "a control of the session list shows in the Limits view");
   tap(withText((t) => t === "by tool")[0]);
   const texts = limitsTexts();
-  const turned = texts.slice(texts.indexOf("Claude")).filter((t) => /^(personal|work|team-a|other|Claude|Codex|no data|cost|\$.* session.*|OpenCode, Grok|\d+%|5h · .*|week · .*)$/.test(t));
+  // The "room left" line comes first: two Claude accounts report a week, both under 80%. Codex has one, so no line.
+  must(withText((t) => t === "2 of 2 accounts under 80% this week").length === 1, "no room-left line for Claude: " + JSON.stringify(texts));
+  const turned = texts.slice(texts.indexOf("Claude", texts.indexOf("2 of 2 accounts under 80% this week"))).filter((t) => /^(personal|work|team-a|other|Claude|Codex|no data|cost|\$.* session.*|OpenCode, Grok|\d+%|5h · .*|week · .*)$/.test(t));
   must(JSON.stringify(turned) === JSON.stringify([
     "Claude", "personal", "75%", "week · resets Wed 23:00", "work", "7%", "5h · resets 21:20", "1%", "week · resets Sun 10:00", "no data", "team-a",
     "Codex", "personal", "4%", "week · resets Wed 10:19", "no data", "team-a",
@@ -687,6 +689,27 @@ check("the Limits view groups one account: its name once, the tool name once, th
   tap(withText((t) => t === "by account")[0]);
   tap(withText((t) => t === "Limits")[0]);
   must(withText((t) => t === "Here").length === 1 && withText((t) => t === "by tool").length === 0, "the controls of the session list did not come back");
+});
+check("a limit line counts down to its reset, and Put on hold moves an account to the on-hold group and saves it", () => {
+  // EPOCH + 2 days 5 hours 10 minutes: the countdown reads "2d 5h"; 42 minutes reads "42m".
+  ctx.__setData("workspaces", limitsFixture("claude,week,40,Thu 10:00,1794650000,work," + (EPOCH + 2 * 86400 + 5 * 3600 + 600) + ";claude,5h,10,12:00,1794650000,," + (EPOCH + 42 * 60 + 30) + ";claude,week,20,Wed 23:00,1794650000", ["@primary: personal"]));
+  tap(withText((t) => t === "Limits")[0]);
+  must(withText((t) => t === "week · resets Thu 10:00 (in 2d 5h)").length === 1, "no 2d 5h countdown: " + JSON.stringify(limitsTexts()));
+  must(withText((t) => t === "5h · resets 12:00 (in 42m)").length === 1, "no 42m countdown on a line with no account name");
+  must(withText((t) => t === "week · resets Wed 23:00").length === 1, "a line with no reset epoch changed");
+  const hold = withText((t) => t === "Put Claude work on hold")[0];
+  must(hold, "no Put on hold item for the work account");
+  const calls = cmuxCalls().length;
+  tap(hold);
+  must(cmuxCalls().slice(calls).some((c) => /(^| \| )@hold: claude\/work$/.test(String(c.params?.description ?? ""))), "the hold was not saved");
+  must(withText((t) => t === "week · resets Thu 10:00 (in 2d 5h)").length === 0, "the held account still shows its line");
+  must(withText((t) => t === "on hold").length === 1 && withText((t) => t === "Claude work").length === 1, "no on-hold group naming Claude work");
+  // With one account left, Claude has no room-left line: the held account is not counted.
+  must(!limitsTexts().some((t) => / accounts under 80% this week$/.test(t)), "the held account is still counted");
+  tap(withText((t) => t === "Resume Claude work")[0]);
+  must(withText((t) => t === "on hold").length === 0 && withText((t) => t === "week · resets Thu 10:00 (in 2d 5h)").length === 1, "Resume did not bring the line back");
+  must(withText((t) => t === "2 of 2 accounts under 80% this week").length === 1, "the room-left line did not come back");
+  tap(withText((t) => t === "Limits")[0]);
 });
 check("the Limits view of one account with no accounts file has no header and still names a tool with no data", () => {
   ctx.__setData("workspaces", limitsFixture("claude,5h,30,21:20,1794650000;claude,week,10,Sun 10:00,1794650000;codex,,,,0;grok,,,,0"));

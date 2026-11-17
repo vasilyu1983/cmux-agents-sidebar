@@ -280,6 +280,12 @@ The `Limits` view of the panel (the segment next to `Sessions`) has two grouping
 
 Both are drawings with sample names, made from `examples/limits.html` and `examples/limits-tools.html`.
 
+In both groupings:
+
+- **Room left.** A tool with two accounts or more that report a week window gets one muted line at the top: `Claude  3 of 4 accounts under 80% this week`. The line turns orange when no account is under 80%.
+- **Countdown.** A window with a known reset time shows the time left after the clock time: `week · resets Wed 23:00 (in 2d 5h)`.
+- **On hold.** Right-click a window line → `Put Claude work on hold`. The account leaves the view, the room-left count and the limit line of the strip, and an `on hold` group at the end lists it; right-click it → `Resume Claude work`. The list is kept in the description of the workspace that carries the limits (`@hold: claude/work`), so it survives a reload. Hold only hides; it changes no account and no login.
+
 A tab title, as `label-tabs.py` writes it:
 
 | Tab title | Meaning |

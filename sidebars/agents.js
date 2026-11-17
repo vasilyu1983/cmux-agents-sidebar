@@ -301,6 +301,11 @@ function fmtElapsed(secs) {
   return Math.floor(m / 60) + "h " + String(m % 60).padStart(2, "0") + "m";
 }
 
+// Time until a reset: "42m", "5h 10m", "2d 5h".
+function fmtLeft(secs) {
+  const m = Math.max(0, Math.floor(secs / 60)), h = Math.floor(m / 60), d = Math.floor(h / 24);
+  return d ? d + "d " + (h % 24) + "h" : h ? h + "h " + (m % 60) + "m" : m + "m";
+}
 function fmtAgo(secs) {
   const s = Math.max(0, Math.floor(secs));
   if (s < 60) return s + "s";
@@ -734,8 +739,9 @@ const limits = computed(() => {
   }
   const out = [];
   for (const item of newest ? newest.text.split(";") : []) {
-    // The sixth part, the account, is optional: "claude,5h,42,14:10,1794650000,work".
-    const m = /^([a-z]{1,12}),([\w]{0,8}),(\d{0,3}),([\w: ]{0,12}),(\d{1,12})(?:,([a-z0-9-]{1,16}))?$/.exec(item);
+    // The sixth part, the account, is optional: "claude,5h,42,14:10,1794650000,work". The seventh, the reset time as
+    // epoch, is optional too and feeds the countdown: "claude,5h,42,14:10,1794650000,,1794660000".
+    const m = /^([a-z]{1,12}),([\w]{0,8}),(\d{0,3}),([\w: ]{0,12}),(\d{1,12})(?:,([a-z0-9-]{0,16}))?(?:,(\d{1,12}))?$/.exec(item);
     if (!m || !TOOLS[m[1]]) continue;
     const seen = Number(m[5]);
     const age = seen && epoch >= seen ? " · seen " + fmtAgo(epoch - seen) + " ago" : "";
@@ -752,13 +758,16 @@ const limits = computed(() => {
         value = (m[2] || "limit") + " " + used + "%" + (m[4] ? " · resets " + m[4] : "") + age;
         bar = Math.min(100, used);
         pct = used + "%";
-        rest = (m[2] || "limit") + (m[4] ? " · resets " + m[4] : "");  // the age shows on hover
+        const left = m[7] && Number(m[7]) > epoch && epoch ? " (in " + fmtLeft(Number(m[7]) - epoch) + ")" : "";
+        rest = (m[2] || "limit") + (m[4] ? " · resets " + m[4] + left : "");  // the age shows on hover
       }
     }
     const primary = (m[1] === "claude" || m[1] === "codex") ? accountMarks().primary : "";
     const label = TOOLS[m[1]] + (m[6] ? " " + m[6] : primary ? " " + primary : "");
     // The key carries the form (with or without a bar), because a row's template is fixed per key.
-    out.push({ key: "limit" + out.length + m[1] + m[2] + (bar >= 0 ? ":b" : ""), label, value, color, copy: label + " " + value, bar, pct, rest, wsId: newest.wsId, tool: Object.keys(TOOLS).indexOf(m[1]), acct: m[6] || primary });
+    const acct = m[6] || primary;
+    if (held().includes(m[1] + "/" + (acct || "default"))) continue;
+    out.push({ key: "limit" + out.length + m[1] + m[2] + (bar >= 0 ? ":b" : ""), label, value, color, copy: label + " " + value, bar, pct, rest, wsId: newest.wsId, tool: Object.keys(TOOLS).indexOf(m[1]), toolId: m[1], win: m[2], acct });
   }
   // Lines of one tool stay together, and inside a tool the lines of one account.
   out.sort((a, b) => a.tool - b.tool || (a.acct < b.acct ? -1 : a.acct > b.acct ? 1 : 0));
@@ -792,7 +801,7 @@ const limitRows = computed(() => {
     else if (x.bar < 0 && x.value === "no limit data on this Mac") group(x.acct).none.push(x);
     else group(x.acct).wins.push(x);
   }
-  if (limitsByTool()) return limitRowsByTool(all);
+  if (limitsByTool()) return [...roomRows(all), ...limitRowsByTool(all), ...heldRows()];
   const primary = accountMarks().primary;
   const names = Object.keys(groups).filter(Boolean).sort((a, b) => (b === primary) - (a === primary) || (a < b ? -1 : a > b ? 1 : 0));
   const out = [];
@@ -810,8 +819,42 @@ const limitRows = computed(() => {
     }
     if (g.cost) out.push({ ...g.cost, kind: "cost", tname: "cost" });
   }
-  return out;
+  return [...roomRows(all), ...out, ...heldRows()];
 });
+// "Room left": for each tool with two accounts or more that report a weekly window, how many of them are under 80%.
+// Accounts on hold are not counted. One muted line per tool at the top of the Limits view.
+function roomRows(all) {
+  const out = [];
+  for (const tool of Object.keys(TOOLS)) {
+    const weeks = all.filter((x) => x.toolId === tool && x.win === "week" && x.bar >= 0);
+    if (weeks.length < 2) continue;
+    const free = weeks.filter((x) => x.bar < 80).length;
+    const value = free + " of " + weeks.length + " accounts under 80% this week";
+    out.push({ key: "room-" + tool, kind: "room", tname: TOOLS[tool], value, color: free ? "secondary" : ORANGE, copy: TOOLS[tool] + ": " + value, bar: -1, wsId: all[0]?.wsId });
+  }
+  return out;
+}
+// Accounts on hold: "@hold: claude/work,codex/default" in the description of the workspace that carries "@limits".
+// Their lines leave the Limits view; an "on hold" group at the end lists them, and its menu resumes one.
+const HOLD_KEY = /^[a-z]{1,12}\/[a-z0-9-]{1,16}$/;
+const [holdS, setHoldS] = signal(null);
+const limitsWs = () => (data.workspaces() ?? []).find((w) => descOf(w).split(" | ").some((p) => p.startsWith("@limits: ")));
+const held = () => holdS() ?? (((limitsWs() && descOf(limitsWs()).split(" | ").find((p) => p.startsWith("@hold: "))) ?? "").slice(7).split(",").filter((k) => HOLD_KEY.test(k)));
+function setHold(key, on) {
+  const w = limitsWs();
+  if (!w || !HOLD_KEY.test(key)) return;
+  const next = on ? [...new Set([...held(), key])] : held().filter((k) => k !== key);
+  setHoldS(next);
+  const parts = descOf(w).split(" | ").filter((p) => !p.startsWith("@hold: "));
+  cmux("workspace.action", { workspace_id: w.id, action: "set_description", description: [...parts, ...(next.length ? ["@hold: " + next.join(",")] : [])].join(" | ") });
+}
+const holdLabel = (key) => { const [t, a] = key.split("/"); return (TOOLS[t] ?? t) + " " + a; };
+function heldRows() {
+  const keys = held();
+  if (!keys.length) return [];
+  return [{ key: "head-held", kind: "head", label: "on hold", first: false },
+    ...keys.map((k) => ({ key: "held-" + k, kind: "held", tname: "", value: holdLabel(k), hold: k, color: META, copy: holdLabel(k), bar: -1, wsId: limitsWs()?.id }))];
+}
 // The same lines per tool: a header with the tool name, under it each account with its windows (the account name
 // once), then the accounts of that tool with no data on one muted line. A tool with no window and no account name
 // goes to the last group "other". The cost lines, one per account, follow in a group "cost".
@@ -1273,6 +1316,11 @@ function limitRow(entry) {
     .contextMenu([
       Button("Copy the text", () => clipboard.write(entry().copy)),
       Button(() => VIEW_OF(entry().key)[1], () => openViews(VIEW_OF(entry().key)[0])),
+      // A window line puts its account on hold; a line of the "on hold" group resumes it.
+      // A row's kind is fixed per key, so the item is chosen once when the row is built.
+      ...(entry().hold ? [Button(() => "Resume " + entry().value, () => setHold(entry().hold, false))]
+        : entry().kind === "win" ? [Button(() => "Put " + holdLabel(entry().toolId + "/" + (entry().acct || "default")) + " on hold",
+          () => setHold(entry().toolId + "/" + (entry().acct || "default"), true))] : []),
     ]);
 }
 

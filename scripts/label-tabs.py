@@ -1252,7 +1252,8 @@ LIMIT_READINGS = []  # [tool, window, account, share used in %, reset time (epoc
 def limit_item(tool, window, used, reset, seen, account=""):
     """One limit window for the Limits view of the panel: "claude,5h,42,14:10,1794650000" =
     tool, window, share used in %, local reset time ("ended" when it passed, "" when unknown), time seen (epoch).
-    The window of a listed account gets a 6th part, its name: "claude,5h,42,14:10,1794650000,work".
+    The window of a listed account gets a 6th part, its name: "claude,5h,42,14:10,1794650000,work". A known reset time
+    adds a 7th part, the reset time as epoch, for the countdown of the panel ("...,1794650000,,1794660000" with no name).
     None when the share is not a number."""
     try:
         used = round(float(used))
@@ -1274,7 +1275,7 @@ def limit_item(tool, window, used, reset, seen, account=""):
     except (TypeError, ValueError, OverflowError):
         ends = 0
     LIMIT_READINGS.append([tool, window, account, used, ends, int(seen)])
-    return f"{tool},{window},{used},{text},{int(seen)}" + (f",{account}" if account else "")
+    return f"{tool},{window},{used},{text},{int(seen)}" + (f",{account}" if account or ends > 0 else "") + (f",{ends}" if ends > 0 else "")
 
 
 def codex_files(home):
@@ -1510,9 +1511,9 @@ def set_models(tree, models, strip):
     for workspace, old in found.items():
         parts = old.split(" | ")
         kept = [part for part in parts[1:] if part.startswith("@") and not part.startswith(("@proj: ", "@repo: "))]
-        # "@view" and "@pin" belong to the panel (the saved chips, sort, folds and pinned sessions): they stay when
+        # "@view", "@pin" and "@hold" belong to the panel (the saved chips, sort, folds, pinned sessions, accounts on hold): they stay when
         # the strip parts are replaced.
-        marks = strip[workspace] + [part for part in kept if part.startswith(("@view: ", "@pin: "))] if workspace in strip else kept
+        marks = strip[workspace] + [part for part in kept if part.startswith(("@view: ", "@pin: ", "@hold: "))] if workspace in strip else kept
         # The folder is the first part of the description when the owner wrote one, else the workspace folder of cmux.
         folder = parts[0].strip().rstrip("/") or folders.get(workspace, "")
         own = [part for part in (project_part(parts[0].rstrip("/")), repo_part(folder)) if part]
