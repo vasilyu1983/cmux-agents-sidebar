@@ -467,7 +467,7 @@ const view = computed(() => {
     if (openInfo()[r.rowId]) {
       r.info.forEach((l, i) => into.push({
         key: "d:" + r.key + ":" + l[0], kind: "detail", wsId: r.wsId, wsColor: r.wsColor, surfaceId: r.surfaceId,
-        label: l[0], value: l[1], last: i === r.info.length - 1,
+        label: l[0], value: l[1], last: i === r.info.length - 1, gap: i > 0 && r.info[i - 1][2] !== l[2],
       }));
     }
     if (!openKids()[r.rowId]) return;
@@ -583,35 +583,40 @@ const view = computed(() => {
         focused: !earlier && Boolean(w.selected && tab?.focused),
         unread: !earlier && Boolean(tab?.hasUnread),
         rowId: w.id + ":" + a.id,
-        // Detail lines, shown when the owner opens the row with the "›" mark. Empty values are left out.
+        // Detail lines, shown when the owner opens the row with the "›" mark. Empty values are left out, and so is
+        // what the row or its band already shows (tool, cost, context share, title). Three groups, in this order:
+        // run (how the session runs), work (where it works), history (what was asked).
         info: [
-          ["state", (agentsWait ? STATUS.idle : statusOf(a)).label + (a.sinceEpoch && a.status !== "idle" ? " for " + fmtElapsed(epoch - a.sinceEpoch) : "")],
-          ["lane", sess.lane ?? (/\/lane-([^/]+)/.exec(String(a.directory ?? "")) ?? [])[1] ?? ""],
-          ["pr", sess.pr ?? ""],
-          ["cache", sess.cold ? sess.cold + " tokens to rewrite on the next message" : ""],
-          ["waits", agentsWait ? "agents running: its subagents still work after its turn ended" : a.status === "needs_input" ? sess.wait ?? "" : ""],
-          ["next", a.status === "working" ? "" : sess.next ?? ""],
-          ["duplicate", sess.dup ? "another live session works in this folder on this branch" : ""],
-          ["not pushed", sess.ahead > 0 ? sess.ahead + " commit(s) that no remote holds" : ""],
-          ["compacted", sess.comp > 0 ? sess.comp + " time(s)" + (sess.comp >= 3 ? "; a fresh session with a hand-over costs less context" : "") : ""],
-          ["loop", sess.loop ? many(sess.loop, "failed tool call", "failed tool calls") + " in a row" : ""],
-          ["overlap", sess.overlap ? many(sess.overlap, "file", "files") + " also edited by another session" : ""],
-          ["silent", sess.silent ? many(sess.silent, "subagent", "subagents") + " silent for 10 min or more" : ""],
-          ["errors", sess.err ? many(sess.err, "failed tool call or API error", "failed tool calls or API errors") : ""],
-          ["tool", a.name],
-          ["account", sess.acct || (accountMarks().primary && /claude|codex/.test(String(a.kind ?? "")) ? accountMarks().primary + " (primary)" : "")],
-          ["profile", sess.profile ? sess.profile + " (start profile; its arguments are in agents-profiles)" : ""],
-          ["rule", sess.wrong ? "the folder rule names " + sess.wrong + "; start the session again on that account" : ""],
-          ["model", sess.model ?? ""],
-          ["context", [sess.ctx >= 0 ? sess.ctx + "%" : "", sess.tok > 0 ? tokText(sess.tok) + " tokens" : ""].filter(Boolean).join(" · ")],
-          ["cost", sess.cost ?? ""],
-          ["folder", String(a.directory ?? "").replace(/^\/Users\/[^/]+/, "~")],
-          ["branch", tab?.branch ? tab.branch + (tab.dirty ? " (changed files)" : "") : ""],
-          ["ports", (tab?.ports ?? []).join(", ")],
-          ["first ask", a.title ?? ""],
-          ["last ask", tab?.latestPrompt ?? ""],
-          ["last prompt", sess.prompt ?? ""],
-          ["title", sess.title ?? ""],
+          ["state", (agentsWait ? STATUS.idle : statusOf(a)).label + (a.sinceEpoch && a.status !== "idle" ? " for " + fmtElapsed(epoch - a.sinceEpoch) : ""), "run"],
+          ["waits", agentsWait ? "agents running: its subagents still work after its turn ended" : a.status === "needs_input" ? sess.wait ?? "" : "", "run"],
+          ["next", a.status === "working" ? "" : sess.next ?? "", "run"],
+          ["errors", sess.err ? many(sess.err, "failed tool call or API error", "failed tool calls or API errors") : "", "run"],
+          ["loop", sess.loop ? many(sess.loop, "failed tool call", "failed tool calls") + " in a row" : "", "run"],
+          ["overlap", sess.overlap ? many(sess.overlap, "file", "files") + " also edited by another session" : "", "run"],
+          ["silent", sess.silent ? many(sess.silent, "subagent", "subagents") + " silent for 10 min or more" : "", "run"],
+          ["duplicate", sess.dup ? "another live session works in this folder on this branch" : "", "run"],
+          ["compacted", sess.comp > 0 ? sess.comp + " time(s)" + (sess.comp >= 3 ? "; a fresh session with a hand-over costs less context" : "") : "", "run"],
+          ["cache", sess.cold ? sess.cold + " tokens to rewrite on the next message" : "", "run"],
+          // The model line adds the version and effort to the one word of the row ("Opus 5.5 medium").
+          ["model", sess.model ?? "", "run"],
+          ["tokens", sess.tok > 0 ? tokText(sess.tok) + " in context" : "", "run"],
+          // The account shows here only when the row does not name it: the primary account of the tool.
+          ["account", !sess.acct && accountMarks().primary && /claude|codex/.test(String(a.kind ?? "")) ? accountMarks().primary + " (primary)" : "", "run"],
+          ["profile", sess.profile ? sess.profile + " (start profile; its arguments are in agents-profiles)" : "", "run"],
+          ["rule", sess.wrong ? "the folder rule names " + sess.wrong + "; start the session again on that account" : "", "run"],
+          ["lane", sess.lane ?? (/\/lane-([^/]+)/.exec(String(a.directory ?? "")) ?? [])[1] ?? "", "work"],
+          ["pr", sess.pr ?? "", "work"],
+          ["branch", tab?.branch ? tab.branch + (tab.dirty ? " (changed files)" : "") : "", "work"],
+          ["unpushed", sess.ahead > 0 ? sess.ahead + " commit(s) that no remote holds" : "", "work"],
+          ["folder", String(a.directory ?? "").replace(/^\/Users\/[^/]+/, "~"), "work"],
+          ["ports", (tab?.ports ?? []).join(", "), "work"],
+          // A text that starts with "<" or "[SYSTEM" is a notice that the tool added (an event, a reminder), not an
+          // ask of the owner. The same text twice shows once.
+          ...((asks) => asks.filter((l, k) => l[1] && !/^(<|\[SYSTEM)/.test(l[1].trim()) && asks.findIndex((m) => m[1] === l[1]) === k))([
+            ["first ask", a.title ?? "", "history"],
+            ["last ask", tab?.latestPrompt ?? "", "history"],
+            ["prompt", sess.prompt ?? "", "history"],
+          ]),
         ].filter((l) => l[1]),
         kids: subs ? subs.total : (a.children ?? []).length,
         kidsRunning: subs ? subs.run : (a.children ?? []).filter((c) => c.running).length,
@@ -1562,7 +1567,7 @@ function detailRow(entry) {
       cell(Text(() => entry().label).font(10).monospaced().color(META), 58, "leading"),
       Text(() => entry().value).font(10).monospaced().color(TEXT2).lineLimit(2).truncation("tail"),
       Spacer(),
-    ]).paddingLeading(UNDER_TITLE),
+    ]).paddingLeading(UNDER_TITLE).paddingTop(() => (entry().gap ? 6 : 0)),
   ])
     .paddingLeading(9).paddingTrailing(10)
     .frame({ maxWidth: "infinity" })

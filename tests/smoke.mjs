@@ -489,15 +489,33 @@ check("the Show details menu item opens the detail lines of its row", () => {
   tap(item());
   must(!textOf().includes("duplicate"), "Hide details did not close the lines");
 });
+// The detail lines add what the row does not show, in three groups: run, work, history.
+check("detail lines leave out what the row shows, start each group with a gap, and drop a notice of the tool", () => {
+  ctx.__setData("workspaces", JSON.stringify([{
+    id: "ws-bare", title: "ignored", directory: "/work/bare", color: "#336699", selected: true, unread: 0,
+    description: ["/work/bare", "@home: " + HOME, "d-1: opus · acct team · ctx 20% · $3.00 · title Ship it · prompt ship the fix"].join(" | "),
+    tabs: [tab(1, "[d-1] t", { id: T(7), branch: "lane/x", latestPrompt: "<event kind=\"repl-eval\">" })],
+    agents: [agent("d-1", T(7), "idle", "claude")], prs: [],
+  }]));
+  tap(withText((t) => t === "›")[0]);
+  const labels = withText(() => true).map((n) => n.props.text);
+  for (const gone of ["tool", "cost", "title", "context", "last prompt"]) must(!labels.includes(gone), "the details still have a " + gone + " line");
+  must(labels.includes("prompt") && labels.includes("ship the fix"), "the details lost the prompt");
+  must(!labels.some((t) => /^<event/.test(t ?? "")), "a notice of the tool shows as the last ask");
+  const branch = withText((t) => t === "branch")[0];
+  must(branch && parentOf(parentOf(branch.id).id).props.paddingTop === 6, "the work group does not start with a 6 pt gap");
+  ctx.__setData("workspaces", JSON.stringify(workspaces));
+});
 check("the info mark opens detail lines", () => {
   const before = textOf().split("\n").length;
   for (const m of withText((t) => t === "›")) tap(m);
   const after = textOf();
   must(after.split("\n").length > before, "no detail lines appeared");
 });
-check("the context detail line names the tokens beside the share", () => {
-  mustContain(textOf(), "12% · 420K tokens");
-  mustContain(textOf(), "37% · 95K tokens");
+check("the tokens detail line names the context tokens; the share is on the row, so the line leaves it out", () => {
+  mustContain(textOf(), "420K in context");
+  mustContain(textOf(), "95K in context");
+  must(!textOf().includes("12% · 420K"), "the detail line still repeats the share of the row");
 });
 check("the sub badge opens the subagent rows, from cmux data and from the description", () => {
   for (const m of withText((t) => /^▸\d/.test(t))) tap(m);
