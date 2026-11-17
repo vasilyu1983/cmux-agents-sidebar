@@ -74,6 +74,8 @@ const collapsed = () => ({ ...saved().folds, ...collapsedS() });
 const [byState, setByState] = signal(false);
 // The Limits view grouped per tool (which account of a tool has room) in place of per account. Not saved.
 const [limitsByTool, setLimitsByTool] = signal(false);
+// The end of a window line in Limits: the time left ("1d 12h", default) or the reset time ("Wed 23:00"). Not saved.
+const [limitsAt, setLimitsAt] = signal(false);
 const [openKids, setOpenKids] = signal({});
 const [openInfo, setOpenInfo] = signal({});
 // The account filter: "" = every account. Not saved; it lasts until the panel reloads.
@@ -756,12 +758,13 @@ const limits = computed(() => {
       const used = Number(m[3]);
       if (m[4] === "ended") value = (m[2] || "limit") + " window ended · last value " + used + "%" + age;
       else {
-        value = (m[2] || "limit") + " " + used + "%" + (m[4] ? " · resets " + m[4] : "") + age;
+        const left = m[7] && Number(m[7]) > epoch && epoch ? fmtLeft(Number(m[7]) - epoch) : "";
+        value = (m[2] || "limit") + " " + used + "%" + (m[4] ? " · resets " + m[4] + (left ? " (in " + left + ")" : "") : "") + age;
         bar = Math.min(100, used);
         pct = used + "%";
-        // The line shows the time left; the clock time and the age of the figure show on hover. With no reset epoch
-        // (an older watcher) the clock time stays on the line.
-        rest = m[7] && Number(m[7]) > epoch && epoch ? fmtLeft(Number(m[7]) - epoch) : m[4];
+        // The line shows the time left, or the reset time when "reset time" is on; the hover shows both and the age
+        // of the figure. With no reset epoch (an older watcher) the reset time stays on the line.
+        rest = !limitsAt() && left ? left : m[4];
         long = (m[2] || "limit") + (m[4] ? " · resets " + m[4] : "");
       }
     }
@@ -1322,7 +1325,7 @@ function limitRow(entry) {
       wideBar(() => entry().bar, 5),
       cell(Text(() => entry().pct).font(10).monospaced().lineLimit(1)
         .color(() => (entry().bar >= 80 ? "primary" : META)), 34, "trailing"),
-      cell(Text(() => entry().rest).font(10).monospaced().color(META).lineLimit(1).help(() => entry().value), 52, "trailing"),
+      cell(Text(() => entry().rest).font(10).monospaced().color(META).lineLimit(1).help(() => entry().value), 60, "trailing"),
     ]
     : [
       ...(entry().kind === "room" ? [HStack({ spacing: 3 }, (entry().dots ?? []).map((_, i) => Circle({ size: 6 }).fill(() => entry().dots?.[i] ?? "clear")))] : []),
@@ -1720,6 +1723,8 @@ sidebar(() =>
       segment("by account", () => !limitsByTool(), () => setLimitsByTool(false), true),
       segment("by tool", () => limitsByTool(), () => setLimitsByTool(true), true),
       Spacer(),
+      segment("time left", () => !limitsAt(), () => setLimitsAt(false), true),
+      segment("reset time", () => limitsAt(), () => setLimitsAt(true), true),
     ]).paddingHorizontal(10)),
 
     // Row 2, what is filtered (sessions only). "Here" keeps the open workspace only. A second click on the active

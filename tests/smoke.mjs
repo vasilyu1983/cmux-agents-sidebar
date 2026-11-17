@@ -684,6 +684,19 @@ check("the Limits view groups per account: cost in the header, window lines, one
   tap(withText((t) => t === "Limits")[0]);
   must(withText((t) => t === "Here").length === 1 && withText((t) => t === "by tool").length === 0, "the controls of the session list did not come back");
 });
+check("time left / reset time switches the end of a window line; the hover keeps both", () => {
+  ctx.__setData("workspaces", limitsFixture("claude,week,40," + "Thu 10:00,1794650000,work," + (EPOCH + 2 * 86400 + 5 * 3600 + 30)));
+  tap(withText((t) => t === "Limits")[0]);
+  const line = withText((t) => t === "2d 5h")[0];
+  must(line && String(line.props.help).includes("resets Thu 10:00 (in 2d 5h)"), "the time-left line has no full hover: " + JSON.stringify(line?.props.help));
+  must(withText((t) => t === "time left").length === 1 && withText((t) => t === "reset time").length === 1, "no time left / reset time switch");
+  tap(withText((t) => t === "reset time")[0]);
+  must(withText((t) => t === "Thu 10:00").length === 1 && withText((t) => t === "2d 5h").length === 0, "reset time did not show the clock time");
+  tap(withText((t) => t === "time left")[0]);
+  must(withText((t) => t === "2d 5h").length === 1, "time left did not come back");
+  tap(withText((t) => t === "Limits")[0]);
+  must(withText((t) => t === "reset time").length === 0, "the switch shows outside Limits");
+});
 check("a limit line counts down to its reset, and Put on hold moves an account to the on-hold group and saves it", () => {
   // EPOCH + 2 days 5 hours 10 minutes: the countdown reads "2d 5h"; 42 minutes reads "42m".
   ctx.__setData("workspaces", limitsFixture("claude,week,40,Thu 10:00,1794650000,work," + (EPOCH + 2 * 86400 + 5 * 3600 + 600) + ";claude,5h,10,12:00,1794650000,," + (EPOCH + 42 * 60 + 30) + ";claude,week,20,Wed 23:00,1794650000", ["@primary: personal"]));

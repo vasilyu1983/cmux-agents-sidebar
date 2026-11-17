@@ -100,7 +100,8 @@ From top to bottom of the picture. "You do" says what the mark asks of you.
 | `2 working` `4 idle` `$68` | Sessions that work now, sessions that wait, summed cost of the open sessions | Click a count to filter the list to those sessions |
 | `Sessions` `By state` `Limits` | Row 1, what you look at: the sessions by workspace, the sessions by state, or the rate limits per tool and account. A control with no effect in a view is not shown there | Click one; a second click on `Limits` goes back to the sessions |
 | `Here` chip | Row 2 of the session views, first chip: only the sessions of the open workspace. Off means every workspace | Click to turn on or off; the panel remembers it |
-| `by account` `by tool` | Row 2 of `Limits`, its only control: the grouping of the limits, with a fainter fill than the `Limits` segment above it. The search field and the chips belong to the session list and do not show here | Click one |
+| `by account` `by tool` | Row 2 of `Limits`, at the left: the grouping of the limits, with a fainter fill than the `Limits` segment above it. The search field and the chips belong to the session list and do not show here | Click one |
+| `time left` `reset time` | Row 2 of `Limits`, at the right: the end of each window line, the time left (`1d 12h`) or the reset time (`Wed 23:00`). The hover shows both | Click one |
 | Chip colours | A filter chip has a colour only when its rows show that colour: orange asks you, purple finished, blue works, red context from 80%. `PR`, `push`, `1h+`, `ended` and `Here` are neutral, as their marks on the rows are. A chip with a count of 0 is not shown. The active chip is white on a tint; `views ↗` is blue because it leaves the panel | — |
 | Account dot | An account name is neutral text with a small dot in the colour of that account: on its chip (row 3) and on its header in `Limits`. Coloured text always means a state, a dot always means an account | Click an account chip to filter; click again for all |
 | Second chip row | cmux does not wrap a row. When the chips are wider than a 300 pt sidebar (by an estimate of 6.7 pt a character), the rest goes to a second row; the same holds for the account chips | — |
@@ -257,7 +258,7 @@ The pictures are renders of `scripts/hive.html` with sample data.
 
 ### The Limits view in the panel
 
-The `Limits` view of the panel (the segment next to `Sessions`) has two groupings. Both show one line per window: the window name (`5h`, `week`), a bar that fills the free width of the panel (20 steps of 5%), the percent and the time left to the reset. The bar is green, orange from 50%, red from 80%. The clock time of the reset and the age of the figure show on hover. The pair `by account` / `by tool` under the first row changes the grouping, and it is the only control in this view. `by account` is the default, and the choice is not saved: after a panel reload it is `by account` again.
+The `Limits` view of the panel (the segment next to `Sessions`) has two groupings. Both show one line per window: the window name (`5h`, `week`), a bar that fills the free width of the panel (20 steps of 5%), the percent and the time left to the reset. The bar is green, orange from 50%, red from 80%. The pair `time left` / `reset time` at the right of the grouping pair changes the end of the line: `1d 12h` (the default) or `Wed 23:00`. The hover shows both and the age of the figure. This choice is not saved either. The pair `by account` / `by tool` under the first row changes the grouping, and it shares its row with the time pair below. `by account` is the default, and the choice is not saved: after a panel reload it is `by account` again.
 
 **Per account** (`by account`). Each account is a group.
 
