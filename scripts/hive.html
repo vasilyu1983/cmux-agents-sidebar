@@ -20,37 +20,55 @@
   /* The Inside view: two grey tones for tools, and one colour per kind of context content. The kinds are a checked
      categorical set in this order (blue, aqua, violet, magenta, green), one step per mode; they mean nothing about models. */
   :root { --tool: #636366; --tool-ext: #aeaeb2; --cm: #2a78d6; }
-  @media (prefers-color-scheme: dark) { :root { --tool: #aeaeb2; --tool-ext: #6e6e73; --cm: #3987e5; } }
+  @media (prefers-color-scheme: dark) { :root { --tool: #aeaeb2; --tool-ext: #8a8a90; --cm: #3987e5; } }  /* 4.1:1 on a card */
   body { margin: 0; padding: 16px; background: var(--bg); color: var(--fg); font: 13px -apple-system, system-ui, sans-serif; }
   h1 { font-size: 15px; margin: 0 0 4px; }
   p { margin: 0 0 12px; color: var(--dim); }
+  /* The caption of a view: one line that a "?" opens in full, and the time of the history beside it. */
+  #info { display: flex; align-items: baseline; gap: 8px; margin: 0 0 10px; }
+  #info p { margin: 0; min-width: 0; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #info.open p { white-space: normal; }
+  #info button { flex: none; font: 600 11px -apple-system, system-ui, sans-serif; color: var(--dim); background: var(--card); border: 1px solid var(--line);
+    border-radius: 999px; width: 22px; height: 22px; padding: 0; cursor: pointer; }
+  #info button:focus-visible { outline: 2px solid #0A84FF; outline-offset: 2px; }
+  #age { flex: none; font-size: 11px; color: var(--dim); }
   .wrap { overflow-x: auto; }
   svg text { fill: var(--fg); font: 12px -apple-system, system-ui, sans-serif; }
-  svg text.sub { fill: var(--dim); font-size: 10px; }
+  svg text.sub { fill: var(--dim); font-size: 11px; }
   svg path { fill: none; stroke: var(--line); stroke-width: 1.2; }
   svg rect.box { fill: var(--card); stroke: var(--line); }
   svg g.here rect.box { stroke: var(--fg); stroke-width: 2; fill: color-mix(in srgb, var(--fg) 9%, var(--card)); }
   svg g.go { cursor: pointer; }
-  svg g.go:hover rect.box, svg g.go:focus rect.box { stroke: #0A84FF; stroke-width: 1.6; }
+  svg g.go:hover rect.box { stroke: #0A84FF; stroke-width: 1.6; }
+  svg g.go:focus-visible rect.box { stroke: #0A84FF; stroke-width: 2.5; }
   svg g.go:focus { outline: none; }
-  nav { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 10px; }
-  nav button, #tools button { font: 600 12px -apple-system, system-ui, sans-serif; color: var(--dim); background: none; border: 0; border-radius: 6px; padding: 5px 10px; cursor: pointer; }
+  /* The switch stays in view on a long page. */
+  nav { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 -16px 8px; padding: 6px 16px; position: sticky; top: 0; z-index: 1; background: var(--bg); }
+  nav button, #tools button { font: 600 12px -apple-system, system-ui, sans-serif; color: var(--dim); background: none; border: 0; border-radius: 6px; padding: 7px 12px; cursor: pointer; }
   nav button:hover, #tools button:hover { color: var(--fg); }
   nav button[aria-pressed="true"], #tools button[aria-pressed="true"] { background: var(--card); color: var(--fg); box-shadow: 0 0 0 1px var(--line); }
-  nav button:focus-visible, #tools button:focus-visible { outline: 2px solid #0A84FF; }
+  nav button:focus-visible, #tools button:focus-visible { outline: 2px solid #0A84FF; outline-offset: 2px; }
   #tools { margin: 0 0 8px; min-height: 0; }
   svg text.big { font-size: 20px; font-weight: 600; }
   svg text.ink { fill: #111114; }
   svg line.grid { stroke: var(--line); stroke-width: 1; }
   svg .lane:hover rect.hit { fill: color-mix(in srgb, var(--fg) 6%, transparent); }
-  .legend span { display: inline-block; margin-right: 14px; color: var(--dim); }
-  .legend i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; }
+  /* A key shows a sample of what it explains: a dot for a colour, an outline for an outline, a dash for a dashed line.
+     A key whose sign is in its text (◇, ⟳, K) has no sample. */
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12px; }
+  .legend span { display: inline-flex; align-items: center; color: var(--dim); }
+  .legend i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; box-sizing: border-box; }
+  .legend i.ring { background: none !important; border: 2px solid; border-radius: 3px; }
+  .legend i.chip { width: 16px; border-radius: 999px; }
+  .legend i.bar { width: 14px; height: 3px; border-radius: 2px; }
+  .legend i.dash { width: 14px; height: 0; border-radius: 0; background: none !important; border-top: 2px dashed; }
+  .legend i.dots { width: 14px; height: 0; border-radius: 0; background: none !important; border-top: 2px dotted; }
 </style>
 </head>
 <body>
 <h1 id="head">Agent hive</h1>
 <nav id="nav" aria-label="View"></nav>
-<p id="when"></p>
+<div id="info"><p id="when"></p><button type="button" id="more" aria-expanded="false" aria-controls="when" title="Show the whole caption">?</button><span id="age"></span></div>
 <div id="tools"></div>
 <p class="legend" id="legend"></p>
 <div class="wrap"><svg id="g" xmlns="http://www.w3.org/2000/svg"></svg></div>
@@ -186,14 +204,14 @@ function jump(node, go) {
     setTimeout(() => { document.title = "Agent hive"; }, 5000);
   };
   node.addEventListener("click", ask);
-  node.addEventListener("keydown", (e) => { if (e.key === "Enter") ask(); });
+  node.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); ask(); } });
 }
 
 function drawHive(data) {
   const svg = document.getElementById("g");
   svg.replaceChildren();
   // A tree from left to right: hive, workspace, session, subagent. Each leaf takes one line of height.
-  const W = [90, 190, 300, 200], GAP = 44, ROW = 40;
+  const W = [90, 190, 340, 200], GAP = 44, ROW = 48;
   const X = [0, W[0] + GAP, W[0] + W[1] + 2 * GAP, W[0] + W[1] + W[2] + 3 * GAP];
   let line = 0;
   const links = [], nodes = [];
@@ -234,11 +252,11 @@ function drawHive(data) {
   for (const n of nodes) {
     const x = X[n.depth], w = W[n.depth];
     if (n.depth === 3 && n.sub === "done") { svg.appendChild(el("text", { class: "sub", x: x + 8, y: n.y + 4, style: "font-size:11px" }, n.title)); continue; }
-    const g = el("g", n.go ? { class: n.here ? "go here" : "go", tabindex: 0, role: "link" } : { class: n.here ? "here" : "" });
-    g.appendChild(el("rect", { class: "box", x, y: n.y - 15, width: w, height: 30, rx: 7, style: n.hot ? "stroke:" + n.hot + ";stroke-width:1.6" : "" }));
-    g.appendChild(el("circle", { cx: x + 11, cy: n.y - 4, r: 4, fill: n.color }));
-    g.appendChild(el("text", { x: x + 21, y: n.y }, n.title));
-    const sub = el("text", { class: "sub", x: x + 21, y: n.y + 11 }, n.acct ? "" : n.sub);
+    const g = el("g", n.go ? { class: n.here ? "go here" : "go", tabindex: 0, role: "button" } : { class: n.here ? "here" : "" });
+    g.appendChild(el("rect", { class: "box", x, y: n.y - 19, width: w, height: 38, rx: 8, style: n.hot ? "stroke:" + n.hot + ";stroke-width:1.6" : "" }));
+    g.appendChild(el("circle", { cx: x + 11, cy: n.y - 6, r: 4, fill: n.color }));
+    g.appendChild(el("text", { x: x + 21, y: n.y - 2 }, n.title));
+    const sub = el("text", { class: "sub", x: x + 21, y: n.y + 12 }, n.acct ? "" : n.sub);
     if (n.acct) {
       sub.appendChild(el("tspan", {}, n.kind + " "));
       sub.appendChild(el("tspan", { fill: acctColor(n.acct) }, n.acct));
@@ -356,8 +374,9 @@ let tileEnd = 0;  // the right end of the row: the picture is never narrower tha
 function tiles(svg, items) {
   const tall = items.some((t) => t[3]) ? 16 : 0;
   let x = 0;
+  const need = Math.max(...items.map(([value, label, , more]) => Math.max(150, String(value).length * 14 + 34, String(label).length * 6.6 + 30, String(more || "").length * 6.2 + 30)));
+  const w = Math.max(need, Math.min(340, (pageWidth() - 10 * (items.length - 1)) / items.length));
   for (const [value, label, color, more] of items) {
-    const w = Math.max(132, String(value).length * 14 + 34, String(label).length * 6.6 + 30, String(more || "").length * 6.2 + 30);
     svg.appendChild(el("rect", { class: "box", x: x + 0.5, y: 0.5, width: w, height: 64 + tall, rx: 10, style: "stroke-opacity:.5" }));
     svg.appendChild(el("text", { x: x + 14, y: 30, style: "font-size:22px;font-weight:600" + (color ? ";fill:" + color : "") }, value));
     svg.appendChild(el("text", { class: "sub", x: x + 14, y: 50, style: "font-size:11px" }, label));
@@ -407,7 +426,7 @@ function answeredWaits(since) {
 }
 // A title over a part of a view, with a note at the right.
 function section(svg, y, w, title, note) {
-  svg.appendChild(el("text", { x: 2, y: y + 12, style: "font-size:12px;font-weight:700" }, title));
+  svg.appendChild(el("text", { class: "sub", x: 2, y: y + 12, style: "font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase" }, title));
   if (note) svg.appendChild(el("text", { class: "sub", x: w - 2, y: y + 12, "text-anchor": "end", style: "font-size:11px" }, note));
   return y + 22;
 }
@@ -544,14 +563,14 @@ function drawTimeline(svg) {
         row.appendChild(el("text", { x: LEFT, y: y + 15, style: "font-size:11px;font-weight:600;fill:#0A84FF" }, open ? "hide" : "show"));
         row.appendChild(el("text", { class: "sub", x: LEFT + 40, y: y + 15, style: "font-size:11px" }, "under 1 min of work in this range"));
         row.addEventListener("click", flip);
-        row.addEventListener("keydown", (e) => { if (e.key === "Enter") flip(); });
+        row.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); flip(); } });
         svg.appendChild(row);
         y += 22 + 3;
       }
       if (!open) return;
     }
     const live = openBox(sid), go = goOf(live), [w, q] = sums.get(sid), h = live ? ROW : 24, mid = y + h / 2, bh = live ? 18 : 10;
-    const g = el("g", go ? { class: "go", tabindex: 0, role: "link" } : {});
+    const g = el("g", go ? { class: "go", tabindex: 0, role: "button" } : {});
     g.appendChild(card(y, W, h, sel && sel === info.n));
     g.appendChild(withTag(el("text", { x: 14, y: mid + 4.5, style: live ? "font-size:13px;font-weight:600" : "font-size:11px;opacity:.55" }, cut("[" + info.n + "]", tags.has(sid) ? 18 : 24)), tags.get(sid)));
     g.appendChild(track(LEFT, mid - 3, plot, 6));
@@ -597,8 +616,8 @@ function drawTimeline(svg) {
     svg.appendChild(el("text", { x: x(r[5]) + (late ? -5 : 5), y: top0 + 14, "text-anchor": late ? "end" : "start", style: "font-size:10px;font-weight:600;fill:#FF6B61" }, (TOOL_NAMES[r[0]] || r[0]) + " " + r[1] + " limit at " + r[3] + "%"));
   }
   size(svg, W, y + 4);
-  legendItems = [[STATUS.working[0], "working"], [STATUS.needs_input[0], "waited for you"], [STATUS.idle[0], "idle (thin line)"], ["#98989d", "empty = the watcher did not run"],
-    ["#98989d", "◇ = context compacted"], ["#98989d", "○ = prompt cache went cold"], ["#98989d", "thin grey bar = subagent run"]];
+  legendItems = [[STATUS.working[0], "working"], [STATUS.needs_input[0], "waited for you"], [STATUS.idle[0], "idle (thin line)", "bar"], ["", "empty = the watcher did not run", "none"],
+    ["", "◇ = context compacted", "none"], ["", "○ = prompt cache went cold", "none"], ["#98989d", "subagent run", "bar"]];
   return "The last " + dur(span) + ", Claude Code sessions. A thin lane is a closed session; closed sessions with under 1 min of work fold into one row. Click a lane to go to its tab."
     + coverage(["Claude Code"]);
 }
@@ -637,7 +656,7 @@ function drawCost(svg) {
     const full = Math.max(8, (g.v / groups[0].v) * room);
     let x0 = LBL, rest = 0, restN = 0;
     const part = (w, fill, tip, a) => {
-      const go = a ? goOf(a) : "", box = el("g", go ? { class: "go", tabindex: 0, role: "link" } : {});
+      const go = a ? goOf(a) : "", box = el("g", go ? { class: "go", tabindex: 0, role: "button" } : {});
       const rect = el("rect", { x: x0, y, width: Math.max(2, w - 2), height: BAR, rx: 5, style: "stroke:none;fill:" + fill });
       rect.appendChild(el("title", {}, tip));
       box.appendChild(rect);
@@ -665,7 +684,7 @@ function drawCost(svg) {
   y += 14;
   for (const { a, v, ws } of shown) {
     const model = modelOf(a.m), go = goOf(a);
-    const g = el("g", go ? { class: "go", tabindex: 0, role: "link" } : {});
+    const g = el("g", go ? { class: "go", tabindex: 0, role: "button" } : {});
     g.appendChild(card(y, W, ROW));
     g.appendChild(el("circle", { cx: 16, cy: y + 17.5, r: 4.5, fill: model[1] }));
     const tag = tags.get(idOf(a));
@@ -877,8 +896,7 @@ function drawLimits(svg) {
     if (x(now) > left + L + 90 && x(now) < left + L + plotW - 130) svg.appendChild(el("text", { x: x(now), y: top + CH - 12, "text-anchor": "middle", style: "font-size:11px;font-weight:600" }, "now"));
     svg.appendChild(el("text", { class: "sub", x: left + L + plotW, y: top + CH - 12, "text-anchor": "end", style: "font-size:11px" }, "reset " + dayTime(c.reset)));
   });
-  legendItems = [["var(--fg)", "used, under 70%"], ["#FFD60A", "70% to 89%"], ["#FF6B61", "90% and more, or 100% before the reset"], ["#98989d", "forecast (dashed)"],
-    ["#98989d", "dotted = no reading yet for that time"]];
+  legendItems = [["var(--fg)", "used, under 70%"], ["#FFD60A", "70% to 89%"], ["#FF6B61", "90% and more, or 100% before the reset"], ["#98989d", "forecast", "dash"], ["#6B7280", "80% line", "dash"]];
   return (risky ? risky + " of " + charts.length + " limit windows reach 100% before the reset at this pace." : "No limit window reaches 100% before the reset at this pace.")
     + " The forecast is a straight line: it knows nothing about your plans." + coverage(["Claude Code", "Codex", ...charts.map((c) => toolOf(c.tool))]);
 }
@@ -912,7 +930,7 @@ function drawQueue(svg) {
       svg.appendChild(el("text", { x: 2, y: y + 12, style: "font-size:12px;font-weight:700;fill:" + color }, isAsk ? "Asks you" : "Done, waits for your next prompt"));
       y += 22;
     }
-    const g = el("g", go ? { class: "go", tabindex: 0, role: "link" } : {});
+    const g = el("g", go ? { class: "go", tabindex: 0, role: "button" } : {});
     g.appendChild(card(y, W, ROW));
     g.appendChild(el("rect", { x: 0.5, y: y + 8, width: 4, height: ROW - 15, rx: 2, fill: color }));
     g.appendChild(el("text", { x: 18, y: y + 20, style: "font-size:13px;font-weight:600" }, cut(r.a.n, 44)));
@@ -973,7 +991,7 @@ function drawContext(svg) {
   let drawnTrends = 0;
   rows.forEach((a, k) => {
     const cx = (k % cols) * CW + CW / 2, cy = Math.floor(k / cols) * CH + 60, go = goOf(a);
-    const g = el("g", go ? { class: "go", tabindex: 0, role: "link" } : {});
+    const g = el("g", go ? { class: "go", tabindex: 0, role: "button" } : {});
     g.appendChild(el("rect", { class: "box", x: cx - CW / 2 + 5, y: cy - 56, width: CW - 10, height: CH - 8, rx: 9, style: "stroke-opacity:.5" }));
     g.appendChild(el("path", { d: arc(cx, cy, 1), style: "stroke-width:9;stroke-linecap:round;opacity:.55" }));
     if (a.x != null) g.appendChild(el("path", { d: arc(cx, cy, a.x / 100), style: "stroke-width:9;stroke-linecap:round;stroke:" + ctxColor(a.x) }));
@@ -1000,9 +1018,9 @@ function drawContext(svg) {
     if (go) jump(g, go);
     svg.appendChild(g);
   });
-  legendItems = [["#34C759", "under 50%"], ["#FFD60A", "50% and more"], ["#FF6B61", "80% and more: compact or start a new session"], ["#98989d", "⟳ = times the context was compacted"], ["#98989d", "– = not known until the next message"]];
-  legendItems.push(["#FF6B61", "dotted line = 80%"]);
-  if (rows.some((a) => a.z)) legendItems.push(["#98989d", "K or M under the share = tokens in the context window"]);
+  legendItems = [["#34C759", "under 50%"], ["#FFD60A", "50% and more"], ["#FF6B61", "80% and more: compact or start a new session"], ["", "⟳ = times the context was compacted", "none"], ["", "– = not known until the next message", "none"]];
+  legendItems.push(["#FF6B61", "80% line", "dots"]);
+  if (rows.some((a) => a.z)) legendItems.push(["", "K or M under the share = tokens in the context window", "none"]);
   return "Share of the context window in use, fullest first. The line under a gauge is the share over the last 6 hours"
     + (drawnTrends ? "" : " (it shows after a session worked for some minutes)") + ". Click a gauge to go to its tab."
     + coverage(["Claude Code", "Codex", ...rows.map((a) => toolOf(a.k))]);
@@ -1014,7 +1032,7 @@ const calls = (a) => a.tn || a.tl.reduce((sum, t) => sum + t[1], 0);
 const hasInside = (a) => calls(a) > 0 || a.cm.length > 0 || a.fe.length > 0 || a.fo.length > 0 || a.er + a.ea + a.lp + a.sa > 0;
 const plural = (n, one, many) => n + " " + (n === 1 ? one : many);
 function insideCard(a, CW) {
-  const go = goOf(a), g = el("g", go ? { class: "go", tabindex: 0, role: "link" } : {}), IW = CW - 32, R = 16 + IW;
+  const go = goOf(a), g = el("g", go ? { class: "go", tabindex: 0, role: "button" } : {}), IW = CW - 32, R = 16 + IW;
   const name = sessName(a.n) ? "[" + sessName(a.n) + "]" : a.n || a.k;
   g.appendChild(el("text", { x: 16, y: 26, style: "font-size:13px;font-weight:600" }, cut(name, Math.floor(IW / 8))));
   g.appendChild(el("text", { class: "sub", x: 16, y: 42, style: "font-size:11px" }, cut([a.wn, a.m].filter(Boolean).join(" · "), Math.floor(IW / 6.4))));
@@ -1130,7 +1148,7 @@ function drawInside(svg) {
     [String(overlaps), overlaps === 1 ? "file edited by two sessions" : "files edited by two sessions", ""], [String(silent), "silent subagents", ""]]);
   y = grid(svg, y, W, rows, insideCard);
   size(svg, W, y + 6);
-  legendItems = [["var(--tool)", "tool calls (and other)"], ["var(--tool-ext)", "MCP servers and skills"], ["var(--cm)", "share of the context, by kind"],
+  legendItems = [["var(--tool)", "tool calls (and other)", "bar"], ["var(--tool-ext)", "MCP servers and skills", "bar"], ["var(--cm)", "share of the context, by kind", "bar"],
     [WARN, "a file that another session also edited"], [BAD, "5 or more failed tool calls in a row"]];
   return "What each open session does inside: the sessions to look at first come first. The context parts are an estimate. A Codex card has tool calls only. Click a card to go to its tab."
     + coverage(["Claude Code", "Codex"]);
@@ -1290,7 +1308,7 @@ function drawSetup(svg) {
     y += 32;
   }
   size(svg, W, y + 6);
-  legendItems = [[WARN, "instruction file over 40 KB: it costs context in every session"], ["var(--line)", "chip = how many of a kind the folder holds"]];
+  legendItems = [[WARN, "instruction file over 40 KB: it costs context in every session"], ["var(--line)", "how many of a kind the folder holds", "chip"]];
   return "What the user folder gives every session, and what the folder of each workspace adds: instruction files with their sizes, and counts of skills, agents, commands, rules, hooks, MCP servers and memory files."
     + " This shows what exists in the folder, not what was loaded into the window.";
 }
@@ -1329,8 +1347,7 @@ function show() {
   const tools = document.getElementById("tools"), svg = svgRoot(), legend = document.getElementById("legend");
   tools.replaceChildren();
   legendItems = Object.values(STATUS);
-  if (view === "hive") legendItems = [...legendItems, ["#8E8E93", "state not known yet"], ["#FF6B61", "red outline = context 80% and more"], ["#8E8E93", "grey text on the right = subagents finished"]];
-  document.getElementById("head").textContent = "Agent hive" + (view === "hive" ? "" : " · " + VIEWS.find((v) => v[0] === view)[1]);
+  if (view === "hive") legendItems = [...legendItems, ["#8E8E93", "state not known yet"], ["#FF6B61", "context 80% and more", "ring"], ["", "grey text on the right = subagents finished", "none"]];
   if (view === "hive") {
     if (pic.ws.length === 0) {
       svg.replaceChildren();
@@ -1349,12 +1366,21 @@ function show() {
     }
     svg.replaceChildren();
     tileEnd = 0;
-    when.textContent = VIEWS.find((v) => v[0] === view)[2](svg) + (hist.t ? " History up to " + clock(hist.t) + "." : "");
+    when.textContent = VIEWS.find((v) => v[0] === view)[2](svg);
   }
+  document.getElementById("age").textContent = view !== "hive" && hist.t ? "history up to " + clock(hist.t) : "";
+  when.title = when.textContent;
   legend.replaceChildren();
-  for (const [color, label] of legendItems) {
-    const span = document.createElement("span"), dot = document.createElement("i");
-    dot.style.background = color; span.appendChild(dot); span.appendChild(document.createTextNode(label)); legend.appendChild(span);
+  // [colour, text, sample]: the sample is "dot" (the default), "ring", "chip", "bar", "dash", "dots" or "none".
+  for (const [color, label, shape] of legendItems) {
+    const span = document.createElement("span");
+    if (shape !== "none") {
+      const dot = document.createElement("i");
+      if (shape && shape !== "dot") dot.className = shape;
+      dot.style.background = color; dot.style.borderColor = color;
+      span.appendChild(dot);
+    }
+    span.appendChild(document.createTextNode(label)); legend.appendChild(span);
   }
 }
 
@@ -1383,6 +1409,8 @@ function load() {
   }
 }
 
+const info = document.getElementById("info"), more = document.getElementById("more");
+more.addEventListener("click", () => { const open = !info.classList.contains("open"); info.classList.toggle("open", open); more.setAttribute("aria-expanded", String(open)); });
 if (fromLink) show();
 load();
 setInterval(load, 15000);
