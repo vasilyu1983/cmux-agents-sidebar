@@ -62,6 +62,7 @@
   .legend i.chip { width: 16px; border-radius: 999px; }
   .legend i.bar { width: 14px; height: 3px; border-radius: 2px; }
   .legend i.dash { width: 14px; height: 0; border-radius: 0; background: none !important; border-top: 2px dashed; }
+  .legend i.ramp { width: 64px; border-radius: 2px; }
   .legend i.dots { width: 14px; height: 0; border-radius: 0; background: none !important; border-top: 2px dotted; }
 </style>
 </head>
@@ -312,6 +313,7 @@ const dur = (sec) => {
 const two = (n) => String(n).padStart(2, "0");
 const hhmm = (t) => { const d = new Date(t * 1000); return two(d.getHours()) + ":" + two(d.getMinutes()); };
 const dayTime = (t) => new Date(t * 1000).toLocaleDateString(undefined, { weekday: "short" }) + " " + hhmm(t);
+const pctOf = (v, total) => (v > 0 && v / total < 0.005 ? "<1%" : Math.round((v / total) * 100) + "%");
 const money = (c) => { const n = parseFloat(String(c ?? "").replace(/[^0-9.]/g, "")); return Number.isFinite(n) ? n : 0; };
 const sessName = (title) => (/^\[([^\]]+)\]/.exec(String(title ?? "")) || [])[1] || "";
 const agents = () => pic.ws.flatMap((w) => (w.a || []).map((a) => ({ ...a, wn: w.n, wc: w.c })));
@@ -634,7 +636,9 @@ function drawTimeline(svg) {
 // ---- Cost: a map (workspace, then session; the area is the cost) and a ranked list ----
 function drawCost(svg) {
   // The open sessions and the ones closed today, by workspace name: a workspace with only closed sessions shows too.
-  const byName = new Map(pic.ws.map((w) => [w.n, [...(w.a || [])]]));
+  // Workspaces with one name share a bar; a Map built in one step would keep only the last of them and lose the others' cost.
+  const byName = new Map();
+  for (const w of pic.ws) byName.set(w.n, [...(byName.get(w.n) || []), ...(w.a || [])]);
   for (const a of closedToday()) byName.set(a.wn, [...(byName.get(a.wn) || []), a]);
   const groups = [...byName].map(([n, list]) => ({ n, a: list.map((a) => ({ a, v: money(a.c) })).filter((x) => x.v > 0).sort((p, q) => q.v - p.v) }))
     .map((g) => ({ ...g, v: g.a.reduce((sum, x) => sum + x.v, 0) })).filter((g) => g.v > 0).sort((p, q) => q.v - p.v);
@@ -660,7 +664,7 @@ function drawCost(svg) {
   for (const g of groups) {
     svg.appendChild(el("text", { x: 2, y: y + 17, style: "font-size:13px;font-weight:600" }, cut(g.n, 18)));
     svg.appendChild(el("text", { x: W - AMT + 14, y: y + 17, style: "font-size:13px;font-weight:600" }, "$" + g.v.toFixed(2)));
-    svg.appendChild(el("text", { class: "sub", x: W - 2, y: y + 17, "text-anchor": "end", style: "font-size:11px" }, Math.round((g.v / total) * 100) + "%"));
+    svg.appendChild(el("text", { class: "sub", x: W - 2, y: y + 17, "text-anchor": "end", style: "font-size:11px" }, pctOf(g.v, total)));
     svg.appendChild(track(LBL, y, room, BAR));
     const full = Math.max(8, (g.v / groups[0].v) * room);
     let x0 = LBL, rest = 0, restN = 0;
@@ -674,12 +678,17 @@ function drawCost(svg) {
       svg.appendChild(box);
       x0 += w;
     };
-    for (const { a, v } of g.a) {
+    // The three largest sessions keep their own part; the others join the grey part.
+    g.a.forEach(({ a, v }, k) => {
       const w = (v / g.v) * full;
-      if (w < 14) { rest += v; restN++; continue; }
+      if (k >= 3 || w < 14) { rest += v; restN++; return; }
       part(w, "color-mix(in srgb, " + modelOf(a.m)[1] + (a.closed ? " 30%" : " 62%") + ", var(--card))", a.n + " · " + (a.m || a.k) + " · " + a.c + (a.u ? " · " + a.u : "") + (a.closed ? " · closed" : ""), a);
+    });
+    if (restN) {
+      const w = Math.max(8, (rest / g.v) * full);
+      part(w, "color-mix(in srgb, var(--dim) 45%, var(--card))", restN + " other session" + (restN > 1 ? "s" : "") + " · $" + rest.toFixed(2));
+      if (w >= 70) svg.appendChild(el("text", { class: "sub", x: x0 - w + 8, y: y + 16.5, style: "font-size:11px;pointer-events:none" }, cut(restN + " other", Math.floor((w - 16) / 6.6))));
     }
-    if (restN) part(Math.max(8, (rest / g.v) * full), "color-mix(in srgb, var(--dim) 45%, var(--card))", restN + " smaller session" + (restN > 1 ? "s" : "") + " · $" + rest.toFixed(2));
     y += BAR + 10;
   }
   y += 14;
@@ -702,7 +711,7 @@ function drawCost(svg) {
     g.appendChild(track(LEFT, y + 12, W - LEFT - RIGHT, 11));
     g.appendChild(el("rect", { x: LEFT, y: y + 12, width: Math.max(4, (v / max) * (W - LEFT - RIGHT)), height: 11, rx: 5.5, fill: model[1] }));
     g.appendChild(el("text", { x: W - RIGHT + 14, y: y + 22, style: "font-size:13px;font-weight:600" }, a.c));
-    g.appendChild(el("text", { class: "sub", x: W - 14, y: y + 22, "text-anchor": "end", style: "font-size:11px" }, Math.round((v / total) * 100) + "%"));
+    g.appendChild(el("text", { class: "sub", x: W - 14, y: y + 22, "text-anchor": "end", style: "font-size:11px" }, pctOf(v, total)));
     if (go) jump(g, go);
     svg.appendChild(g);
     y += ROW + 5;
@@ -746,14 +755,14 @@ function drawCost(svg) {
         top -= h;
       }
       if (perHour[k] > 0) svg.appendChild(el("text", { x: bx + bw / 2, y: top - 5, "text-anchor": "middle", style: "font-size:11px;font-weight:600" }, "$" + perHour[k].toFixed(perHour[k] < 10 ? 2 : 0)));
-      svg.appendChild(el("text", { class: "sub", x: bx + bw / 2, y: base + 16, "text-anchor": "middle", style: "font-size:10px" + (k === HOURS - 1 ? ";font-weight:700" : "") }, k === HOURS - 1 ? "now" : hhmm(start)));
+      svg.appendChild(el("text", { class: "sub", x: bx + bw / 2, y: base + 16, "text-anchor": "middle", style: "font-size:11px" + (k === HOURS - 1 ? ";font-weight:700" : "") }, k === HOURS - 1 ? "now" : hhmm(start)));
     });
     y += TALL;
   }
   size(svg, W, y + 6);
   const seen = new Set(all.map((x) => modelOf(x.a.m)));
   legendItems = MODELS.filter((m) => seen.has(m) && m[0] !== "mythos").map((m) => [m[1], m[2]]);
-  return "One bar per workspace, one part per session; a paler part is a session closed today, the grey part holds the small ones. Each session counts with its whole cost, at list price. Click a part or a line to go to its tab."
+  return "One bar per workspace, one part per session; a paler part is a session closed today, the grey part holds the other sessions. Each session counts with its whole cost, at list price. Click a part or a line to go to its tab."
     + coverage(["Claude Code", ...all.map((x) => toolOf(x.a.k))]);
 }
 
@@ -768,18 +777,21 @@ function drawFlow(svg) {
   const cols = [{ head: "Workspace", key: (r) => r.a.wn || "no workspace", color: () => "#98989d" },
     { head: "Model", key: (r) => modelOf(r.a.m)[2], color: (k) => MODELS.find((m) => m[2] === k)[1] }];
   const several = new Set(rows.map((r) => r.a.u)).size > 1;
-  // Accounts are grey like workspaces: colour in this view means the model only.
-  if (several) cols.unshift({ head: "Account", key: (r) => r.a.u || "main account", color: () => "#98989d" });
-  const W = Math.min(pageWidth(), 1100), NODE = 12, GAP = 34, scale = 230 / total;
+  // An account keeps its colour from the panel, so its bands show where each account's money goes.
+  if (several) cols.unshift({ head: "Account", key: (r) => r.a.u || "main account", color: (k) => (k === "main account" ? "#98989d" : acctColor(k)) });
+  const W = Math.min(pageWidth(), 1100), NODE = 12, GAP = 34;
   for (const c of cols) {
     const sums = new Map();
     for (const r of rows) sums.set(c.key(r), (sums.get(c.key(r)) || 0) + r.v);
-    c.nodes = [...sums].sort((p, q) => q[1] - p[1]).map(([k, v]) => ({ k, v, h: Math.max(3, v * scale), out: 0, in: 0 }));
+    c.nodes = [...sums].sort((p, q) => q[1] - p[1]).map(([k, v]) => ({ k, v, out: 0, in: 0 }));
   }
   const last = cols[cols.length - 1], top = cols[cols.length - 1].nodes[0];
   let y = tiles(svg, [["$" + total.toFixed(2), "whole cost of the sessions open now or closed today", ""],
     [Math.round((top.v / total) * 100) + "%", "goes to " + top.k, last.color(top.k)],
     [String(cols[cols.length - 2].nodes.length), cols[cols.length - 2].nodes.length === 1 ? "workspace with a cost" : "workspaces with a cost", ""]]);
+  // The columns fill the window below the tiles; 230 px is the least, so a short window still shows the bands.
+  const most = Math.max(...cols.map((c) => c.nodes.length)), scale = Math.max(230, innerHeight - svg.getBoundingClientRect().top - y - 70 - GAP * (most - 1)) / total;
+  for (const c of cols) for (const n of c.nodes) n.h = Math.max(3, n.v * scale);
   cols.forEach((c, j) => {
     c.x = cols.length === 1 ? 0 : j * (W - NODE) / (cols.length - 1);
     svg.appendChild(el("text", { class: "sub", x: j === cols.length - 1 ? W : c.x, y: y + 10, "text-anchor": j === cols.length - 1 ? "end" : "start", style: "font-size:11px" }, c.head));
@@ -793,10 +805,10 @@ function drawFlow(svg) {
     for (const s of a.nodes) for (const t of b.nodes) {
       const v = rows.filter((r) => a.key(r) === s.k && b.key(r) === t.k).reduce((sum, r) => sum + r.v, 0);
       if (v <= 0) continue;
-      const h = Math.max(1.5, v * scale), ya = s.y + s.out, yb = t.y + t.in;
+      const h = Math.max(3, v * scale), ya = s.y + s.out, yb = t.y + t.in;
       s.out += v * scale; t.in += v * scale;
       const band = el("path", { d: `M${x0},${ya} C${mx},${ya} ${mx},${yb} ${x1},${yb} V${yb + h} C${mx},${yb + h} ${mx},${ya + h} ${x0},${ya + h} Z`,
-        style: "stroke:none;fill:" + (b === last ? b.color(t.k) : a.color(s.k)) + ";fill-opacity:.3" });
+        style: "stroke:none;fill:" + (b === last ? b.color(t.k) : a.color(s.k)) + ";fill-opacity:.35" });
       band.appendChild(el("title", {}, "$" + v.toFixed(2) + " · " + s.k + " → " + t.k));
       svg.appendChild(band);
     }
@@ -807,7 +819,7 @@ function drawFlow(svg) {
       svg.appendChild(el("rect", { x: c.x, y: n.y, width: NODE, height: n.h, rx: Math.min(4, n.h / 2), fill: c.color(n.k) }));
       const tx = right ? c.x - 10 : c.x + NODE + 10, ty = n.y + Math.min(n.h / 2, 14) + 2;
       svg.appendChild(el("text", { x: tx, y: ty, "text-anchor": right ? "end" : "start", style: "font-size:13px;font-weight:600" }, cut(n.k, 28)));
-      svg.appendChild(el("text", { class: "sub", x: tx, y: ty + 15, "text-anchor": right ? "end" : "start", style: "font-size:11px" }, "$" + n.v.toFixed(2) + " · " + Math.round((n.v / total) * 100) + "%"));
+      svg.appendChild(el("text", { class: "sub", x: tx, y: ty + 15, "text-anchor": right ? "end" : "start", style: "font-size:11px" }, "$" + n.v.toFixed(2) + " · " + pctOf(n.v, total)));
     }
   });
   size(svg, W, Math.max(...cols.map((c) => c.bottom)) + 24);
@@ -1208,6 +1220,17 @@ function drawRhythm(svg) {
     [dur(todayBusy), "today", "", dur(today) + " agent-hours"],
     [max ? two(best % 24) + ":00" : "–", max ? "busiest hour, " + bestDay.toLocaleDateString(undefined, { weekday: "short" }) + " (" + dur(max) + ")" : "no work in the last 7 days", ""],
     [active + " of " + DAYS, "days with history", ""]]);
+  // One ramp for hours and days. The square root spreads the small values, so one busy hour does not wash out the rest.
+  // The top blue keeps white text at 5.5:1; each label takes the ink with more contrast on its own cell.
+  const RAMP = "#1069C4", dark = matchMedia("(prefers-color-scheme: dark)").matches;
+  const pct = (share) => Math.round(30 + 70 * Math.sqrt(share)), fill = (share) => "fill:color-mix(in srgb, " + RAMP + " " + pct(share) + "%, var(--card))";
+  const lum = (rgb) => { const [r, g, b] = rgb.map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+  const ink = (share) => {
+    const p = pct(share) / 100, L = lum([16, 105, 196].map((v, k) => v * p + (dark ? [44, 44, 46] : [255, 255, 255])[k] * (1 - p)));
+    return 1.05 / (L + 0.05) >= (L + 0.05) / (lum([28, 28, 30]) + 0.05) ? "#fff" : "#1c1c1e";
+  };
+  // Figures only in the busiest fifth of the hour cells and in the current hour; the others have them on hover.
+  const filled = flat.filter(Boolean).sort((p, q) => q - p), cut5 = filled[Math.max(0, Math.ceil(filled.length / 5) - 1)] || Infinity;
   const W = pageWidth(), LEFT = 104, RIGHT = 84, CW = Math.min(46, (W - LEFT - RIGHT) / 24), row0 = max ? cells.findIndex((row) => row.some(Boolean)) : DAYS - 1,
     CHH = DAYS - row0 <= 2 ? 60 : 34, TOP = top + 22, hourNow = new Date(now * 1000).getHours();
   size(svg, LEFT + 24 * CW + RIGHT, TOP + (DAYS - row0) * CHH + 8);
@@ -1218,13 +1241,12 @@ function drawRhythm(svg) {
     svg.appendChild(el("text", { x: 2, y: base, style: "font-size:12px;" + (isToday ? "font-weight:700" : "opacity:.7") },
       isToday ? "Today" : date.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" })));
     row.forEach((v, h) => {
-      const share = v / max;
-      const rect = el("rect", { x: LEFT + h * CW, y, width: CW - 4, height: CHH - 4, rx: 6,
-        style: v ? "fill:color-mix(in srgb, #0A84FF " + Math.round(30 + 70 * share) + "%, var(--card))" : "fill:var(--card);opacity:.6" });
+      const share = v / max, here = isToday && h === hourNow;
+      const rect = el("rect", { x: LEFT + h * CW, y, width: CW - 4, height: CHH - 4, rx: 6, style: v ? fill(share) : "fill:var(--card);opacity:.6" });
       rect.appendChild(el("title", {}, two(h) + ":00 · " + (v ? dur(v) + " of agent work" : "no work")));
       svg.appendChild(rect);
-      if (v && CW >= 28 && cellTime(v).length * 5.8 <= CW - 6) svg.appendChild(el("text", { x: LEFT + h * CW + (CW - 4) / 2, y: base - 0.5, "text-anchor": "middle", style: "font-size:10px;font-weight:600;fill:#fff;pointer-events:none" }, cellTime(v)));
-      if (isToday && h === hourNow) svg.appendChild(el("rect", { x: LEFT + h * CW - 1.5, y: y - 1.5, width: CW - 1, height: CHH - 1, rx: 7.5, style: "fill:none;stroke:var(--fg);stroke-width:1.5" }));
+      if (v && (v >= cut5 || here) && CW >= 28 && cellTime(v).length * 6.4 <= CW - 6) svg.appendChild(el("text", { x: LEFT + h * CW + (CW - 4) / 2, y: base - 0.5, "text-anchor": "middle", style: "font-size:11px;font-weight:600;pointer-events:none;fill:" + ink(share) }, cellTime(v)));
+      if (here) svg.appendChild(el("rect", { x: LEFT + h * CW - 1.5, y: y - 1.5, width: CW - 1, height: CHH - 1, rx: 7.5, style: "fill:none;stroke:var(--fg);stroke-width:1.5" }));
     });
     const sum = row.reduce((p, q) => p + q, 0);
     svg.appendChild(el("text", { x: LEFT + 24 * CW + 10, y: base, style: "font-size:12px;font-weight:600" + (sum ? "" : ";opacity:.3") }, sum ? dur(sum) : "–"));
@@ -1242,7 +1264,11 @@ function drawRhythm(svg) {
   const monday = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate() - ((d.getDay() + 6) % 7));
   const todayDate = dayOf(new Date(now * 1000)), lastWeek = monday(todayDate), firstDay = new Date(Math.min(...perDay.keys()));
   const weeks = Math.min(5, Math.round((lastWeek - monday(firstDay)) / 604800000) + 1), dayMax = Math.max(...perDay.values());
-  const gridW = LEFT + 24 * CW + RIGHT, DW = Math.min(132, gridW / 7), DH = 50;
+  const gridW = LEFT + 24 * CW + RIGHT, DW = Math.min(132, gridW / 7), DH = 48;
+  // A past day with no history is hatched, so it does not read as a quiet day.
+  const defs = el("defs", {}), hatch = el("pattern", { id: "hatch", width: 6, height: 6, patternUnits: "userSpaceOnUse", patternTransform: "rotate(45)" });
+  hatch.appendChild(el("line", { x1: 0, y1: 0, x2: 0, y2: 6, style: "stroke:var(--line);stroke-width:1.5" }));
+  defs.appendChild(hatch); svg.appendChild(defs);
   let cy = section(svg, TOP + (DAYS - row0) * CHH + 18, gridW, "Days", weeks * 7 + " days, a week per row");
   for (let c = 0; c < 7; c++) {
     svg.appendChild(el("text", { class: "sub", x: c * DW + 8, y: cy + 8, style: "font-size:11px" },
@@ -1251,18 +1277,19 @@ function drawRhythm(svg) {
   cy += 16;
   for (let w = 0; w < weeks; w++) for (let c = 0; c < 7; c++) {
     const date = new Date(lastWeek.getFullYear(), lastWeek.getMonth(), lastWeek.getDate() - (weeks - 1 - w) * 7 + c);
-    const v = perDay.get(date.getTime()) || 0, share = v / dayMax, later = date > todayDate, cx0 = c * DW, y0 = cy + w * DH, strong = share >= 0.55;
+    const v = perDay.get(date.getTime()) || 0, share = v / dayMax, later = date > todayDate, cx0 = c * DW, y0 = cy + w * DH, color = v ? ink(share) : "";
     const cell = el("rect", { x: cx0, y: y0, width: DW - 4, height: DH - 4, rx: 7,
-      style: v ? "fill:color-mix(in srgb, #0A84FF " + Math.round(22 + 78 * share) + "%, var(--card))" : "fill:var(--card);opacity:" + (later ? ".25" : ".6") });
+      style: v ? fill(share) : later ? "fill:var(--card);opacity:.25" : "fill:url(#hatch);stroke:var(--line);stroke-opacity:.6" });
     cell.appendChild(el("title", {}, date.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" }) + " · " + (v ? dur(v) + " of agent work" : later ? "not yet" : "no work in the history")));
     svg.appendChild(cell);
-    svg.appendChild(el("text", { x: cx0 + 8, y: y0 + 16, style: "font-size:11px;pointer-events:none;" + (strong ? "fill:#fff" : "opacity:" + (later ? ".3" : ".7")) },
+    svg.appendChild(el("text", { x: cx0 + 8, y: y0 + 16, style: "font-size:11px;pointer-events:none;" + (v ? "fill:" + color : "opacity:" + (later ? ".3" : ".7")) },
       date.getDate() === 1 || (w === 0 && c === 0) ? date.toLocaleDateString(undefined, { day: "numeric", month: "short" }) : String(date.getDate())));
-    if (v) svg.appendChild(el("text", { x: cx0 + DW - 12, y: y0 + DH - 14, "text-anchor": "end", style: "font-size:13px;font-weight:600;pointer-events:none" + (strong ? ";fill:#fff" : "") }, dur(v)));
+    if (v) svg.appendChild(el("text", { x: cx0 + DW - 12, y: y0 + DH - 14, "text-anchor": "end", style: "font-size:13px;font-weight:600;pointer-events:none;fill:" + color }, dur(v)));
     if (date.getTime() === todayDate.getTime()) svg.appendChild(el("rect", { x: cx0 - 1.5, y: y0 - 1.5, width: DW - 1, height: DH - 1, rx: 8.5, style: "fill:none;stroke:var(--fg);stroke-width:1.5" }));
   }
   size(svg, gridW, cy + weeks * DH + 6);
-  legendItems = [["#0A84FF", "stronger blue = more agent work in that hour or day"], ["#98989d", "the outlined cells are the current hour and today"]];
+  legendItems = [["linear-gradient(to right, color-mix(in srgb, " + RAMP + " 30%, var(--card)), " + RAMP + ")", "less to more work: an hour up to " + cellTime(max) + ", a day up to " + dur(dayMax), "ramp"],
+    ["var(--fg)", "the current hour and today", "ring"], ["var(--line)", "no history that day", "ring"]];
   return "Agent work per hour for the last " + DAYS + " days, and per day for up to 5 weeks, Claude Code sessions. Two agents that work in one hour count twice."
     + (row0 && max ? " The history started " + (DAYS - row0 === 1 ? "today" : (DAYS - row0) + " days ago") + ": earlier days are not shown." : "")
     + coverage(["Claude Code"]);
@@ -1325,7 +1352,7 @@ function drawSetup(svg) {
     ...(pic.u && pic.u.skills ? [[String(called), "skills called by open sessions", ""]] : [])]);
   y = grid(svg, y, W, [...user, ...have], setupCard);
   if (none.length) {
-    const line = el("text", { class: "sub", x: 2, y: y + 24, style: "font-size:12px" }, cut(noneLine, Math.floor(W / 6.6)));
+    const line = el("text", { class: "sub", x: 2, y: y + 24, style: "font-size:12px" }, plural(none.length, "workspace", "workspaces") + " with no setup files (hover for names)");
     line.appendChild(el("title", {}, noneLine));
     svg.appendChild(line);
     y += 32;
