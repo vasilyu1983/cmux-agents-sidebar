@@ -78,6 +78,8 @@ const [limitsByTool, setLimitsByTool] = signal(false);
 const [limitsAt, setLimitsAt] = signal(false);
 const [openKids, setOpenKids] = signal({});
 const [openInfo, setOpenInfo] = signal({});
+// The workspaces with no session fold into one line at the end of the list; a click opens them. Not saved.
+const [openIdle, setOpenIdle] = signal(false);
 // The account filter: "" = every account. Not saved; it lasts until the panel reloads.
 const [acctFilter, setAcctFilter] = signal("");
 // One fixed colour per account name. The status line script uses the same list and the same sum, so a session
@@ -482,6 +484,15 @@ const view = computed(() => {
   };
   // Rows per chip, counted before the chip filter: the number on each chip.
   const chips = Object.fromEntries(FILTERS.map((f) => [f[0], 0]));
+  // Two workspaces in one folder have one group name: the second reads "api 2", the third "api 3".
+  const seenNames = {};
+  const shownName = {};
+  for (const w of all) {
+    const n = groupName(w);
+    seenNames[n] = (seenNames[n] ?? 0) + 1;
+    shownName[w.id] = seenNames[n] > 1 ? n + " " + seenNames[n] : n;
+  }
+  const idle = [];  // the bands of workspaces with no session
   for (const w of scoped) {
     const rows = [];
     const models = sessionsOf(w);
@@ -665,7 +676,7 @@ const view = computed(() => {
       wsId: w.id,
       // The project folder names the group. w.title is the title of the focused tab, which reads like one more session.
       // The description starts with the project folder; w.directory follows the focused tab (it read "app" for one project).
-      wsTitle: groupName(w),
+      wsTitle: shownName[w.id],
       wsColor: w.color || "#8E8E93",
       count: rows.length,
       acct: groupAcct,
@@ -676,6 +687,7 @@ const view = computed(() => {
       wsSelected: w.selected,
       dots: rows.map(dotColor),
     });
+    if (rows.length === 0) idle.push(out.pop());
     // A folded group still reports its waiting sessions to the top block.
     for (const r of rows) if (r.look === "needs_input") waiting.push({ ...r, key: "n:" + r.key });
     for (const r of rows) flat.push({ ...r, age: epoch - (r.agent.lastActivityAt ?? epoch) });
@@ -707,6 +719,12 @@ const view = computed(() => {
       for (const r of rows) expand(r, list);
     }
     return { rows: list, chips, accts };
+  }
+  // Two or more empty workspaces fold into "N idle workspaces"; one keeps its own line.
+  if (idle.length === 1) out.push(idle[0]);
+  else if (idle.length > 1) {
+    out.push({ key: "h:idle", kind: "header", idleFold: true, count: idle.length });
+    if (openIdle()) out.push(...idle);
   }
   const top = [];
   if (waiting.length) top.push({ key: "h:needs-you", kind: "header", needsYou: true, wsTitle: "NEEDS YOU", wsColor: ORANGE, count: waiting.length }, ...waiting);
@@ -1267,6 +1285,7 @@ const plusMark = (entry) => Text("+").font(11).monospaced().color(TEXT2).frame({
 function headerRow(entry) {
   const first = entry();
   if (first.needsYou) return sectionRow(entry);
+  if (first.idleFold) return idleRow(entry);
   return first.count ? bandRow(entry) : emptyRow(entry);
 }
 
@@ -1279,6 +1298,24 @@ function sectionRow(entry) {
       Text(() => String(entry().count)).font(10).monospaced().color(META),
       Rectangle().fill("#7f7f7f40").frame({ height: 1, maxWidth: "infinity" }),
     ]).paddingHorizontal(8).paddingVertical(5).frame({ maxWidth: "infinity" }),
+  ]).frame({ maxWidth: "infinity" });
+}
+
+// The folded empty workspaces: "▸ 6 idle workspaces", dim, at the left edge of the bands. A click opens or closes them.
+function idleRow(entry) {
+  return VStack({ spacing: 0 }, [
+    Rectangle().fill("clear").frame({ height: 7 }),
+    Rectangle().fill("#7f7f7f33").frame({ height: 1, maxWidth: "infinity" }),
+    Rectangle().fill("clear").frame({ height: 5 }),
+    HStack({ spacing: 4 }, [
+      Text(() => (openIdle() ? "▾" : "▸")).font(11).monospaced().color(TEXT2).frame({ width: 22, height: 18 }),
+      Text(() => entry().count + " idle workspaces").font(11).monospaced().color(META).lineLimit(1),
+      Spacer(),
+    ])
+      .paddingHorizontal(4).paddingVertical(2)
+      .hoverBackground("#FFFFFF0D").cornerRadius(8)
+      .frame({ maxWidth: "infinity" })
+      .onTap(() => setOpenIdle(!openIdle())),
   ]).frame({ maxWidth: "infinity" });
 }
 

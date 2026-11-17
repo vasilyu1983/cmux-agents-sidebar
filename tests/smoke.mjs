@@ -1090,6 +1090,23 @@ check("a group whose rows share an account and a model names both once on its ba
   ctx.__setData("workspaces", JSON.stringify(workspaces));
 });
 
+// Workspaces with no session fold into one line at the end; two workspaces in one folder get a number.
+check("two or more empty workspaces fold into one line that opens on a click; a repeated group name gets a number", () => {
+  const empty = (id, dir) => ({ id, title: "ignored", directory: dir, description: dir, color: "#336699", selected: false, unread: 0, tabs: [], agents: [], prs: [] });
+  ctx.__setData("workspaces", JSON.stringify([
+    { ...empty("ws-a", "/work/same"), selected: true, description: ["/work/same", "@home: " + HOME, "e-1: opus"].join(" | "),
+      tabs: [tab(1, "[e-1] t", { id: B(1) })], agents: [agent("e-1", B(1), "idle", "claude")] },
+    empty("ws-b", "/work/same"), empty("ws-c", "/work/other"),
+  ]));
+  must(withText((t) => t === "2 idle workspaces").length === 1, "the empty workspaces did not fold into one line");
+  must(withText((t) => t === "other" || t === "same 2").length === 0, "a folded workspace still shows its own line");
+  must(withText((t) => t === "same").length === 1, "the workspace with a session lost its band");
+  tap(parentOf(withText((t) => t === "2 idle workspaces")[0].id));
+  must(withText((t) => t === "same 2").length === 1 && withText((t) => t === "other").length === 1, "a click did not open the idle workspaces, or the repeated name has no number");
+  tap(parentOf(withText((t) => t === "2 idle workspaces")[0].id));
+  ctx.__setData("workspaces", JSON.stringify(workspaces));
+});
+
 check("a tool from @tools gets a flat item with a neutral dot and starts by its command word", () => {
   ctx.__setData("workspaces", JSON.stringify([{
     id: "ws-bare", title: "ignored", directory: "/work/bare", color: "#336699", selected: true, unread: 0,
