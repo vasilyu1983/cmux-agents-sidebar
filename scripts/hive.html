@@ -935,6 +935,8 @@ function drawQueue(svg) {
   let group = "";
   for (const r of rows) {
     const isAsk = r.a.s === "needs_input", go = goOf(r.a), color = STATUS[r.a.s][0];
+    // The bar of a question takes the colour of its wait: grey under 1 min, orange to 5 min, red after.
+    const waitColor = r.since < 60 ? "#8a8a90" : r.since < 300 ? "#FF9F0A" : BAD;
     if (group !== r.a.s) {
       group = r.a.s;
       svg.appendChild(el("text", { x: 2, y: y + 12, style: "font-size:12px;font-weight:700;fill:" + color }, isAsk ? "Asks you" : "Done, waits for your next prompt"));
@@ -946,8 +948,8 @@ function drawQueue(svg) {
     g.appendChild(el("text", { x: 18, y: y + 20, style: "font-size:13px;font-weight:600" }, cut(r.a.n, 44)));
     g.appendChild(el("text", { class: "sub", x: 18, y: y + 36, style: "font-size:11px" }, cut([r.a.wn, r.a.m, r.a.u].filter(Boolean).join(" · "), 52)));
     g.appendChild(track(LEFT, y + 17, W - LEFT - RIGHT, 12));
-    if (r.since >= 0) g.appendChild(el("rect", { x: LEFT, y: y + 17, width: Math.max(8, (r.since / max) * (W - LEFT - RIGHT)), height: 12, rx: 6, fill: isAsk ? color : "var(--dim)", opacity: isAsk ? 1 : 0.6 }));
-    g.appendChild(el("text", { x: W - 16, y: y + 28, "text-anchor": "end", style: r.since < 0 ? "font-size:11px;opacity:.5" : "font-size:16px;font-weight:600" + (isAsk ? ";fill:" + color : "") },
+    if (r.since >= 0) g.appendChild(el("rect", { x: LEFT, y: y + 17, width: Math.max(8, (r.since / max) * (W - LEFT - RIGHT)), height: 12, rx: 6, fill: isAsk ? waitColor : "var(--dim)", opacity: isAsk ? 1 : 0.6 }));
+    g.appendChild(el("text", { x: W - 16, y: y + 28, "text-anchor": "end", style: r.since < 0 ? "font-size:11px;opacity:.5" : "font-size:16px;font-weight:600" + (isAsk ? ";fill:" + waitColor : "") },
       r.since < 0 ? "time unknown" : dur(r.since)));
     if (go) jump(g, go);
     svg.appendChild(g);
@@ -961,7 +963,7 @@ function drawQueue(svg) {
   } else {
     const BUCKETS = [["under 1 min", 60], ["1 to 5 min", 300], ["5 to 15 min", 900], ["15 min to 1 h", 3600], ["over 1 h", Infinity]];
     const counts = BUCKETS.map(([, top], k) => waits.filter((v) => v < top && v >= (k ? BUCKETS[k - 1][1] : 0)).length), most = Math.max(...counts);
-    const LINE = 28, X0 = 150, X1 = W - 150;
+    const LINE = 28, X0 = 128, X1 = W - 150;
     svg.appendChild(card(y, W, BUCKETS.length * LINE + 14));
     BUCKETS.forEach(([label], k) => {
       const ly = y + 8 + k * LINE, n = counts[k];
@@ -969,12 +971,13 @@ function drawQueue(svg) {
       svg.appendChild(track(X0, ly + 8, X1 - X0, 12));
       if (n) svg.appendChild(el("rect", { x: X0, y: ly + 8, width: Math.max(8, (n / most) * (X1 - X0)), height: 12, rx: 6, style: "fill:var(--dim)" }));
       svg.appendChild(el("text", { x: X1 + 14, y: ly + 18, style: "font-size:13px;font-weight:600" + (n ? "" : ";opacity:.3") }, n ? String(n) : "–"));
-      if (n) svg.appendChild(el("text", { class: "sub", x: W - 16, y: ly + 18, "text-anchor": "end", style: "font-size:11px" }, Math.round((n / waits.length) * 100) + "%"));
+      if (n) svg.appendChild(el("text", { x: W - 16, y: ly + 18, "text-anchor": "end", style: "font-size:12px" }, Math.round((n / waits.length) * 100) + "%"));
     });
     y += BUCKETS.length * LINE + 14;
   }
   size(svg, W, y + 6);
-  legendItems = [[STATUS.needs_input[0], "asks you (permission or question)"], [STATUS.idle[0], "done, waits for your next prompt"]];
+  legendItems = [[STATUS.needs_input[0], "asks you (permission or question)"], [STATUS.idle[0], "done, waits for your next prompt"],
+    ["#8a8a90", "wait under 1 min", "bar"], ["#FF9F0A", "1 to 5 min", "bar"], [BAD, "over 5 min", "bar"]];
   return rows.length ? "The longest wait is at the top of each group. Click a line to go to its tab." : "Nothing waits for you.";
 }
 
@@ -985,9 +988,10 @@ function drawContext(svg) {
     empty(svg, ["No context figures yet.", "A Claude Code session reports its context share through the status line of this kit.", ...onlyOthers(["Claude Code", "Codex"])]);
     return "Context: no data." + coverage(["Claude Code", "Codex"]);
   }
-  const W = pageWidth(), CW = 170, CH = 196, cols = Math.max(1, Math.floor(W / CW));
+  // Cards of 190 px or more that share the row out evenly.
+  const W = pageWidth(), cols = Math.max(1, Math.floor(W / 190)), CW = W / cols, CH = 228;
   svg.setAttribute("width", W); svg.setAttribute("height", Math.ceil(rows.length / cols) * CH + 6);
-  const R = 46, arc = (cx, cy, share) => {
+  const R = 54, arc = (cx, cy, share) => {
     // Three quarters of a circle, open at the bottom.
     const a0 = Math.PI * 0.75, a1 = a0 + Math.PI * 1.5 * Math.min(Math.max(share, 0.001), 1);
     return `M${cx + R * Math.cos(a0)},${cy + R * Math.sin(a0)} A${R},${R} 0 ${a1 - a0 > Math.PI ? 1 : 0} 1 ${cx + R * Math.cos(a1)},${cy + R * Math.sin(a1)}`;
@@ -1000,20 +1004,22 @@ function drawContext(svg) {
   }
   let drawnTrends = 0;
   rows.forEach((a, k) => {
-    const cx = (k % cols) * CW + CW / 2, cy = Math.floor(k / cols) * CH + 60, go = goOf(a);
+    const cx = (k % cols) * CW + CW / 2, cy = Math.floor(k / cols) * CH + 70, go = goOf(a);
     const g = el("g", go ? { class: "go", tabindex: 0, role: "button" } : {});
-    g.appendChild(el("rect", { class: "box", x: cx - CW / 2 + 5, y: cy - 56, width: CW - 10, height: CH - 8, rx: 9, style: "stroke-opacity:.5" }));
+    g.appendChild(el("rect", { class: "box", x: cx - CW / 2 + 5, y: cy - 66, width: CW - 10, height: CH - 8, rx: 10, style: "stroke-opacity:.5" }));
     g.appendChild(el("path", { d: arc(cx, cy, 1), style: "stroke-width:9;stroke-linecap:round;opacity:.55" }));
     if (a.x != null) g.appendChild(el("path", { d: arc(cx, cy, a.x / 100), style: "stroke-width:9;stroke-linecap:round;stroke:" + ctxColor(a.x) }));
     g.appendChild(el("text", { class: "big", x: cx, y: cy + 7, "text-anchor": "middle", style: a.x != null ? "" : "opacity:.45" }, a.x != null ? a.x + "%" : "–"));
+    // A word as well as the red, so the state does not rest on colour alone.
+    if (a.x >= 80) g.appendChild(el("text", { x: cx, y: cy - 20, "text-anchor": "middle", style: "font-size:11px;font-weight:700;fill:#FF6B61" }, "! nearly full"));
     // Under the share: the tokens in the context window when the session reports them, then the compactions.
     if (a.z) g.appendChild(el("text", { class: "sub", x: cx, y: cy + 23, "text-anchor": "middle", style: "font-size:11px" }, tokens(a.z)));
     g.appendChild(el("text", { class: "sub", x: cx, y: cy + (a.z ? 38 : 24), "text-anchor": "middle" }, a.q ? "⟳ " + a.q : ""));
-    g.appendChild(el("text", { x: cx, y: cy + 60, "text-anchor": "middle", style: "font-weight:600" }, cut("[" + (sessName(a.n) || a.k) + "]", 20)));
+    g.appendChild(el("text", { x: cx, y: cy + 66, "text-anchor": "middle", style: "font-weight:600" }, cut("[" + (sessName(a.n) || a.k) + "]", Math.floor(CW / 8.5))));
     const tool = toolOf(a.k);
-    g.appendChild(el("text", { class: "sub", x: cx, y: cy + 75, "text-anchor": "middle" }, cut([tool === "Claude Code" ? "" : tool, a.wn, a.m].filter(Boolean).join(" · "), 26)));
+    g.appendChild(el("text", { class: "sub", x: cx, y: cy + 82, "text-anchor": "middle" }, cut([tool === "Claude Code" ? "" : tool, a.wn, a.m].filter(Boolean).join(" · "), Math.floor(CW / 6.6))));
     // The share over the last 6 hours: it holds between two samples and falls at a compaction.
-    const x0 = cx - CW / 2 + 20, x1 = cx + CW / 2 - 20, base = cy + 122, tall = 30, pts = trend.get(sessName(a.n)) || [];
+    const x0 = cx - CW / 2 + 20, x1 = cx + CW / 2 - 20, base = cy + 128, tall = 30, pts = trend.get(sessName(a.n)) || [];
     g.appendChild(el("line", { class: "grid", x1: x0, x2: x1, y1: base, y2: base }));
     if (pts.length >= 2) {
       drawnTrends++;
@@ -1023,6 +1029,7 @@ function drawContext(svg) {
         style: "stroke:var(--fg);stroke-width:1.5;stroke-linejoin:round;opacity:.8" });
       line.appendChild(el("title", {}, "context share since " + hhmm(t0) + ": lowest " + Math.min(...pts.map((p) => p[2])) + "%, highest " + Math.max(...pts.map((p) => p[2])) + "%"));
       g.appendChild(line);
+      g.appendChild(el("text", { class: "sub", x: cx, y: base + 16, "text-anchor": "middle" }, "6h: " + Math.min(...pts.map((p) => p[2])) + "–" + Math.max(...pts.map((p) => p[2])) + "%"));
       g.appendChild(el("circle", { cx: x1, cy: py(pts[pts.length - 1][2]), r: 2.5, style: "stroke:none;fill:" + ctxColor(pts[pts.length - 1][2]) }));
     }
     if (go) jump(g, go);
@@ -1077,14 +1084,16 @@ function insideCard(a, CW) {
   const parts = CM.map(([kind]) => [kind, (a.cm.find((c) => c[0] === kind) || [0, 0])[1]]).filter((p) => p[1] > 0);
   const sum = parts.reduce((s, p) => s + p[1], 0);
   if (!sum && !codex) quiet("not known yet");
+  const biggest = Math.max(0, ...parts.map((p) => p[1]));
   for (const [kind, v] of parts) {
-    const share = Math.round((v / sum) * 100);
-    g.appendChild(el("text", { x: 16, y: y + 11, style: "font-size:11px" }, kind === "attachments" ? "setup, reminders" : kind));
+    // One kind that holds 70% or more of the context is what to look at: its name and share go bold.
+    const share = Math.round((v / sum) * 100), loud = v === biggest && share >= 70 ? ";font-weight:700;fill:var(--fg)" : "";
+    g.appendChild(el("text", { x: 16, y: y + 11, style: "font-size:11px" + loud }, kind === "attachments" ? "setup, reminders" : kind));
     g.appendChild(track(bx, y + 3, bw, 9));
     const bar = el("rect", { x: bx, y: y + 3, width: Math.max(3, (v / sum) * bw), height: 9, rx: 4.5, style: "fill:var(--cm)" });
     bar.appendChild(el("title", {}, (kind === "attachments" ? "attachments: instructions, skill and tool lists, hook output, files" : kind) + " · " + share + "% · " + tokens(v) + " characters"));
     g.appendChild(bar);
-    g.appendChild(el("text", { x: R, y: y + 11, "text-anchor": "end", style: "font-size:11px;font-weight:600" }, share + "%"));
+    g.appendChild(el("text", { x: R, y: y + 11, "text-anchor": "end", style: "font-size:11px;font-weight:600" + loud }, share + "%"));
     y += 17;
   }
   // Errors: failed tool results and API errors; a run of 5 failures or more at the end gets a red pill.
@@ -1092,7 +1101,11 @@ function insideCard(a, CW) {
   if (codex) y -= 8;
   else if (a.er + a.ea + a.lp === 0) quiet("no errors");
   else {
-    g.appendChild(el("text", { x: 16, y: y + 11, style: "font-size:12px" }, plural(a.er, "failed tool call", "failed tool calls") + " · " + plural(a.ea, "API error", "API errors")));
+    // Failed calls in red; with "!" when they are 3% or more of the calls.
+    const line = el("text", { x: 16, y: y + 11, style: "font-size:12px" }), many = calls(a) > 0 && a.er / calls(a) >= 0.03;
+    line.appendChild(el("tspan", a.er ? { style: "font-weight:700;fill:" + BAD } : {}, (many ? "! " : "") + plural(a.er, "failed tool call", "failed tool calls")));
+    line.appendChild(el("tspan", {}, " · " + plural(a.ea, "API error", "API errors")));
+    g.appendChild(line);
     y += 18;
     if (a.lp >= 5) {
       const label = a.lp + " failed in a row", pw = label.length * 6.8 + 22;
