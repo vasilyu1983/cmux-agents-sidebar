@@ -81,6 +81,8 @@ DEFAULT_ACCOUNT = []  # the name of the "default" line, when it has one
 RULES = []  # (folder prefix, account name) per "rule" line
 TAB_ACCOUNTS = {}  # surface id -> account name, for a Codex process that runs with a listed account folder
 CODEX_ENV = re.compile(r" CODEX_HOME=([^ ]{1,300})(?: |$)")
+# The start profile of a tool that agent-run.sh started: a plain name, never the arguments of the profile.
+PROFILE_ENV = re.compile(r" AGENT_PROFILE=([a-z0-9-]{1,16})(?: |$)")
 SHARED_BRANCHES = {"main", "master", "dev", "develop", "trunk"}  # two sessions on one of these are not a duplicate
 NEXT_LINE = re.compile(r"^[\s*_`>-]{0,6}Next:[\s*_`]{0,4}(.+)$", re.M)
 GIT_MARKS = {}  # folder -> (branch, commits that no remote holds), for one pass
@@ -774,7 +776,7 @@ def hive_agent(fields):
         elif re.fullmatch(r"silent \d{1,4}", field):
             agent["sa"] = int(field[7:])
         elif not field.startswith(("cold ", "waits ", "comp ", "next ", "ahead ", "wrong ", "prompt ", "title ", "screen ", "tok ",
-                                   "err ", "loop ", "overlap ", "silent ")) and field != "dup" and "m" not in agent:
+                                   "err ", "loop ", "overlap ", "silent ", "profile ")) and field != "dup" and "m" not in agent:
             agent["m"] = field
     return agent
 
@@ -1614,6 +1616,7 @@ def main():
     board_runs = False
     screen_keys = set()  # surface ids of tabs that run a tool of SCREEN_TOOLS
     codex_tabs = {}  # Codex folder -> surface ids of the tabs that run Codex with it (a wrapper and its program share one)
+    tab_profiles = {}  # surface id -> the start profile of the tool in that tab ("sandbox")
     for line in run(["ps", "eww", "-ax", "-o", "pid=,tty=,command="]).stdout.splitlines():
         board_runs = board_runs or "cmux/scripts/dock-open-prs.sh" in line
         surface = SURFACE_ENV.search(line)
@@ -1621,6 +1624,9 @@ def main():
         if not surface or len(parts) < 3 or not parts[0].isdigit():
             continue
         key, pid, command = surface.group(1).upper(), int(parts[0]), parts[2]
+        profile = PROFILE_ENV.search(line)
+        if profile:
+            tab_profiles[key] = profile.group(1)
         # The tool is the program, or the script that an interpreter runs ("node /opt/bin/opencode").
         programs = [os.path.basename(word) for word in command.split(" ", 2)[:2]]
         if any(program == tool or program.startswith(tool + "-") for program in programs for tool in SCREEN_TOOLS):
@@ -1641,7 +1647,7 @@ def main():
             name, waits, stalled, model, status, since, sid = names[pid]
             live.append((key, name, waits, stalled, model, status, since))
             past.append((key, sid, name, status, model))
-            fields = model + ([f"waits {clean(waits, 40)}"] if waits else [])
+            fields = model + ([f"waits {clean(waits, 40)}"] if waits else []) + ([f"profile {profile.group(1)}"] if profile else [])
             if fields and key in by_id:
                 models.setdefault(by_id[key][2], []).append(f"{name}: " + " · ".join(fields))
             labels[key] = f"[{name} !]" if waits else f"[{name} ?]" if stalled else f"[{name}]"
@@ -1658,7 +1664,8 @@ def main():
     codex = codex_marks(codex_tabs, set(labels))
     # One part per tab: the panel keeps only the last part of one name.
     for key in sorted(set(states) | {key for key in codex if key in by_id and by_id[key][2]}):
-        fields = ([f"screen {states[key]}"] if key in states else []) + codex.get(key, [])
+        fields = ([f"screen {states[key]}"] if key in states else []) + codex.get(key, []) + (
+            [f"profile {tab_profiles[key]}"] if key in tab_profiles else [])
         models.setdefault(by_id[key][2], []).append(f"{key}: " + " · ".join(fields))
     set_models(tree, models, strip_segments(board_runs))
     set_needs_you({workspace: ", ".join(sorted(items))[:120] for workspace, items in waiting.items()})

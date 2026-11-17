@@ -1038,6 +1038,18 @@ check("a start profile nests under the account and starts with AGENT_PROFILE; a 
   must(calls.length === 1 && calls[0].params.initial_command === cmd('"$HOME/.config/cmux/scripts/agent-run.sh" claude'), "normal: " + JSON.stringify(calls));
 });
 
+// A session that runs with a start profile: "profile sandbox" from the watcher puts a shield before the name.
+check("a session with a start profile has a shield before its name; a field that is not plain gives none", () => {
+  ctx.__setData("workspaces", JSON.stringify([{
+    id: "ws-bare", title: "ignored", directory: "/work/bare", color: "#336699", selected: true, unread: 0,
+    description: ["/work/bare", "@home: " + HOME, "b-sb: sonnet · profile sandbox", "b-no: sonnet", "b-bad: sonnet · profile $(id)"].join(" | "),
+    tabs: [tab(1, "[b-sb] t", { id: B(1) }), tab(2, "[b-no] t", { id: B(2) }), tab(3, "[b-bad] t", { id: B(3) })],
+    agents: [agent("b-sb", B(1), "idle", "claude"), agent("b-no", B(2), "idle", "claude"), agent("b-bad", B(3), "idle", "claude")], prs: [],
+  }]));
+  must(withText((t) => t === "\u26E8 [b-sb]").length >= 1, "no shield on b-sb: " + JSON.stringify(withText((t) => /b-sb/.test(t)).map((n) => n.props.text)));
+  must(withText((t) => t === "\u26E8 [b-no]" || t === "\u26E8 [b-bad]").length === 0, "a session without a plain profile got a shield");
+});
+
 check("a tool from @tools gets a flat item with a neutral dot and starts by its command word", () => {
   ctx.__setData("workspaces", JSON.stringify([{
     id: "ws-bare", title: "ignored", directory: "/work/bare", color: "#336699", selected: true, unread: 0,

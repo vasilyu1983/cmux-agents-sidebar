@@ -183,6 +183,7 @@ Rules:
 - `name` holds `a-z`, `0-9` and `-`, at most 16 characters. `normal` is taken: it means no profile. At most 8 names per tool reach the menu, and the first line for a tool and name wins.
 - The arguments go to the tool before your own, as separate words. No shell reads them, so quotes, `$VAR` and `*` stay literal. A word that starts with `~/` means your home folder.
 - The panel sends only the name, as `AGENT_PROFILE=<name>`. `agent-run.sh` reads the arguments from your file. In a terminal, `AGENT_PROFILE=sandbox agent-run.sh claude` does the same.
+- A session that runs with a profile shows a shield and a teal name in the panel: `⛨ [api-3f]`. The detail lines (`Show details`) name the profile. The watcher reads the name from `AGENT_PROFILE` in the tool's environment, so a tool that you start with the same flags by hand gets no mark.
 - In a cmux tab, Claude Code starts through cmux's wrapper, which adds its own `--settings` for the session hooks. The wrapper merges your `--settings` file with its hooks (it uses `node` for that), so the panel still sees the session.
 
 #### More terminal agents
@@ -605,7 +606,7 @@ Without a watcher of your own the strip shows only the limit lines, one per tool
 ## Privacy and safety
 
 - Everything stays on your Mac. No script calls the network.
-- `label-tabs.py` reads the environment of your own agent processes to find two values, `CMUX_SURFACE_ID` and `CODEX_HOME`. It keeps nothing else from it.
+- `label-tabs.py` reads the environment of your own agent processes to find three values: `CMUX_SURFACE_ID`, `CODEX_HOME` and `AGENT_PROFILE` (the name of a start profile, `a-z`, `0-9` and `-` only). It keeps nothing else from it.
 - The only message that the kit sends is a local cmux notification for a limit warning.
 - A start item of a workspace menu opens a tab with one fixed command: `agent-run.sh`, a tool from a fixed list of four (`claude`, `codex`, `opencode`, `grok`), an account name and, for a start profile, a profile name (`AGENT_PROFILE`); both hold only `a-z`, `0-9` and `-`. For Antigravity the command is the fixed word `agy`. For an extra tool the command is one checked word (`a-z`, `0-9`, `-`; no path, no argument) that the login shell finds by name. An `Add account` item opens a tab that asks you for a name and passes it to `agents-account-add.sh`, which checks it. No other text reaches the shell. The launcher sets the tool's one folder variable and reads no login data.
 - An `Open config` item opens a tab with one fixed command: `sh -c` runs `${EDITOR:-vi}` on one path, `$HOME/<folder>/<file>`. The file name comes from a fixed table (the table above), and the folder is a path below your home folder of plain characters (`a-z`, `A-Z`, `0-9`, `.`, `_`, `-`; no `..`), from the accounts file or from the workspace folder. The watcher and the panel both check every part, and no title, PR text or other free text reaches the command. `label-tabs.py` only tests with `os.path.isfile` whether each file of the table exists. It opens no config file, reads no value, and publishes the folder and the file name in the workspace description (`@cfg:` for the user files, `@proj:` for the project files).

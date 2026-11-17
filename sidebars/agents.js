@@ -238,6 +238,11 @@ function sessionsOf(w) {
         const m = /^acct ([a-z0-9-]{1,16})$/.exec(f);
         if (m) s.acct = m[1];
       }
+      else if (f.startsWith("profile ")) {
+        // "profile sandbox": the start profile the tool runs with (AGENT_PROFILE). Another form is left out.
+        const m = /^profile ([a-z0-9-]{1,16})$/.exec(f);
+        if (m) s.profile = m[1];
+      }
       else if (f.startsWith("wrong ")) {
         // "wrong work": the folder rules name this account for the session's folder, and the session runs on another.
         const m = /^wrong ([a-z0-9-]{1,16})$/.exec(f);
@@ -535,6 +540,7 @@ const view = computed(() => {
         // The PR of the lane branch where the session works, with the state from your merge tool: "#644 needs grant".
         prText: sess.pr ?? "",
         acct: sess.acct ?? "",
+        profile: sess.profile ?? "",
         wrong: sess.wrong ?? "",
         // Work marks (pillsOf): a duplicate session, commits that no remote holds, 3 or more compactions.
         // The request the session works on: what label-tabs.py read from the transcript, else what cmux reports.
@@ -586,6 +592,7 @@ const view = computed(() => {
           ["errors", sess.err ? many(sess.err, "failed tool call or API error", "failed tool calls or API errors") : ""],
           ["tool", a.name],
           ["account", sess.acct || (accountMarks().primary && /claude|codex/.test(String(a.kind ?? "")) ? accountMarks().primary + " (primary)" : "")],
+          ["profile", sess.profile ? sess.profile + " (start profile; its arguments are in agents-profiles)" : ""],
           ["rule", sess.wrong ? "the folder rule names " + sess.wrong + "; start the session again on that account" : ""],
           ["model", sess.model ?? ""],
           ["context", [sess.ctx >= 0 ? sess.ctx + "%" : "", sess.tok > 0 ? tokText(sess.tok) + " tokens" : ""].filter(Boolean).join(" · ")],
@@ -1582,14 +1589,17 @@ const titleParts = (entry) => {
 // shows its name dim.
 // 11.5 pt: the system monospaced font is wider than a terminal font, so 11.5 here reads as 12 pt in the terminal.
 const TITLE_PT = 11.5;
+const PROFILE_INK = "#5AC8E0";
 const titleLine = (entry) => {
   const a = () => entry().agent;
   return HStack({ spacing: 6 }, [
     // Both parts are plain texts of the row and rank above the gap, so a title is cut only when the row is full.
     // A text inside a wrapper (a ForEach, an inner HStack) is cut while the row still has space.
-    Text(() => titleParts(entry).name)
+    // A session with a start profile ("sandbox") has a shield before its name, and the name in teal. The mark is part
+    // of the name text: a separate text would leave a gap on every row without a profile.
+    Text(() => (entry().profile ? "\u26E8 " : "") + titleParts(entry).name)
       .font(TITLE_PT).monospaced().weight("semibold").lineLimit(1).truncation("tail").layoutPriority(3)
-      .color(() => (a().status === "ended" || entry().old ? META : "primary")),
+      .color(() => (a().status === "ended" || entry().old ? META : entry().profile ? PROFILE_INK : "primary")),
     Text(() => titleParts(entry).rest).font(TITLE_PT).monospaced().lineLimit(1).truncation("tail").layoutPriority(2).color(META),
     unreadBadge(entry),
     Spacer(),

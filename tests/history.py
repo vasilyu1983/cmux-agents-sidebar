@@ -398,6 +398,10 @@ try:
           watcher.read_tools() == [("gemini", "gemini", "Gemini CLI")] and asked == [["cursor-agent", "gemini"]])
     check("the description part names it as id=command=label", watcher.tools_part() == "@tools: gemini=gemini=Gemini CLI")
     # Start profiles: only the names reach the description, never the arguments (they may hold paths).
+    check("the start profile of a process is read as a plain name only",
+          watcher.PROFILE_ENV.search("12 s001 claude X=1 AGENT_PROFILE=sandbox CMUX_SURFACE_ID=x").group(1) == "sandbox"
+          and watcher.PROFILE_ENV.search("12 s001 claude AGENT_PROFILE=$(id) Y=1") is None
+          and watcher.hive_agent(["Opus", "profile sandbox"]).get("m") == "Opus")
     check("no profiles file gives no part", watcher.profiles_part() == "")
     with open(os.path.join(tools_home, ".config", "cmux", "agents-profiles"), "w") as fh:
         fh.write("# c\nprofile claude sandbox --settings ~/.claude/worker-sandbox.json\nprofile codex sandbox --sandbox workspace-write\n"
