@@ -369,7 +369,9 @@ const finishPills = (raw, nextl) => ((shown) => [...shown,
 const usualModel = (rows) => {
   const n = {};
   for (const r of rows) if (r.model) n[r.model] = (n[r.model] ?? 0) + 1;
-  return Object.keys(n).sort((x, y) => n[y] - n[x])[0] ?? "";
+  // A tie names no model: with 2 Opus and 2 Sonnet rows neither is the usual one, and each row names its own.
+  const [top, next] = Object.keys(n).sort((x, y) => n[y] - n[x]);
+  return top && n[top] !== n[next] ? top : "";
 };
 // The pills of a row, in the order in which they matter. Orange: the owner is needed. Red: context 80% or more.
 // An account keeps its colour, the view by state adds the workspace in its colour, every other pill is neutral.
@@ -1372,11 +1374,13 @@ function bandRow(entry) {
             Circle({ size: 6 }).fill(DONE_DOT),
             Text(() => String(entry().unread)).font(10).monospaced().color(PURPLE_TEXT),
           ])),
+        // The session count comes first, so "4 team Opus" does not read as a model "Opus 4".
+        Text(() => String(entry().count)).font(10).monospaced().lineLimit(1).fixedSize().color(META),
         // What all rows share: the account in its colour, and the model that most of them use.
         Text(() => entry().acct ?? "").font(10).monospaced().weight("medium").lineLimit(1).fixedSize().color(() => acctColor(entry().acct)),
         Text(() => entry().model ?? "").font(10).monospaced().weight("medium").lineLimit(1).fixedSize().color(MODEL_INK),
-        // The session count and the summed cost estimate of the workspace's sessions (Claude Code only).
-        Text(() => String(entry().count) + (entry().cost >= 1 ? " · $" + Math.round(entry().cost) : ""))
+        // The summed cost estimate of the workspace's sessions (Claude Code only).
+        Text(() => (entry().cost >= 1 ? "$" + Math.round(entry().cost) : ""))
           .font(10).monospaced().lineLimit(1).fixedSize().color(META),
       ]).frame({ maxWidth: "infinity" }).onTap(selectWs(entry)),
       plusMark(entry),

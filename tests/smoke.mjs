@@ -279,7 +279,10 @@ check("workspace bands take the workspace colour; the selected one is stronger",
   must(reachable().some((n) => n.props.hoverBackground === "#667c9247"), "no hover tint for api");
   // The band name takes the workspace colour, and a bright colour stays as it is.
   must(withText((t) => t === "api").some((n) => n.props.color === "#9fadba" && n.props.weight === "bold"), "the api band name is not in its colour");
-  must(withText((t) => t === "4 · $1").length === 1, "no \"4 · $1\" count and cost on the api band");
+  // The count stands first and the cost last, so "4 team Opus" cannot read as a model "Opus 4".
+  const costNode = withText((t) => t === "$1")[0];
+  const bandTexts = costNode ? parentOf(costNode.id).children.map(node).filter((m) => m && m.props.text).map((m) => m.props.text) : [];
+  must(bandTexts.indexOf("4") >= 0 && bandTexts.indexOf("4") < bandTexts.indexOf("$1"), "the api band does not show its count 4 before its cost $1: " + bandTexts.join(" | "));
   must(reachable().some((n) => n.props.size === 6 && n.props.fill === "#BF5AF2"), "no unread dot on the api band");
   must(!reachable().some((n) => n.props.size === 5), "session dots show on an open band");
   must(reachable().some((n) => n.props.fill === "#7f7f7f40" && n.props.height === 1), "no hairline on the NEEDS YOU section");
@@ -1087,6 +1090,20 @@ check("a group whose rows share an account and a model names both once on its ba
   must(!withText((t) => t === "team").some((n) => n.props.cornerRadius === 4), "a row still has the shared account pill");
   must(withText((t) => t === "opus").length === 1, "the usual model is not named once (on the band)");
   must(rowText("g-3").includes("sonnet"), "a row with another model does not name it");
+  ctx.__setData("workspaces", JSON.stringify(workspaces));
+});
+
+check("mixed accounts leave the band and return to the rows; a model tie names no model on the band", () => {
+  ctx.__setData("workspaces", JSON.stringify([{
+    id: "ws-bare", title: "ignored", directory: "/work/bare", color: "#336699", selected: true, unread: 0,
+    description: ["/work/bare", "@home: " + HOME, "m-1: opus · acct team", "m-2: opus · acct team", "m-3: sonnet · acct solo", "m-4: sonnet · acct team"].join(" | "),
+    tabs: [1, 2, 3, 4].map((k) => tab(k, "[m-" + k + "] t", { id: B(k) })),
+    agents: [1, 2, 3, 4].map((k) => agent("m-" + k, B(k), "idle", "claude")), prs: [],
+  }]));
+  // The band names an account in a 10 pt text with no pill shape; the filter chips above use 11 pt.
+  must(!withText((t) => t === "team" || t === "solo").some((n) => n.props.font === 10 && n.props.cornerRadius !== 4), "the band names an account that not every row has");
+  must(withText((t) => t === "solo").some((n) => n.props.cornerRadius === 4), "m-3 lost its account pill");
+  must(withText((t) => t === "opus").length === 2 && withText((t) => t === "sonnet").length === 2, "with a 2 to 2 tie every row must name its own model");
   ctx.__setData("workspaces", JSON.stringify(workspaces));
 });
 
