@@ -473,7 +473,10 @@ const view = computed(() => {
       into.push({
         key: "d:" + r.key + ":" + r.info.map((l) => l[0] + "=" + l[1]).join("|"), kind: "detail", wsId: r.wsId,
         wsColor: r.wsColor, surfaceId: r.surfaceId,
-        lines: r.info.map((l, i) => ({ id: l[0], label: l[0], value: l[1], gap: i > 0 && r.info[i - 1][2] !== l[2] })),
+        warns: r.info.filter((l) => l[2] === "warn").map((l) => ({ id: l[0], value: l[1] })),
+        // A gap opens each new group, and the first fact line when problem lines stand above it.
+        lines: ((facts, warned) => facts.map((l, i) => ({ id: l[0], label: l[0], value: l[1], gap: i > 0 ? facts[i - 1][2] !== l[2] : warned,
+          mono: /^(lane|branch|folder|pr|ports)$/.test(l[0]) })))(r.info.filter((l) => l[2] !== "warn"), r.info.some((l) => l[2] === "warn")),
       });
     }
     if (!openKids()[r.rowId]) return;
@@ -605,12 +608,14 @@ const view = computed(() => {
           ["state", (agentsWait ? STATUS.idle : statusOf(a)).label + (a.sinceEpoch && a.status !== "idle" ? " for " + fmtElapsed(epoch - a.sinceEpoch) : ""), "run"],
           ["waits", agentsWait ? "agents running: its subagents still work after its turn ended" : a.status === "needs_input" ? sess.wait ?? "" : "", "run"],
           ["next", a.status === "working" ? "" : sess.next ?? "", "run"],
-          ["errors", sess.err ? many(sess.err, "failed tool call or API error", "failed tool calls or API errors") : "", "run"],
-          ["loop", sess.loop ? many(sess.loop, "failed tool call", "failed tool calls") + " in a row" : "", "run"],
-          ["overlap", sess.overlap ? many(sess.overlap, "file", "files") + " also edited by another session" : "", "run"],
-          ["silent", sess.silent ? many(sess.silent, "subagent", "subagents") + " silent for 10 min or more" : "", "run"],
-          ["duplicate", sess.dup ? "another live session works in this folder on this branch" : "", "run"],
-          ["compacted", sess.comp > 0 ? sess.comp + " time(s)" + (sess.comp >= 3 ? "; a fresh session with a hand-over costs less context" : "") : "", "run"],
+          // Problems form the "warn" group: amber lines on top of the details, one problem a line, with no label.
+          ["errors", sess.err ? many(sess.err, "failed tool call or API error", "failed tool calls or API errors") : "", "warn"],
+          ["loop", sess.loop ? many(sess.loop, "failed tool call", "failed tool calls") + " in a row" : "", "warn"],
+          ["overlap", sess.overlap ? many(sess.overlap, "file", "files") + " also edited by another session" : "", "warn"],
+          ["silent", sess.silent ? many(sess.silent, "subagent", "subagents") + " silent for 10 min or more" : "", "warn"],
+          ["duplicate", sess.dup ? "duplicate: another live session works in this folder on this branch" : "", "warn"],
+          // Three compactions or more is a problem: a fresh session with a hand-over costs less context.
+          ["compacted", sess.comp > 0 ? (sess.comp >= 3 ? "compacted " + sess.comp + "×: start a fresh session" : sess.comp + "×") : "", sess.comp >= 3 ? "warn" : "run"],
           ["cache", sess.cold ? sess.cold + " tokens to rewrite on the next message" : "", "run"],
           // The model line adds the version and effort to the one word of the row ("Opus 5.5 medium").
           ["model", sess.model ?? "", "run"],
@@ -618,7 +623,7 @@ const view = computed(() => {
           // The account shows here only when the row does not name it: the primary account of the tool.
           ["account", !sess.acct && accountMarks().primary && /claude|codex/.test(String(a.kind ?? "")) ? accountMarks().primary + " (primary)" : "", "run"],
           ["profile", sess.profile ?? "", "run"],
-          ["rule", sess.wrong ? "the folder rule names " + sess.wrong + "; start the session again on that account" : "", "run"],
+          ["rule", sess.wrong ? "the folder rule names " + sess.wrong + "; start the session again on that account" : "", "warn"],
           ["lane", sess.lane ?? (/\/lane-([^/]+)/.exec(String(a.directory ?? "")) ?? [])[1] ?? "", "work"],
           ["pr", sess.pr ?? "", "work"],
           ["branch", tab?.branch ? tab.branch + (tab.dirty ? " (changed files)" : "") : "", "work"],
@@ -1587,6 +1592,8 @@ const KIDS = "#6AC4DC";
 // One soft hue per kind of figure at the end of a row, so model, context and cost read apart at a glance.
 // The saturated colours stay for states: blue works, orange waits for you, yellow and red warn.
 const MODEL_INK = "#BDB2E8";  // lavender
+const VALUE_INK = "#E6E6EA";  // detail values: 9.7:1 on the detail area
+const WARN_INK = "#F5A524";   // detail problems: 5.9:1 on the detail area
 const CTX_INK = "#A9C0D4";    // slate blue
 const COST_INK = "#D8BE8C";   // sand
 const kidsBadge = (entry) =>
@@ -1615,13 +1622,21 @@ const UNDER_TITLE = 9;
 function detailRow(entry) {
   return HStack({ spacing: 6 }, [
     ZStack({}, [guide(entry, 16)]).frame({ width: 13 }),
-    VStack({ spacing: 2 }, [ForEach({ items: () => entry().lines, key: (l) => l.id }, (l) =>
-      HStack({ spacing: 8 }, [
-        cell(Text(() => l().label).font(10).monospaced().color(META), 64, "leading"),  // "compacted" needs 64 pt
-        Text(() => l().value).font(10).monospaced().color(TEXT2).lineLimit(2).truncation("tail"),
-        Spacer(),
-      ]).paddingTop(() => (l().gap ? 6 : 0)))])
-      .paddingHorizontal(8).paddingVertical(6)
+    // Advice of a design review: values 11.5 pt in the system font (monospace only for paths and names), quieter
+    // 10 pt labels in a 72 pt column, 4 pt between lines and 12 pt between groups, problems first in amber.
+    VStack({ spacing: 4 }, [
+      ForEach({ items: () => entry().warns, key: (l) => l.id }, (l) =>
+        HStack({ spacing: 0 }, [Text(() => l().value).font(11.5).weight("medium").color(WARN_INK).lineLimit(2).truncation("tail"), Spacer()])),
+      ForEach({ items: () => entry().lines, key: (l) => l.id }, (l) =>
+        HStack({ spacing: 0, alignment: "top" }, [
+          cell(Text(() => l().label).font(10).color(META), 72, "leading").paddingTop(1.5),
+          l().mono
+            ? Text(() => l().value).font(10.5).monospaced().color(VALUE_INK).lineLimit(2).truncation("middle")
+            : Text(() => l().value).font(11.5).color(VALUE_INK).lineLimit(3).truncation("tail"),
+          Spacer(),
+        ]).paddingTop(() => (l().gap ? 12 : 0))),
+    ])
+      .paddingHorizontal(10).paddingVertical(8)
       .background("#FFFFFF0A")
       .cornerRadius(8)
       .frame({ maxWidth: "infinity" }),

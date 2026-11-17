@@ -504,9 +504,13 @@ check("detail lines leave out what the row shows, start each group with a gap, a
   const labels = withText(() => true).map((n) => n.props.text);
   for (const gone of ["tool", "cost", "title", "context", "last prompt"]) must(!labels.includes(gone), "the details still have a " + gone + " line");
   must(labels.includes("prompt") && labels.includes("ship the fix"), "the details lost the prompt");
+  // A plain value reads in the 11.5 pt system font; a path or a name of a branch stays monospaced.
+  must(withText((t) => t === "ship the fix").length >= 1 && withText((t) => t === "ship the fix").every((n) => n.props.font === 11.5 && !n.props.monospaced && n.props.color === "#E6E6EA"), "a plain value is not 11.5 pt system text");
+  must(withText((t) => t === "lane/x").length >= 1 && withText((t) => t === "lane/x").every((n) => n.props.monospaced === true), "a branch name is not monospaced");
+  must(withText((t) => t === "prompt").length >= 1 && withText((t) => t === "prompt").every((n) => n.props.font === 10 && !n.props.monospaced), "a label is not a 10 pt system label");
   must(!labels.some((t) => /^<event/.test(t ?? "")), "a notice of the tool shows as the last ask");
   const branch = withText((t) => t === "branch")[0];
-  must(branch && parentOf(parentOf(branch.id).id).props.paddingTop === 6, "the work group does not start with a 6 pt gap");
+  must(branch && parentOf(parentOf(branch.id).id).props.paddingTop === 12, "the work group does not start with a 12 pt gap");
   // All lines sit in one shaded area, and the group line beside it keeps the 13 pt column of the row gutter.
   // label → its 64 pt cell → its line → the list of lines → the shaded area.
   const up = (n, k) => (k ? up(parentOf(n.id), k - 1) : n);
@@ -895,6 +899,9 @@ check("the detail lines name each health field in full; a bad value adds no line
   must(!textOf().includes("failed tool") && !textOf().includes("also edited"), "h-bad has a health detail line");
   tap(subtree(cardOf("h-loop")).find((n) => n.props.text === "›"));
   for (const l of ["6 failed tool calls in a row", "2 files also edited by another session", "1 subagent silent for 10 min or more", "3 failed tool calls or API errors"]) mustContain(textOf(), l);
+  // Problems stand first, in amber, one a line, with no label: the eye lands on them before the facts.
+  must(withText((t) => t === "6 failed tool calls in a row").length >= 1 && withText((t) => t === "6 failed tool calls in a row").every((n) => n.props.color === "#F5A524" && n.props.font === 11.5), "a problem line is not an 11.5 pt amber line");
+  must(withText((t) => t === "errors" || t === "loop" || t === "overlap" || t === "silent").length === 0, "a problem line still has a label");
 });
 check("rows keep their height and their columns with and without the new fields", () => {
   const rows = reachable().filter((n) => n.props.cornerRadius === 10 && n.props.borderWidth === 1);
