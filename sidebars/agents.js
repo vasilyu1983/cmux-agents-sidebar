@@ -1289,9 +1289,14 @@ const bandMenu = (entry) => {
     Divider(),
     ...done.map((x) => closeConfirm(x.name, "Yes, close " + x.name, () => closeTabs(ws(), [x]))),
   ])] : [];
+  // The colour of the group is the cmux workspace colour, so the band, the hive page and the cmux sidebar change together.
+  const setColor = (color) => cmux("workspace.action", color ? { workspace_id: ws(), action: "set_color", color } : { workspace_id: ws(), action: "clear_color" });
+  const colour = [Divider(), Menu("Colour", [Button("No colour", () => setColor()), Divider(), ...WS_COLORS.map((c) => Button(c, () => setColor(c)))])];
   return [Button("Terminal", () => newTab(ws())), ...(start.length ? [Divider(), ...start] : []),
-    ...(adds.length ? [Divider(), Menu("Add account", adds)] : []), ...configMenu(entry), ...close];
+    ...(adds.length ? [Divider(), Menu("Add account", adds)] : []), ...configMenu(entry), ...colour, ...close];
 };
+// The named colours of cmux (cmux workspace-action --help).
+const WS_COLORS = ["Red", "Crimson", "Orange", "Amber", "Olive", "Green", "Teal", "Aqua", "Blue", "Navy", "Indigo", "Purple", "Magenta", "Rose", "Brown", "Charcoal"];
 const selectWs = (entry) => () => cmux("workspace.select", { workspace_id: entry().wsId });
 // "+" opens a plain terminal tab in the workspace, the first item of the right-click menu. A Menu() as the mark was
 // tried: the host draws it as a system pull-down button that ignores the frame and covers the cost.

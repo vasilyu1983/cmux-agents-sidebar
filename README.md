@@ -152,6 +152,7 @@ Right-click a workspace header. The menu has these parts, from top to bottom:
 2. One item per tool found on this Mac. A tool with 2 or more accounts is a submenu: the tool's normal folder first, marked `★ default`, then the other accounts. A tool with one account is one item. With start profiles (below), each account is a submenu too: `normal`, then the profile names.
 3. `Add account`, a submenu with one item per tool that has accounts (`Claude…`). It opens a tab that asks for a name and runs `agents-account-add.sh`.
 4. `Open config`, a submenu that opens a config file in your editor, in a new tab of the workspace (see "Open config" below). It is also in the right-click menu of a session row.
+5. `Colour`, a submenu with `No colour` and the 16 named colours of cmux. It sets the cmux workspace colour, so the band in this panel, the hive page and the cmux sidebar change together.
 
 <img src="examples/start-menu.png" alt="Drawing of the start menu on a workspace header: Terminal, the tools by name, the Claude submenu open with personal (star default) and work, two extra tools, and Add account" width="420">
 

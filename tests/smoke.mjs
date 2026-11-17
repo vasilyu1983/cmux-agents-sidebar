@@ -1220,6 +1220,16 @@ check("Open config lists the user files by tool and the project files, and opens
     must(calls[0].params.initial_command === editorCommand(rel), "command: " + calls[0].params.initial_command);
   }
 });
+check("the Colour menu of a group sets or clears the cmux workspace colour of that workspace only", () => {
+  cfgData();
+  must(withText((t) => t === "Colour").length === 1, "the group menu needs one Colour item");
+  for (const [label, want] of [["Teal", { workspace_id: "ws-bare", action: "set_color", color: "Teal" }], ["No colour", { workspace_id: "ws-bare", action: "clear_color" }]]) {
+    const before = cmuxCalls().length;
+    tap(withText((t) => t === label)[0]);
+    const calls = cmuxCalls().slice(before);
+    must(calls.length === 1 && calls[0].method === "workspace.action" && JSON.stringify(calls[0].params) === JSON.stringify(want), label + " sent " + JSON.stringify(calls));
+  }
+});
 check("a config item with an account, folder, file or project part that is not plain gives no menu item and no command", () => {
   cfgData("@cfg: " + ["claude,wo rk,.claude,settings.json", "claude,a;b,.claude,settings.json", "claude,$(id),.claude,settings.json", "claude,,../etc,settings.json",
     "claude,,.claude,auth.json", "claude,,.claude,settings.json$(id)", "claude,,.cl aude,settings.json", "claude,,.claude,.claude.json", "codex,,.codex/..,config.toml",
