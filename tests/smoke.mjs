@@ -1127,6 +1127,10 @@ check("after state words the next step says next itself, and no bare next label 
     tabs: [tab(1, "[n-1] t", { id: B(1) })], agents: [agent("n-1", B(1), "idle", "claude")], prs: [],
   }]));
   must(withText((t) => t === "next").length === 1 && withText((t) => t === "the lead merges").length === 1, "a seen row lost its bare next label: " + rowText("n-1").join(" | "));
+  // Line 2 shows that short next step in full, so the details do not repeat it.
+  tap(withText((t) => t === "›")[0]);
+  must(withText((t) => t === "the lead merges").length === 1, "the details repeat a next step that line 2 shows in full");
+  must(withText((t) => t === "tokens" || t === "folder").length >= 1, "the details did not open");
   ctx.__setData("workspaces", JSON.stringify(workspaces));
 });
 

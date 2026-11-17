@@ -613,7 +613,7 @@ const view = computed(() => {
           ["tokens", sess.tok > 0 ? tokText(sess.tok) + " in context" : "", "run"],
           // The account shows here only when the row does not name it: the primary account of the tool.
           ["account", !sess.acct && accountMarks().primary && /claude|codex/.test(String(a.kind ?? "")) ? accountMarks().primary + " (primary)" : "", "run"],
-          ["profile", sess.profile ? sess.profile + " (start profile; its arguments are in agents-profiles)" : "", "run"],
+          ["profile", sess.profile ?? "", "run"],
           ["rule", sess.wrong ? "the folder rule names " + sess.wrong + "; start the session again on that account" : "", "run"],
           ["lane", sess.lane ?? (/\/lane-([^/]+)/.exec(String(a.directory ?? "")) ?? [])[1] ?? "", "work"],
           ["pr", sess.pr ?? "", "work"],
@@ -655,7 +655,12 @@ const view = computed(() => {
     // Items 7 and 8: what every row of the group shares moves to the band. The account when all rows have the same
     // one, the model that most rows use. Rows outside their group (the top block, the view by state) keep both.
     // The bare "next" label stands first on the line, so it marks the next step only when no state words come before it.
-    for (const r of rows) r.pills = finishPills(r.rawPills, r.nextl && !r.state);
+    for (const r of rows) {
+      r.pills = finishPills(r.rawPills, r.nextl && !r.state);
+      // Line 2 holds about 28 characters before it cuts the text; a next step it shows in full is not repeated below.
+      const shown = (r.state ? r.state.length + 8 : 0) + String(r.line2).length;
+      r.info = r.info.filter((l) => !(l[0] === "next" && l[1] === r.line2 && shown <= 28));
+    }
     const groupAcct = rows.length && rows.every((r) => r.acct && r.acct === rows[0].acct) ? rows[0].acct : "";
     const groupModel = usualModel(rows);
     const inGroup = (r) => ({
