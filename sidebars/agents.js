@@ -721,8 +721,8 @@ const launchList = computed(() => {
   for (const w of data.workspaces() ?? []) {
     const part = descOf(w).split(" | ").find((p) => p.startsWith("@limits: "));
     for (const item of part ? part.slice(9).split(";").slice(0, 60) : []) {
-      const m = /^([a-z]{1,12}),[^,]*,[^,]*,[^,]*,[^,]*(?:,([a-z0-9-]{1,16}))?$/.exec(item);
-      if (m && LAUNCH.includes(m[1])) found[m[1] + "," + (m[2] ?? "")] = { tool: m[1], acct: m[2] ?? "" };
+      const m = /^([a-z]{1,12}),[^,]*,[^,]*,[^,]*,[^,]*(?:,([a-z0-9-]{0,16})(?:,\d{1,12})?)?$/.exec(item);  // the 7th part is the reset epoch
+      if (m && LAUNCH.includes(m[1])) found[m[1] + "," + (m[2] || "")] = { tool: m[1], acct: m[2] || "" };
       else if (m && PLAIN[m[1]]) found[m[1] + ","] = { tool: m[1], acct: "" };
     }
   }

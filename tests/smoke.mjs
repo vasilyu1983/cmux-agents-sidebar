@@ -936,10 +936,12 @@ check("a tab title that the shell left (user@host, or a start command with a var
   must(rowText("b-three").includes("Review the diff"), "a real tab title was dropped");
 });
 // The start menu of a group: its items come from the tools and accounts in "@limits", never from a list in the panel.
+// The fixture mixes the 7-part items of the current watcher (reset epoch last, an empty account before it) with
+// 5- and 6-part items: an account with a reset time once dropped out of the menu.
 check("the group menu starts a plain terminal first, then each tool with each account, by a fixed command", () => {
   ctx.__setData("workspaces", JSON.stringify([{
     id: "ws-bare", title: "ignored", directory: "/work/bare", color: "#336699", selected: true, unread: 0,
-    description: ["/work/bare", "@home: " + HOME, "@primary: main", "@limits: claude,week,4,Sat 09:39,1794600000;claude,,,,0,work;codex,,,,0;codex,,,,0,team;grok,,,,0;agy,,,,0", "b-one: sonnet"].join(" | "),
+    description: ["/work/bare", "@home: " + HOME, "@primary: main", "@limits: claude,week,4,Sat 09:39,1794600000,,1794700000;claude,5h,7,12:00,1794600000,work,1794700000;claude,,,,0,work;codex,,,,0;codex,,,,0,team;grok,,,,0;agy,,,,0", "b-one: sonnet"].join(" | "),
     tabs: [tab(1, "[b-one] t", { id: B(5), focused: true })], agents: [agent("b-one", B(5), "idle", "claude")], prs: [],
   }]));
   const want = ["Terminal", "Claude", "main  \u2605 default", "work", "Codex", "team", "Grok", "Antigravity", "Add account", "Claude…", "Codex…", "Grok…"];
