@@ -986,9 +986,27 @@ check("Close finished lists idle sessions only (not the open one, not pinned, no
   before = cmuxCalls().length;
   tap(withText((t) => t === "Yes, close 1: b-done")[0]);
   const calls = cmuxCalls().slice(before);
-  must(calls.length === 1 && calls[0].method === "surface.close" && calls[0].params.surface_id === "SF-2" && calls[0].params.workspace_id === "ws-bare", "close calls: " + JSON.stringify(calls));
+  must(calls.length === 1 && calls[0].method === "surface.close" && calls[0].params.surface_id === "SF-2" && calls[0].params.workspace_id === "ws-bare" && String(calls[0].params.force) === "true", "close calls (force is needed for a tab with a running process): " + JSON.stringify(calls));
   // Every session row has its own Close tab, the open one too: the owner chose it by hand.
   must(withText((t) => t === "Yes, close b-open").length === 1 && withText((t) => t === "Yes, close b-busy").length === 1, "a row has no Close tab");
+});
+// Approve once: only a Claude Code session that waits on a permission prompt, never a question or another tool.
+check("Approve once shows only on a Claude Code permission prompt and sends the key 1 after Yes, with no line end", () => {
+  ctx.__setData("workspaces", JSON.stringify([{
+    id: "ws-bare", title: "ignored", directory: "/work/bare", color: "#336699", selected: true, unread: 0,
+    description: ["/work/bare", "@home: " + HOME, "b-ask: sonnet · waits permission prompt", "b-q: sonnet · waits input", "b-cx: x · waits permission prompt"].join(" | "),
+    tabs: [tab(1, "[b-ask] t", { id: B(1) }), tab(2, "[b-q] t", { id: B(2) }), tab(3, "[b-cx] t", { id: B(3) })],
+    agents: [agent("b-ask", B(1), "needs_input", "claude"), agent("b-q", B(2), "needs_input", "claude"), agent("b-cx", B(3), "needs_input", "codex")], prs: [],
+  }]));
+  const yes = withText((t) => t === "Yes, approve b-ask");
+  must(yes.length >= 1, "no Approve once for the permission prompt");
+  must(withText((t) => t === "Yes, approve b-q" || t === "Yes, approve b-cx").length === 0, "a question or a Codex row got Approve once");
+  let before = cmuxCalls().length;
+  for (const n of withText((t) => t === "Approve once")) tap(n);
+  must(cmuxCalls().length === before, "the submenu title alone sent something");
+  tap(yes[0]);
+  const calls = cmuxCalls().slice(before);
+  must(calls.length === 1 && calls[0].method === "surface.send_text" && calls[0].params.text === "1" && calls[0].params.surface_id === "SF-1", "approve calls: " + JSON.stringify(calls));
 });
 check("an account name that is not plain (it could carry shell text) gives no menu item", () => {
   ctx.__setData("workspaces", JSON.stringify([{
