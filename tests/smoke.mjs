@@ -966,6 +966,30 @@ check("the group menu starts a plain terminal first, then each tool with each ac
   calls = cmuxCalls().slice(before);
   must(calls.length === 1 && calls[0].method === "surface.create" && !("initial_command" in calls[0].params), "a plain terminal got a command: " + JSON.stringify(calls));
 });
+// Closing tabs: each close is behind a second, named "Yes, close ..." item, so one stray click closes nothing.
+check("Close finished lists idle sessions only (not the open one, not pinned, not working) and closes after Yes", () => {
+  ctx.__setData("workspaces", JSON.stringify([{
+    id: "ws-bare", title: "ignored", directory: "/work/bare", color: "#336699", selected: true, unread: 0,
+    description: ["/work/bare", "@home: " + HOME, "@pin: b-pin", "b-open: sonnet", "b-done: sonnet", "b-busy: sonnet", "b-pin: sonnet"].join(" | "),
+    tabs: [tab(1, "[b-open] t", { id: B(1), focused: true }), tab(2, "[b-done] t", { id: B(2) }), tab(3, "[b-busy] t", { id: B(3) }), tab(4, "[b-pin] t", { id: B(4) })],
+    agents: [agent("b-open", B(1), "idle", "claude"), agent("b-done", B(2), "idle", "claude"), agent("b-busy", B(3), "working", "claude"), agent("b-pin", B(4), "idle", "claude")], prs: [],
+  }]));
+  must(withText((t) => t === "Close finished (1)").length === 1, "no Close finished (1): " + JSON.stringify(withText((t) => t.startsWith("Close")).map((n) => n.props.text)));
+  const yes = withText((t) => t === "Yes, close b-done");
+  must(yes.length >= 2, "b-done has no Yes item in the group menu and its row menu");
+  must(withText((t) => t === "Yes, close 1: b-done").length === 1, "no Close all confirm item");
+  // The submenu titles do nothing on their own.
+  let before = cmuxCalls().length;
+  tap(withText((t) => t === "Close finished (1)")[0]);
+  for (const n of withText((t) => t === "Close tab")) tap(n);
+  must(cmuxCalls().slice(before).every((c) => c.method !== "surface.close"), "a submenu title closed a tab");
+  before = cmuxCalls().length;
+  tap(withText((t) => t === "Yes, close 1: b-done")[0]);
+  const calls = cmuxCalls().slice(before);
+  must(calls.length === 1 && calls[0].method === "surface.close" && calls[0].params.surface_id === "SF-2" && calls[0].params.workspace_id === "ws-bare", "close calls: " + JSON.stringify(calls));
+  // Every session row has its own Close tab, the open one too: the owner chose it by hand.
+  must(withText((t) => t === "Yes, close b-open").length === 1 && withText((t) => t === "Yes, close b-busy").length === 1, "a row has no Close tab");
+});
 check("an account name that is not plain (it could carry shell text) gives no menu item", () => {
   ctx.__setData("workspaces", JSON.stringify([{
     id: "ws-bare", title: "ignored", directory: "/work/bare", color: "#336699", selected: true, unread: 0,

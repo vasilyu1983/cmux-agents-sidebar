@@ -183,6 +183,10 @@ function sendCommand(row, text) {
   if (!text || !row.surfaceId || row.agent.status !== "idle" || row.look !== "idle") return;
   cmux("surface.send_text", { surface_id: row.surfaceId, workspace_id: row.wsId, text: text + "\n" });
 }
+// Close session tabs. The menus ask first: "Close tab" and "Close finished" are submenus whose only action is a
+// named "Yes, close ..." item, so one stray click closes nothing. A closed Claude session comes back with /resume.
+const closeTabs = (wsId, list) => { for (const x of list) cmux("surface.close", { surface_id: x.surfaceId, workspace_id: wsId }); };
+const closeConfirm = (title, yes, run) => Menu(title, [Button(yes, run)]);
 
 // label-tabs.py leaves "<folder> | api-3f: Fable 5.2 high · ctx 42% · $12.34 · lane lane/x · pr #644 needs grant ·
 // cold 198K · waits permission prompt | ..." in the description. Returns session name -> its fields.
@@ -606,11 +610,16 @@ const view = computed(() => {
     // Same order as the tabs of the workspace; waiting sessions also show in the top block.
     // The "attention" toggle puts the sessions that need the owner first, and keeps tab order inside each rank.
     rows.sort((x, y) => x.tabIndex - y.tabIndex);
+    // "Close finished": the idle sessions of the group that are not pinned and not the open one. The menu is built
+    // with the row, so the key carries the list and the menu is built again when it changes.
+    const finished = rows.filter((r) => r.look === "idle" && !r.focused && r.surfaceId && !pinsOf(w).includes(r.sessName))
+      .map((r) => ({ name: r.sessName || r.tabTitle, surfaceId: r.surfaceId }));
     out.push({
       // An empty workspace is a thin line, not a band: the key carries the form, as for the rows.
       // The start menu is built with the row, so the key also carries its items.
-      key: "h:" + w.id + (rows.length ? "" : ":e") + ":" + launchList().map((x) => x.tool + "." + x.acct + (x.cmd ?? "") + (x.name ?? "")).join(",") + ":" + cfgKey(w.id),
+      key: "h:" + w.id + (rows.length ? "" : ":e") + ":" + launchList().map((x) => x.tool + "." + x.acct + (x.cmd ?? "") + (x.name ?? "")).join(",") + ":" + cfgKey(w.id) + ":f" + finished.map((f) => f.surfaceId).join(","),
       launch: launchList(),
+      finished,
       kind: "header",
       wsId: w.id,
       // The project folder names the group. w.title is the title of the focused tab, which reads like one more session.
@@ -1172,8 +1181,15 @@ const bandMenu = (entry) => {
       ...rest.map((x) => Button(x.label, () => launch(ws(), x)))]);
   });
   const adds = tools.filter((t) => LAUNCH.includes(t)).map((t) => Button(TOOLS[t] + "…", () => addAccount(ws(), t)));
+  const done = entry().finished ?? [];
+  const names = (list) => list.map((x) => x.name).join(", ");
+  const close = done.length ? [Divider(), Menu("Close finished (" + done.length + ")", [
+    closeConfirm("Close all " + done.length, "Yes, close " + done.length + ": " + (names(done).length > 60 ? names(done).slice(0, 59) + "…" : names(done)), () => closeTabs(ws(), done)),
+    Divider(),
+    ...done.map((x) => closeConfirm(x.name, "Yes, close " + x.name, () => closeTabs(ws(), [x]))),
+  ])] : [];
   return [Button("Terminal", () => newTab(ws())), ...(start.length ? [Divider(), ...start] : []),
-    ...(adds.length ? [Divider(), Menu("Add account", adds)] : []), ...configMenu(entry)];
+    ...(adds.length ? [Divider(), Menu("Add account", adds)] : []), ...configMenu(entry), ...close];
 };
 const selectWs = (entry) => () => cmux("workspace.select", { workspace_id: entry().wsId });
 // "+" opens a plain terminal tab in the workspace, the first item of the right-click menu. A Menu() as the mark was
@@ -1436,6 +1452,7 @@ function rowMenu(entry) {
       items.push(Button("Copy " + text, () => clipboard.write(text)));
     }
   }
+  if (entry().surfaceId) items.push(Divider(), closeConfirm("Close tab", "Yes, close " + (entry().sessName || entry().tabTitle), () => closeTabs(entry().wsId, [entry()])));
   return items;
 }
 
