@@ -1107,6 +1107,11 @@ check("two or more empty workspaces fold into one line that opens on a click; a 
   ctx.__setData("workspaces", JSON.stringify(workspaces));
 });
 
+check("the new mark keeps its own width on one line, so a full row cannot squeeze it into one letter a line", () => {
+  const marks = withText((t) => t === "new");
+  must(marks.length >= 1 && marks.every((n) => n.props.fixedSize === true && n.props.lineLimit === 1), "a new mark can wrap");
+});
+
 check("a tool from @tools gets a flat item with a neutral dot and starts by its command word", () => {
   ctx.__setData("workspaces", JSON.stringify([{
     id: "ws-bare", title: "ignored", directory: "/work/bare", color: "#336699", selected: true, unread: 0,

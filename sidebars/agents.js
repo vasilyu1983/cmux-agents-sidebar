@@ -1567,7 +1567,8 @@ function rowMenu(entry) {
 
 // "new": unread output. A finished-not-seen row leaves it out: its tint and its state say it already.
 const unreadBadge = (entry) =>
-  Text(() => (entry().unread && !entry().done ? "new" : "")).font(10).monospaced().weight("semibold").color(PURPLE_TEXT);
+  // One line at its own width: in a full row an unsized text was squeezed into one letter a line ("n", "e", "w").
+  Text(() => (entry().unread && !entry().done ? "new" : "")).font(10).monospaced().weight("semibold").lineLimit(1).fixedSize().color(PURPLE_TEXT);
 // "▸ 2 sub running": the subagents of a session as a count. A click opens or closes their rows.
 // The subagent count: blue while one runs, else a calm teal, so it reads apart from the grey time.
 const KIDS = "#6AC4DC";
