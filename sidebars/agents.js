@@ -950,6 +950,8 @@ const dropNone = (text) => {
   const kept = text.split("; ").filter((c) => !/^\w+ none$/.test(c.trim()));
   return kept.length ? kept.join("; ") : text;
 };
+// A train line that only reports merges (and "none" clauses) needs no action, so the strip leaves it out.
+const quietTrain = (text) => text.split("; ").every((c) => /^(?:\w+ none|merged\b.*)$/.test(c.trim()));
 const strip = computed(() => {
   const out = [];
   for (const w of data.workspaces() ?? []) {
@@ -960,6 +962,7 @@ const strip = computed(() => {
         const raw = part.slice(at + 2);
         const name = part.slice(1, at);
         const value = name === "train" ? dropNone(raw) : raw;
+        if (name === "train" && quietTrain(raw)) continue;
         out.push({
           key: w.id + part.slice(0, at), label: kind[0], value, wsId: w.id, color: kind[1], bar: -1,
           // The menu copies the text as it is. Nothing here builds or runs a command.
@@ -968,21 +971,19 @@ const strip = computed(() => {
       }
     }
   }
-  // One limit line per tool that reports a live window: its highest window over all accounts, with the account,
-  // the window and the reset time. The Limits view lists them all, so these lines leave it.
+  return out;
+});
+// The panel head names a tool whose highest live window is at 80% or more: an exception to act on. Lower limits are
+// in the Limits view only.
+const headLimits = computed(() => {
   const top = {};
-  for (const x of limitsShown() ? [] : limits()) {
+  for (const x of limits()) {
     if (x.bar >= 0 && (!top[x.tool] || x.bar > top[x.tool].bar)) top[x.tool] = x;
   }
-  for (const x of Object.values(top)) {
-    const tool = Object.keys(TOOLS)[x.tool];
-    out.push({
-      key: "lim:" + tool + ":p", label: tool, value: x.label + " " + x.value, wsId: x.wsId,
-      color: x.bar >= 80 ? "#FF453A" : "secondary", bar: x.bar, pct: x.pct,
-      rest: [x.label.split(" ").slice(1).join(" "), x.long].filter(Boolean).join(" · "), copy: x.copy,
-    });
-  }
-  return out;
+  return Object.values(top).filter((x) => x.bar >= 80).map((x) => ({
+    key: "hl:" + x.toolId, tool: x.toolId, pct: x.pct, bar: x.bar,
+    help: [x.label, x.value, x.long].filter(Boolean).join(" · "),
+  }));
 });
 
 const counts = computed(() => {
@@ -1704,6 +1705,11 @@ const filterChip = (f) =>
   chip(() => f().label, () => String(view().chips[f().id] ?? 0), () => filter() === f().id, () => setView({ c: filter() === f().id ? "" : f().id }),
     () => CHIP_COLORS[f().id])
     .help(() => f().help);
+// An account chip: a dot in the colour of the account. A second click shows all accounts again.
+const acctChip = (a) =>
+  chip(() => a().acct, () => String(a().n), () => acctFilter() === a().acct, () => setAcctFilter(acctFilter() === a().acct ? "" : a().acct),
+    null, () => acctColor(a().acct)).help("Filter by account");
+const anyChip = (it) => (it().acct ? acctChip(it) : filterChip(it));
 const resetChip = () =>
   Text("✕ Reset").font(11).monospaced().weight("medium").lineLimit(1).fixedSize().color(ORANGE)
     .paddingHorizontal(10).paddingVertical(5).cornerRadius(12)
@@ -1714,19 +1720,22 @@ const resetChip = () =>
 // the space of the narrowest sidebar (300 pt); the rest goes to a second row.
 const CHIP_ROW = 280;
 const chipW = (label, count, dot) => 24 + 6.7 * String(label).length + (count ? 4 + 6.1 * String(count).length : 0) + (dot ? 10 : 0);
+// The chips keep their order: a chip that does not fit starts the next row. Row 0 always exists.
 const packChips = (items, widthOf, reserved) => {
-  const rows = [[], []];
+  const rows = [[]];
   let used = reserved;
   for (const it of items) {
     const w = widthOf(it);
-    if (!rows[1].length && used + w <= CHIP_ROW) { rows[0].push(it); used += w; } else rows[1].push(it);
+    if (used + w > CHIP_ROW && (rows[rows.length - 1].length || rows.length > 1)) { rows.push([]); used = 0; }
+    rows[rows.length - 1].push(it);
+    used += w;
   }
   return rows;
 };
 const endedShown = () => counts().ended > 0 || showEnded();
-const chipRows = () => packChips(chipItems(), (f) => chipW(f.label, view().chips[f.id] ?? 0),
+const chipRows = () => packChips([...chipItems(), ...acctItems().map((a) => ({ ...a, id: "acct:" + a.id, acct: a.id }))],
+  (f) => (f.acct ? chipW(f.acct, f.n, true) : chipW(f.label, view().chips[f.id] ?? 0)),
   chipW("Here") + (endedShown() ? chipW("ended", counts().ended) : 0) + (viewChanged() ? chipW("✕ Reset") : 0));
-const acctRows = () => packChips(acctItems(), (a) => chipW(a.id, a.n, true), 0);
 // One chip per account, shown when the sessions run on two accounts or more (or while one is the filter).
 const acctItems = () => {
   const all = Object.entries(view().accts);
@@ -1762,6 +1771,11 @@ sidebar(() =>
       headCount(() => counts().idle, "idle", "#34C759"),
       headCount(() => (showEnded() ? counts().ended : 0), "ended", META),
       optional("cost", () => totalCost() >= 1, () => Text(() => "$" + Math.round(totalCost())).font(10).monospaced().color(META)),
+      // A limit at 80% or more: tool, percent and a short bar. A click opens the Limits view.
+      ForEach({ items: () => (limitsShown() ? [] : headLimits()), key: (x) => x.key }, (x) => HStack({ spacing: 4 }, [
+        Text(() => x().tool + " " + x().pct).font(10).monospaced().lineLimit(1).fixedSize().color("#FF453A"),
+        usedBar(() => x().bar, 20, 4),
+      ]).help(() => x().help).onTap(() => setView({ l: true }))),
     ]).paddingHorizontal(10),
 
     ZStack({}, [
@@ -1794,32 +1808,19 @@ sidebar(() =>
     // chip shows all rows again. The chip "ended" adds the ended sessions to the list. Then the Reset chip.
     optional("chips", () => !limitsShown(), () => HStack({ spacing: 4 }, [
       chip("Here", null, () => !scopeAll(), () => setView({ s: !scopeAll() })).help("Only the open workspace"),
-      ForEach({ items: () => chipRows()[0], key: (f) => f.id }, filterChip),
+      ForEach({ items: () => chipRows()[0], key: (f) => f.id }, anyChip),
       optional("ended", endedShown, () =>
         chip("ended", () => String(counts().ended), () => showEnded(), () => setView({ e: !showEnded() }))
           .help("Show the ended sessions too")),
       Spacer(),
       optional("reset", viewChanged, resetChip),
     ]).paddingHorizontal(10)),
-    // The filter chips that did not fit in the first row.
-    optional("chips2", () => !limitsShown() && chipRows()[1].length, () => HStack({ spacing: 4 }, [
-      ForEach({ items: () => chipRows()[1], key: (f) => f.id }, filterChip),
-      Spacer(),
-    ]).paddingHorizontal(10)),
-    // Row 3: one chip per account, with a dot in the colour of the account. A second click shows all again.
-    optional("accts0", () => !limitsShown() && acctRows()[0].length, () => HStack({ spacing: 4 }, [
-      ForEach({ items: () => acctRows()[0], key: (a) => a.id },
-        (a) => chip(() => a().id, () => String(a().n), () => acctFilter() === a().id, () => setAcctFilter(acctFilter() === a().id ? "" : a().id),
-          null, () => acctColor(a().id)).help("Filter by account")),
-      Spacer(),
-    ]).paddingHorizontal(10)),
-    optional("accts1", () => !limitsShown() && acctRows()[1].length, () => HStack({ spacing: 4 }, [
-      ForEach({ items: () => acctRows()[1], key: (a) => a.id },
-        (a) => chip(() => a().id, () => String(a().n), () => acctFilter() === a().id, () => setAcctFilter(acctFilter() === a().id ? "" : a().id),
-          null, () => acctColor(a().id)).help("Filter by account")),
-      Spacer(),
-    ]).paddingHorizontal(10)),
-
+    // The chips that did not fit in the first row, one more row each time the last is full.
+    ForEach({ items: () => (limitsShown() ? [] : chipRows().slice(1).map((_, i) => ({ id: "chips" + (i + 1), i: i + 1 }))), key: (r) => r.id },
+      (r) => HStack({ spacing: 4 }, [
+        ForEach({ items: () => chipRows()[r().i] ?? [], key: (f) => f.id }, anyChip),
+        Spacer(),
+      ]).paddingHorizontal(10)),
     optional("strip", () => !limitsShown() && strip().length, () => VStack({ spacing: 2 }, [ForEach({ items: strip, key: (s) => s.key }, (s) => stripRow(s))])),
     // The Limits view takes the place of the session list.
     optional("limits", limitsShown, () => VStack({ spacing: 3 }, [ForEach({ items: limitRows, key: (s) => s.key }, (s) => limitRow(s))])),

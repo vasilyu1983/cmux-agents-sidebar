@@ -324,7 +324,6 @@ check("a tab with no title of its own shows the title of its session; the reques
   must(withText((t) => t.endsWith("the lead merges")).length >= 1, "worker-2 does not show its next step");
   const widths = (w) => reachable().filter((n) => n.props.width === w).length;
   must(widths(27) >= 6 && widths(27) === widths(49) && widths(29) === 0, "the two number columns are not on every row, or the token column is back");
-  must(withText((t) => t === "claude").some((n) => n.props.fixedSize === true && n.props.font === 10), "the strip line of the limit is not labelled claude");
   must(withText((t) => t === "week").length === 0, "the strip still has a line labelled week");
 });
 check("a row shows no token count: it is in the detail lines, so the next step has the width", () => {
@@ -376,13 +375,13 @@ check("render shows the project strip lines", () => {
   mustContain(rendered, "2 ready");
   mustContain(rendered, "api 2");
 });
-check("strip lines: one 11 pt line with the full text on hover; the train line drops its \"none\" clauses", () => {
-  const train = withText((t) => t === "merged #12");
-  must(train.length === 1, "the train line is not \"merged #12\"");
-  must(train[0].props.font === 11 && train[0].props.lineLimit === 1 && train[0].props.truncation === "tail", "the strip value is not 11 pt on one line");
-  must(train[0].props.help === "merged #12", "the strip value has no hover text");
-  must(withText((t) => t === "refused none; skipped none").length === 1, "a train line with only \"none\" clauses did not keep its text");
-  const label = withText((t) => t === "train")[0];
+check("strip lines: one 11 pt line with the full text on hover; a train line that only merged needs no action and is left out", () => {
+  const queue = withText((t) => t === "2 ready");
+  must(queue.length === 1, "the queue line is not \"2 ready\"");
+  must(queue[0].props.font === 11 && queue[0].props.lineLimit === 1 && queue[0].props.truncation === "tail", "the strip value is not 11 pt on one line");
+  must(queue[0].props.help === "2 ready", "the strip value has no hover text");
+  must(withText((t) => t === "merged #12" || t === "refused none; skipped none" || t === "train").length === 0, "a train line with nothing to act on is still on the strip");
+  const label = withText((t) => t === "run")[0];
   must(label.props.font === 10 && label.props.color === META, "the strip label is not 10 pt META");
   // The whole panel uses the monospaced font, as the terminal beside it.
   const plain = reachable().filter((n) => typeof n.props.text === "string" && n.props.font >= 10 && n.props.monospaced !== true);
@@ -390,16 +389,10 @@ check("strip lines: one 11 pt line with the full text on hover; the train line d
   // A label sits in a 56 pt cell at the leading side: the text takes its own width, a gap fills the rest.
   must(label.props.fixedSize === true && reachable().some((n) => n.props.width === 56), "the strip label has no 56 pt cell");
 });
-check("the strip has one limit line per tool with a live window: percent, a 44 x 4 bar, account, window and reset", () => {
-  // The data: claude 5h 42%, codex week 4%, grok with no window. The strip names the tool, not "week".
-  must(withText((t) => t === "42%").length === 1 && withText((t) => t === "4%").length === 1, "no 42% and 4% lines on the strip");
-  must(withText((t) => t === "claude").length >= 1 && withText((t) => t === "codex").some((n) => n.props.fixedSize === true), "the limit lines do not name their tool");
-  must(withText((t) => t === "grok").length === 0 && withText((t) => t === "week").length === 0, "a tool with no window, or a line named week, shows on the strip");
-  must(reachable().some((n) => n.type === "capsule" && n.props.fill === "#34C759" && Math.abs(n.props.width - 18.48) < 0.01 && n.props.height === 4), "no green 42% fill on the strip bar");
-  must(reachable().some((n) => n.type === "capsule" && n.props.fill === "#7f7f7f40" && n.props.width === 44 && n.props.height === 4), "no 44 pt track on the strip bar");
-  const rest = withText((t) => /5h · resets 14:10$/.test(t))[0];
-  must(rest && rest.props.text === "personal · 5h · resets 14:10", "the claude line does not name its account: " + rest?.props.text);
-  must(rest && rest.props.font === 10 && rest.props.color === META, "the rest of the claude line is not \"5h · resets 14:10\" in 10 pt META");
+check("the strip has no limit lines: the Limits view lists them, and the head names a limit of 80% or more", () => {
+  // The data: claude 5h 42%, codex week 4%. Both are below 80%, so neither shows outside the Limits view.
+  must(withText((t) => t === "42%" || t === "4%" || /^claude \d/.test(t)).length === 0, "a limit below 80% shows on the strip or in the head");
+  must(!reachable().some((n) => n.type === "capsule" && n.props.width === 44 && n.props.height === 4), "the 44 pt strip bar is still there");
 });
 check("the panel head, control row, chips and search field have their new form", () => {
   must(!rendered.includes("showing:"), "the showing line is still there");
@@ -653,6 +646,17 @@ const limitsFixture = (limitsText, extra = []) => JSON.stringify([{
   agents: [agent("s-one", G(6), "idle", "claude"), agent("s-two", G(7), "idle", "claude")], prs: [],
 }]);
 const limitsTexts = () => withText(() => true).map((n) => n.props.text);
+check("a limit of 80% or more shows in the panel head in red with a 20 pt bar; a click opens the Limits view", () => {
+  ctx.__setData("workspaces", limitsFixture("claude,5h,91,14:10,1794650000;codex,week,4,Sat 09:39,1794600000"));
+  const head = withText((t) => t === "claude 91%");
+  must(head.length === 1 && head[0].props.color === "#FF453A", "no red \"claude 91%\" in the head");
+  must(withText((t) => /^codex /.test(t)).length === 0, "a limit below 80% shows in the head");
+  must(reachable().some((n) => n.type === "capsule" && n.props.width === 20 && n.props.height === 4), "no 20 pt bar beside the head limit");
+  tap(parentOf(head[0].id));
+  must(withText((t) => t === "by account").length === 1, "a click on the head limit did not open the Limits view");
+  tap(withText((t) => t === "Limits")[0]);
+  ctx.__setData("workspaces", JSON.stringify(workspaces));
+});
 const MENU_TEXT = /^(Copy the text|Show .*|Put .* on hold|Resume .*|)$/;
 check("the Limits view groups per account: cost in the header, window lines, one no-data block at the end", () => {
   ctx.__setData("workspaces", limitsFixture("claude,5h,7,21:20,1794650000,work;claude,week,1,Sun 10:00,1794650000,work;claude,week,75,Wed 23:00,1794650000;codex,week,4,Wed 10:19,1794650000;claude,,,,0,team-a;codex,,,,0,team-a;opencode,,,,0;grok,,,,0", ["@primary: personal"]));
