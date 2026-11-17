@@ -751,6 +751,7 @@ const limits = computed(() => {
     // A live window shows in columns: bar, percent, then the rest of the text (window, reset time, age).
     let pct = "";
     let rest = "";
+    let long = "";  // the strip of the session list keeps window and reset time: "week · resets Wed 23:00"
     if (m[3] !== "") {
       const used = Number(m[3]);
       if (m[4] === "ended") value = (m[2] || "limit") + " window ended · last value " + used + "%" + age;
@@ -758,8 +759,10 @@ const limits = computed(() => {
         value = (m[2] || "limit") + " " + used + "%" + (m[4] ? " · resets " + m[4] : "") + age;
         bar = Math.min(100, used);
         pct = used + "%";
-        const left = m[7] && Number(m[7]) > epoch && epoch ? " (in " + fmtLeft(Number(m[7]) - epoch) + ")" : "";
-        rest = (m[2] || "limit") + (m[4] ? " · resets " + m[4] + left : "");  // the age shows on hover
+        // The line shows the time left; the clock time and the age of the figure show on hover. With no reset epoch
+        // (an older watcher) the clock time stays on the line.
+        rest = m[7] && Number(m[7]) > epoch && epoch ? fmtLeft(Number(m[7]) - epoch) : m[4];
+        long = (m[2] || "limit") + (m[4] ? " · resets " + m[4] : "");
       }
     }
     const primary = (m[1] === "claude" || m[1] === "codex") ? accountMarks().primary : "";
@@ -767,7 +770,7 @@ const limits = computed(() => {
     // The key carries the form (with or without a bar), because a row's template is fixed per key.
     const acct = m[6] || primary;
     if (held().includes(m[1] + "/" + (acct || "default"))) continue;
-    out.push({ key: "limit" + out.length + m[1] + m[2] + (bar >= 0 ? ":b" : ""), label, value, color, copy: label + " " + value, bar, pct, rest, wsId: newest.wsId, tool: Object.keys(TOOLS).indexOf(m[1]), toolId: m[1], win: m[2], acct });
+    out.push({ key: "limit" + out.length + m[1] + m[2] + (bar >= 0 ? ":b" : ""), label, value, color, copy: label + " " + value, bar, pct, rest, long, wsId: newest.wsId, tool: Object.keys(TOOLS).indexOf(m[1]), toolId: m[1], win: m[2], acct });
   }
   // Lines of one tool stay together, and inside a tool the lines of one account.
   out.sort((a, b) => a.tool - b.tool || (a.acct < b.acct ? -1 : a.acct > b.acct ? 1 : 0));
@@ -794,33 +797,47 @@ const limits = computed(() => {
 const limitRows = computed(() => {
   const all = limits();
   if (all.length === 1 && all[0].key === "limit-none") return all.map((x) => ({ ...x, kind: "text", tname: x.label }));
+  if (limitsByTool()) return [...roomRows(all), ...limitRowsByTool(all), ...noDataRows(all, true), ...heldRows()];
   const groups = {};
-  const group = (who) => (groups[who] ??= { wins: [], none: [], cost: null });
+  const group = (who) => (groups[who] ??= { wins: [], cost: null });
   for (const x of all) {
     if (x.key.startsWith("cost-")) group(x.acct).cost = x;
-    else if (x.bar < 0 && x.value === "no limit data on this Mac") group(x.acct).none.push(x);
-    else group(x.acct).wins.push(x);
+    else if (!noData(x)) group(x.acct).wins.push(x);
   }
-  if (limitsByTool()) return [...roomRows(all), ...limitRowsByTool(all), ...heldRows()];
   const primary = accountMarks().primary;
   const names = Object.keys(groups).filter(Boolean).sort((a, b) => (b === primary) - (a === primary) || (a < b ? -1 : a > b ? 1 : 0));
   const out = [];
+  // An account shows as a group only with a window or a cost; one with no data at all goes to the "no data" block.
   for (const who of groups[""] ? [...names, ""] : names) {
     const g = groups[who];
-    if (who || names.length) out.push({ key: "head-" + who, kind: "head", label: who || "other", acct: who, first: out.length === 0 });
+    if (!g.wins.length && !g.cost) continue;
+    const cost = g.cost ? g.cost.value : "";
+    if (who || names.length) out.push({ key: "head-" + who, kind: "head", label: who || "other", acct: who, cost, first: out.length === 0 });
     let last = -1;
     for (const x of g.wins) {
-      out.push({ ...x, kind: "win", tname: x.tool === last ? "" : TOOLS[Object.keys(TOOLS)[x.tool]] });
+      out.push({ ...x, kind: "win", tname: x.tool === last ? "" : TOOLS[Object.keys(TOOLS)[x.tool]], wname: x.win || "limit" });
       last = x.tool;
     }
-    if (g.none.length) {
-      const text = g.none.map((x) => TOOLS[Object.keys(TOOLS)[x.tool]]).join(", ");
-      out.push({ key: "limit-nodata-" + who, kind: "none", tname: "no data", value: text, color: META, copy: "no limit data on this Mac: " + (who ? who + " " : "") + text, bar: -1, wsId: g.none[0].wsId, acct: who });
-    }
-    if (g.cost) out.push({ ...g.cost, kind: "cost", tname: "cost" });
+    if (g.cost && !(who || names.length)) out.push({ ...g.cost, kind: "cost", tname: "cost" });
   }
-  return [...roomRows(all), ...out, ...heldRows()];
+  return [...roomRows(all), ...out, ...noDataRows(all, false), ...heldRows()];
 });
+const noData = (x) => x.bar < 0 && x.value === "no limit data on this Mac";
+// One "no data" block at the end for every tool and account with no figures: "team-a: Claude, Codex · OpenCode, Grok"
+// (per account or per tool, as the view is grouped), then the tools with no account.
+function noDataRows(all, byTool) {
+  const named = {}, bare = [];
+  const tname = (x) => TOOLS[Object.keys(TOOLS)[x.tool]];
+  for (const x of all.filter(noData)) {
+    if (!x.acct) { bare.push(tname(x)); continue; }
+    const [k, v] = byTool ? [tname(x), x.acct] : [x.acct, tname(x)];
+    (named[k] ??= []).push(v);
+  }
+  const parts = [...Object.keys(named).sort().map((k) => k + ": " + named[k].join(", ")), ...(bare.length ? [bare.join(", ")] : [])];
+  if (!parts.length) return [];
+  const value = parts.join(" · ");
+  return [{ key: (byTool ? "t:" : "") + "limit-nodata", kind: "none", wide: byTool, tname: "no data", value, color: META, copy: "no limit data on this Mac: " + value, bar: -1, wsId: all[0]?.wsId, gap: true }];
+}
 // "Room left": for each tool with two accounts or more that report a weekly window, how many of them are under 80%.
 // Accounts on hold are not counted. One muted line per tool at the top of the Limits view.
 function roomRows(all) {
@@ -829,8 +846,10 @@ function roomRows(all) {
     const weeks = all.filter((x) => x.toolId === tool && x.win === "week" && x.bar >= 0);
     if (weeks.length < 2) continue;
     const free = weeks.filter((x) => x.bar < 80).length;
-    const value = free + " of " + weeks.length + " accounts under 80% this week";
-    out.push({ key: "room-" + tool, kind: "room", tname: TOOLS[tool], value, color: free ? "secondary" : ORANGE, copy: TOOLS[tool] + ": " + value, bar: -1, wsId: all[0]?.wsId });
+    const value = free + " of " + weeks.length + " under 80% this week";
+    // One dot per account, in the order of the accounts: red from 80%, green under it.
+    const dots = weeks.map((x) => (x.bar >= 80 ? "#FF453A" : "#34C759"));
+    out.push({ key: "room-" + tool + "-" + weeks.length, kind: "room", tname: TOOLS[tool], value, dots, color: free ? "secondary" : ORANGE, copy: TOOLS[tool] + ": " + value, bar: -1, wsId: all[0]?.wsId });
   }
   return out;
 }
@@ -862,29 +881,16 @@ function heldRows() {
 function limitRowsByTool(all) {
   const primary = accountMarks().primary;
   const order = (a, b) => (b.acct === primary) - (a.acct === primary) || (a.acct < b.acct ? -1 : a.acct > b.acct ? 1 : 0);
-  const none = (x) => x.bar < 0 && x.value === "no limit data on this Mac";
-  const lines = all.filter((x) => !x.key.startsWith("cost-"));
-  const out = [], bare = [];
+  const lines = all.filter((x) => !x.key.startsWith("cost-") && !noData(x));
+  const out = [];
   const head = (label) => out.push({ key: "t:head-" + label, kind: "head", label, first: out.length === 0 });
   for (const tool of [...new Set(lines.map((x) => x.tool))]) {
-    const mine = lines.filter((x) => x.tool === tool), name = TOOLS[Object.keys(TOOLS)[tool]];
-    const wins = mine.filter((x) => !none(x)).sort(order), named = mine.filter((x) => none(x) && x.acct).sort(order);
-    if (!wins.length && !named.length) { bare.push(mine[0]); continue; }
-    head(name);
+    head(TOOLS[Object.keys(TOOLS)[tool]]);
     let last = null;
-    for (const x of wins) {
-      out.push({ ...x, key: "t:" + x.key, kind: "win", wide: true, tname: x.acct === last ? "" : x.acct });
+    for (const x of lines.filter((y) => y.tool === tool).sort(order)) {
+      out.push({ ...x, key: "t:" + x.key, kind: "win", wide: true, tname: x.acct === last ? "" : x.acct || "default", wname: x.win || "limit" });
       last = x.acct;
     }
-    if (named.length) {
-      const text = named.map((x) => x.acct).join(", ");
-      out.push({ key: "t:limit-nodata-" + name, kind: "none", wide: true, tname: "no data", value: text, color: META, copy: "no limit data on this Mac: " + name + " " + text, bar: -1, wsId: named[0].wsId });
-    }
-  }
-  if (bare.length) {
-    const text = bare.map((x) => TOOLS[Object.keys(TOOLS)[x.tool]]).join(", ");
-    if (out.length) head("other");
-    out.push({ key: "t:limit-nodata-", kind: "none", wide: true, tname: "no data", value: text, color: META, copy: "no limit data on this Mac: " + text, bar: -1, wsId: bare[0].wsId });
   }
   const costs = all.filter((x) => x.key.startsWith("cost-")).sort(order);
   if (costs.length) head("cost");
@@ -927,7 +933,7 @@ const strip = computed(() => {
     out.push({
       key: "lim:" + tool + ":p", label: tool, value: x.label + " " + x.value, wsId: x.wsId,
       color: x.bar >= 80 ? "#FF453A" : "secondary", bar: x.bar, pct: x.pct,
-      rest: [x.label.split(" ").slice(1).join(" "), x.rest].filter(Boolean).join(" · "), copy: x.copy,
+      rest: [x.label.split(" ").slice(1).join(" "), x.long].filter(Boolean).join(" · "), copy: x.copy,
     });
   }
   return out;
@@ -1102,6 +1108,15 @@ const chip = (labelFn, countFn, activeFn, onTapFn, colorFn, dotFn) =>
     .hoverBackground("#FFFFFF1A")
     .onTap(onTapFn);
 // A used share as a bar on a grey track: green below 50%, orange from 50%, red from 80%. The fill is at least 3 pt.
+// A bar that fills the free width: 20 equal segments (5% each), as the runtime has no view that knows its width.
+// A share above 0 lights one segment at least.
+const BAR_SEGMENTS = Array.from({ length: 20 }, (_, i) => i);
+const wideBar = (pctFn, height) =>
+  HStack({ spacing: 1 }, BAR_SEGMENTS.map((i) =>
+    Rectangle().fill(() => {
+      const on = Math.max(pctFn() > 0 ? 1 : 0, Math.round(pctFn() / 5));
+      return i < on ? (pctFn() >= 80 ? "#FF453A" : pctFn() >= 50 ? ORANGE : "#34C759") : "#7f7f7f40";
+    }).frame({ minWidth: 3, maxWidth: "infinity", height }))).frame({ minWidth: 60, maxWidth: "infinity", height });
 const usedBar = (pctFn, width, height) =>
   ZStack({}, [
     Capsule().fill("#7f7f7f40").frame({ width, height }),
@@ -1294,23 +1309,31 @@ const limitHead = (entry) =>
     Circle({ size: 6 }).fill(() => (entry().acct ? acctColor(entry().acct) : "clear")),
     Text(() => entry().label).font(11).monospaced().weight("semibold").color(TEXT2).lineLimit(1).truncation("tail"),
     Spacer(),
+    // The cost of the account sits at the right end of its header.
+    Text(() => entry().cost ?? "").font(10).monospaced().color(META).lineLimit(1),
   ]).paddingHorizontal(10).paddingTop(() => (entry().first ? 0 : 12));
 function limitRow(entry) {
   if (entry().kind === "head") return limitHead(entry);
+  // A window line: window name, a bar over the free width, percent, time left (clock time and age on hover).
+  // The room line: one dot per account before its text. Every other line: its text after the name column.
   const cells = entry().bar >= 0
     ? [
-      usedBar(() => entry().bar, 60, 5),
+      cell(Text(() => entry().wname ?? "").font(10).monospaced().color(META).lineLimit(1), 34, "leading"),
+      wideBar(() => entry().bar, 5),
       cell(Text(() => entry().pct).font(10).monospaced().lineLimit(1)
         .color(() => (entry().bar >= 80 ? "primary" : META)), 34, "trailing"),
-      Text(() => entry().rest).font(10).monospaced().color(META).lineLimit(1).truncation("tail").help(() => entry().value),
+      cell(Text(() => entry().rest).font(10).monospaced().color(META).lineLimit(1).help(() => entry().value), 52, "trailing"),
     ]
-    : [Text(() => entry().value).font(10).monospaced().color(() => entry().color).lineLimit(3).truncation("tail").layoutPriority(1).help(() => entry().value)];
-  return HStack({ spacing: 8, alignment: "top" }, [
+    : [
+      ...(entry().kind === "room" ? [HStack({ spacing: 3 }, (entry().dots ?? []).map((_, i) => Circle({ size: 6 }).fill(() => entry().dots?.[i] ?? "clear")))] : []),
+      Text(() => entry().value).font(10).monospaced().color(() => entry().color).lineLimit(4).truncation("tail").layoutPriority(1).help(() => entry().value),
+    ];
+  return HStack({ spacing: 8, alignment: entry().bar >= 0 ? "center" : "top" }, [
     cell(Text(() => entry().tname).font(10).monospaced().color(() => (entry().kind === "win" ? TEXT2 : META)).lineLimit(1).truncation("tail"), entry().wide ? 100 : 66, "leading"),
     ...cells,
-    Spacer(),
+    ...(entry().bar >= 0 ? [] : [Spacer()]),
   ])
-    .paddingLeading(18).paddingTrailing(10)
+    .paddingLeading(18).paddingTrailing(10).paddingTop(entry().gap ? 12 : 0)
     .frame({ maxWidth: "infinity" })
     .onTap(() => cmux("workspace.select", { workspace_id: entry().wsId }))
     .contextMenu([

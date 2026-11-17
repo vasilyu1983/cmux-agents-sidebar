@@ -619,28 +619,30 @@ check("a row menu opens the views page on the timeline, with the session marked"
   must(linked.some((a) => a.i === T(4) && a.x === 37 && a.z === 95000), "the Codex tab has no x and z in the link");
   must(linked.filter((a) => a.i === T(2)).every((a) => !("z" in a)), "worker-2 has a z with no token figure");
 });
-check("the Limits view lists the limit windows", () => {
+check("the Limits view lists the limit windows: window name, bar, percent, then the reset time", () => {
   const btn = withText((t) => t === "Limits")[0];
   must(btn, "Limits toggle not found");
   tap(btn);
-  // The percent is its own column; the window, reset time and age follow it.
+  // The window name comes before the bar, the percent is its own column; with no reset epoch the clock time follows.
   const pct = withText((t) => t === "42%")[0];
   must(pct && pct.props.fixedSize === true && reachable().some((n) => n.props.width === 34) && pct.props.monospaced === true && pct.props.color === META,
     "42% is not a 34 pt META percent column: " + JSON.stringify(pct?.props));
-  const rest = withText((t) => t.startsWith("5h · resets 14:10"));
-  must(rest.length === 1 && rest[0].props.lineLimit === 1 && String(rest[0].props.help).startsWith("5h 42% · resets 14:10"), "no one-line \"5h · resets 14:10\" text with the full text on hover");
+  must(withText((t) => t === "5h").length === 1, "the window name is not its own column");
+  const rest = withText((t) => t === "14:10");
+  must(rest.length === 1 && rest[0].props.lineLimit === 1 && String(rest[0].props.help).startsWith("5h 42% · resets 14:10"), "no one-line \"14:10\" with the full text on hover");
 });
-check("Limits bars are 60 x 5 with a 3 pt minimum fill; a line with no data has no bar; cost lines stay", () => {
-  must(reachable().some((n) => n.type === "capsule" && n.props.fill === "#34C759" && Math.abs(n.props.width - 25.2) < 0.01 && n.props.height === 5), "no 25.2 pt fill for 42%");
-  must(reachable().some((n) => n.type === "capsule" && n.props.fill === "#34C759" && n.props.width === 3 && n.props.height === 5), "the 4% fill is not 3 pt");
-  // The tools with no limit data share one line, named "no data".
+// The bar fills the free width: 20 segments of 5%, each with no fixed width.
+const segs = (fill) => reachable().filter((n) => n.type === "rectangle" && n.props.height === 5 && n.props.maxWidth === "infinity" && (!fill || n.props.fill === fill));
+check("Limits bars stretch: 20 segments each, 42% lights 8, 4% lights one; no-data tools share one line; cost stays", () => {
+  must(segs().length === 40, "not two bars of 20 segments: " + segs().length);
+  must(segs("#34C759").length === 9, "42% and 4% do not light 8 + 1 green segments: " + segs("#34C759").length);
   must(withText((t) => t === "no limit data on this Mac").length === 0, "a tool with no data has a line of its own");
   const none = withText((t) => /(^|, )Grok(,|$)/.test(t))[0];
   must(none && withText((t) => t === "no data").length === 1, "the tools with no data do not share one line");
-  must(!parentOf(none.id).children.map(node).some((n) => n.type === "zstack" || n.type === "capsule"), "the grok line has a bar");
-  must(withText((t) => /^\$0\.30 · 1 session$/.test(t)).length === 1, "no cost line for the personal account");
+  must(!parentOf(none.id).children.map(node).some((n) => n.type === "rectangle" || n.type === "capsule"), "the grok line has a bar");
+  must(withText((t) => /^\$0\.30 · 1 session$/.test(t)).length === 1, "no cost for the personal account");
   tap(withText((t) => t === "Limits")[0]);
-  must(!reachable().some((n) => n.props.width === 60 && n.props.height === 5), "a second click on Limits did not close the view");
+  must(segs().length === 0, "a second click on Limits did not close the view");
 });
 // The Limits view groups the lines per account: the name once as a header, the tool name once, the cost inside the group.
 const G = (n) => "EEEEEEEE-0000-0000-0000-00000000000" + n;
@@ -651,40 +653,32 @@ const limitsFixture = (limitsText, extra = []) => JSON.stringify([{
   agents: [agent("s-one", G(6), "idle", "claude"), agent("s-two", G(7), "idle", "claude")], prs: [],
 }]);
 const limitsTexts = () => withText(() => true).map((n) => n.props.text);
-check("the Limits view groups one account: its name once, the tool name once, the cost line in the group", () => {
+const MENU_TEXT = /^(Copy the text|Show .*|Put .* on hold|Resume .*|)$/;
+check("the Limits view groups per account: cost in the header, window lines, one no-data block at the end", () => {
   ctx.__setData("workspaces", limitsFixture("claude,5h,7,21:20,1794650000,work;claude,week,1,Sun 10:00,1794650000,work;claude,week,75,Wed 23:00,1794650000;codex,week,4,Wed 10:19,1794650000;claude,,,,0,team-a;codex,,,,0,team-a;opencode,,,,0;grok,,,,0", ["@primary: personal"]));
   tap(withText((t) => t === "Limits")[0]);
   const first = limitsTexts();
-  const all = first.slice(first.lastIndexOf("personal"));  // the account chip above the view has a name too
-  const from = 0;
-  const seq = all.slice(from).filter((t) => /^(personal|work|team-a|other|Claude|Codex|no data|cost|\$.* session.*|OpenCode, Grok|Claude, Codex|\d+%|5h · .*|week · .*)$/.test(t));
+  // The room line first: two Claude accounts report a week, both under 80%, one green dot each.
+  must(first.includes("2 of 2 under 80% this week"), "no room line: " + JSON.stringify(first));
+  must(reachable().filter((n) => n.type === "circle" && n.props.fill === "#34C759").length >= 2, "the room line has no green dot per account");
+  const seq = first.slice(first.lastIndexOf("personal")).filter((t) => !MENU_TEXT.test(t));
   must(JSON.stringify(seq) === JSON.stringify([
-    "personal", "Claude", "75%", "week · resets Wed 23:00", "Codex", "4%", "week · resets Wed 10:19", "cost", "$2.00 · 1 session",
-    "team-a", "no data", "Claude, Codex",
-    "work", "Claude", "7%", "5h · resets 21:20", "1%", "week · resets Sun 10:00", "cost", "$15.91 · 1 session",
-    "other", "no data", "OpenCode, Grok",
+    "personal", "$2.00 · 1 session", "Claude", "week", "75%", "Wed 23:00", "Codex", "week", "4%", "Wed 10:19",
+    "work", "$15.91 · 1 session", "Claude", "5h", "7%", "21:20", "week", "1%", "Sun 10:00",
+    "no data", "team-a: Claude, Codex · OpenCode, Grok",
   ]), "the grouped view reads " + JSON.stringify(seq));
-  // Each account name is a header once, and "Claude work" no longer repeats on every line.
-  for (const name of ["personal", "work", "team-a", "other"]) must(all.filter((t) => t === name).length === 1, name + " is not named once");
-  must(!all.some((t) => /^Claude (personal|work)$/.test(t) || /^cost (work|personal)$/.test(t)), "an old flat label is still there");
-  // The no-data tools of a group stay on one muted line; the line copies its account.
-  const none = withText((t) => t === "Claude, Codex")[0];
-  must(none.props.color === META, "the no-data line is not muted");
-  // The bars keep their 60 x 5 size and the cost lines their menu.
-  must(reachable().filter((n) => n.type === "capsule" && n.props.width === 60 && n.props.height === 5).length === 4, "not four 60 x 5 bars");
-  // "tools" turns the same lines around: which account of a tool has room. The costs follow in their own group.
-  // The Limits view shows only its own control: the controls of the session list are not there.
+  // An account with no data has no header of its own, and there is no "other" group.
+  must(!first.includes("team-a") && !first.includes("other"), "an account with no data still has a group");
+  must(withText((t) => t === "team-a: Claude, Codex · OpenCode, Grok")[0].props.color === META, "the no-data line is not muted");
   must(withText((t) => ["Here", "ended", "train"].includes(t)).length === 0 && !reachable().some((n) => n.type === "textfield"), "a control of the session list shows in the Limits view");
   tap(withText((t) => t === "by tool")[0]);
   const texts = limitsTexts();
-  // The "room left" line comes first: two Claude accounts report a week, both under 80%. Codex has one, so no line.
-  must(withText((t) => t === "2 of 2 accounts under 80% this week").length === 1, "no room-left line for Claude: " + JSON.stringify(texts));
-  const turned = texts.slice(texts.indexOf("Claude", texts.indexOf("2 of 2 accounts under 80% this week"))).filter((t) => /^(personal|work|team-a|other|Claude|Codex|no data|cost|\$.* session.*|OpenCode, Grok|\d+%|5h · .*|week · .*)$/.test(t));
+  const turned = texts.slice(texts.indexOf("Claude", texts.indexOf("2 of 2 under 80% this week"))).filter((t) => !MENU_TEXT.test(t));
   must(JSON.stringify(turned) === JSON.stringify([
-    "Claude", "personal", "75%", "week · resets Wed 23:00", "work", "7%", "5h · resets 21:20", "1%", "week · resets Sun 10:00", "no data", "team-a",
-    "Codex", "personal", "4%", "week · resets Wed 10:19", "no data", "team-a",
-    "other", "no data", "OpenCode, Grok",
+    "Claude", "personal", "week", "75%", "Wed 23:00", "work", "5h", "7%", "21:20", "week", "1%", "Sun 10:00",
+    "Codex", "personal", "week", "4%", "Wed 10:19",
     "cost", "personal", "$2.00 · 1 session", "work", "$15.91 · 1 session",
+    "no data", "Claude: team-a · Codex: team-a · OpenCode, Grok",
   ]), "the view per tool reads " + JSON.stringify(turned));
   tap(withText((t) => t === "by account")[0]);
   tap(withText((t) => t === "Limits")[0]);
@@ -694,21 +688,21 @@ check("a limit line counts down to its reset, and Put on hold moves an account t
   // EPOCH + 2 days 5 hours 10 minutes: the countdown reads "2d 5h"; 42 minutes reads "42m".
   ctx.__setData("workspaces", limitsFixture("claude,week,40,Thu 10:00,1794650000,work," + (EPOCH + 2 * 86400 + 5 * 3600 + 600) + ";claude,5h,10,12:00,1794650000,," + (EPOCH + 42 * 60 + 30) + ";claude,week,20,Wed 23:00,1794650000", ["@primary: personal"]));
   tap(withText((t) => t === "Limits")[0]);
-  must(withText((t) => t === "week · resets Thu 10:00 (in 2d 5h)").length === 1, "no 2d 5h countdown: " + JSON.stringify(limitsTexts()));
-  must(withText((t) => t === "5h · resets 12:00 (in 42m)").length === 1, "no 42m countdown on a line with no account name");
-  must(withText((t) => t === "week · resets Wed 23:00").length === 1, "a line with no reset epoch changed");
+  must(withText((t) => t === "2d 5h").length === 1, "no 2d 5h countdown: " + JSON.stringify(limitsTexts()));
+  must(withText((t) => t === "42m").length === 1, "no 42m countdown on a line with no account name");
+  must(withText((t) => t === "Wed 23:00").length === 1, "a line with no reset epoch lost its clock time");
   const hold = withText((t) => t === "Put Claude work on hold")[0];
   must(hold, "no Put on hold item for the work account");
   const calls = cmuxCalls().length;
   tap(hold);
   must(cmuxCalls().slice(calls).some((c) => /(^| \| )@hold: claude\/work$/.test(String(c.params?.description ?? ""))), "the hold was not saved");
-  must(withText((t) => t === "week · resets Thu 10:00 (in 2d 5h)").length === 0, "the held account still shows its line");
+  must(withText((t) => t === "2d 5h").length === 0, "the held account still shows its line");
   must(withText((t) => t === "on hold").length === 1 && withText((t) => t === "Claude work").length === 1, "no on-hold group naming Claude work");
   // With one account left, Claude has no room-left line: the held account is not counted.
-  must(!limitsTexts().some((t) => / accounts under 80% this week$/.test(t)), "the held account is still counted");
+  must(!limitsTexts().some((t) => / under 80% this week$/.test(t)), "the held account is still counted");
   tap(withText((t) => t === "Resume Claude work")[0]);
-  must(withText((t) => t === "on hold").length === 0 && withText((t) => t === "week · resets Thu 10:00 (in 2d 5h)").length === 1, "Resume did not bring the line back");
-  must(withText((t) => t === "2 of 2 accounts under 80% this week").length === 1, "the room-left line did not come back");
+  must(withText((t) => t === "on hold").length === 0 && withText((t) => t === "2d 5h").length === 1, "Resume did not bring the line back");
+  must(withText((t) => t === "2 of 2 under 80% this week").length === 1, "the room-left line did not come back");
   tap(withText((t) => t === "Limits")[0]);
 });
 check("the Limits view of one account with no accounts file has no header and still names a tool with no data", () => {

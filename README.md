@@ -257,33 +257,32 @@ The pictures are renders of `scripts/hive.html` with sample data.
 
 ### The Limits view in the panel
 
-The `Limits` view of the panel (the segment next to `Sessions`) has two groupings. Both show a bar and a percent per window: green, orange from 50%, red from 80%. The pair `by account` / `by tool` under the first row changes the grouping, and it is the only control in this view. `by account` is the default, and the choice is not saved: after a panel reload it is `by account` again.
+The `Limits` view of the panel (the segment next to `Sessions`) has two groupings. Both show one line per window: the window name (`5h`, `week`), a bar that fills the free width of the panel (20 steps of 5%), the percent and the time left to the reset. The bar is green, orange from 50%, red from 80%. The clock time of the reset and the age of the figure show on hover. The pair `by account` / `by tool` under the first row changes the grouping, and it is the only control in this view. `by account` is the default, and the choice is not saved: after a panel reload it is `by account` again.
 
 **Per account** (`by account`). Each account is a group.
 
-- The account name is a small muted header. The account of the tool's normal folder (the `default` line) comes first, the other accounts follow by name.
+- The account name is a small muted header, with the cost of that account at its right end. The account of the tool's normal folder (the `default` line) comes first, the other accounts follow by name.
 - Under it, each tool with its windows. The tool name shows once; the 5-hour and the week window are separate lines.
-- The tools of that account with no limit data share one muted `no data` line.
-- The cost of that account ends its group.
-- Tools that have no account name come last, under `other` (for example OpenCode or Grok on its normal folder).
+- An account with no window and no cost has no group.
+- One muted `no data` block at the end names every account and tool with no limit data: `team-a: Claude, Codex · OpenCode, Grok`.
 - With one account and no accounts file there is no header.
 
 <img src="examples/limits.png" alt="Drawing of the Limits view grouped per account: personal, team-a, work and other, each with its tools, bars, windows, no-data tools and cost" width="420">
 
 **Per tool** (`by tool`). Each tool is a group.
 
-- The tool name is the header. Under it, each account once with its windows, then the accounts of that tool with no data on one muted `no data` line.
-- Tools with no window and no account come last, under `other`.
+- The tool name is the header. Under it, each account once with its windows.
 - The cost lines, one per account, follow in a group `cost`.
+- One muted `no data` block at the end names, per tool, the accounts with no limit data: `Claude: team-a · Codex: team-a · OpenCode, Grok`.
 
 <img src="examples/limits-tools.png" alt="Drawing of the Limits view grouped per tool: Claude with personal, team-a and work, Codex, other, and a cost group with one line per account" width="420">
 
-Both are drawings with sample names, made from `examples/limits.html` and `examples/limits-tools.html`.
+Both are drawings with sample names of the earlier layout (the bar, window and `no data` lines have changed since), made from `examples/limits.html` and `examples/limits-tools.html`.
 
 In both groupings:
 
-- **Room left.** A tool with two accounts or more that report a week window gets one muted line at the top: `Claude  3 of 4 accounts under 80% this week`. The line turns orange when no account is under 80%.
-- **Countdown.** A window with a known reset time shows the time left after the clock time: `week · resets Wed 23:00 (in 2d 5h)`.
+- **Room left.** A tool with two accounts or more that report a week window gets one muted line at the top: one dot per account (red from 80%, green under it), then `3 of 4 under 80% this week`. The text turns orange when no account is under 80%.
+- **Countdown.** A window with a known reset time shows the time left at the end of its line: `2d 5h`. A watcher that sends no reset epoch gets the clock time there instead (`Wed 23:00`).
 - **On hold.** Right-click a window line → `Put Claude work on hold`. The account leaves the view, the room-left count and the limit line of the strip, and an `on hold` group at the end lists it; right-click it → `Resume Claude work`. The list is kept in the description of the workspace that carries the limits (`@hold: claude/work`), so it survives a reload. Hold only hides; it changes no account and no login.
 
 A tab title, as `label-tabs.py` writes it:
