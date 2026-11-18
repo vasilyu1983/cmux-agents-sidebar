@@ -51,7 +51,7 @@ const apiDescription = [
   "@home: " + HOME,
   "@primary: personal",
   "@view: t=1799999990,c=all,a=0,s=1,e=1,l=0,f=0",
-  "@limits: claude,5h,42,14:10,1794650000;codex,week,4,Sat 09:39,1794600000;grok,,,,0",
+  "@limits: claude,5h,42,14:10,1799999400;codex,week,4,Sat 09:39,1799999300;grok,,,,0",
   "@queue: 2 ready",
   "@unpushed: api 2",
   "@train: merged #12; refused none; skipped none; deferred none",
@@ -683,7 +683,7 @@ const limitsFixture = (limitsText, extra = []) => JSON.stringify([{
 }]);
 const limitsTexts = () => withText(() => true).map((n) => n.props.text);
 check("a limit of 80% or more shows in the panel head in red with a 20 pt bar; a click opens the Limits view", () => {
-  ctx.__setData("workspaces", limitsFixture("claude,5h,91,14:10,1794650000;codex,week,4,Sat 09:39,1794600000"));
+  ctx.__setData("workspaces", limitsFixture("claude,5h,91,14:10,1799999400;codex,week,4,Sat 09:39,1799999300"));
   const head = withText((t) => t === "claude 91%");
   must(head.length === 1 && head[0].props.color === "#FF453A", "no red \"claude 91%\" in the head");
   must(withText((t) => /^codex /.test(t)).length === 0, "a limit below 80% shows in the head");
@@ -695,7 +695,7 @@ check("a limit of 80% or more shows in the panel head in red with a 20 pt bar; a
 });
 const MENU_TEXT = /^(Copy the text|Show .*|Put .* on hold|Resume .*|)$/;
 check("the Limits view groups per account: cost in the header, window lines, one no-data block at the end", () => {
-  ctx.__setData("workspaces", limitsFixture("claude,5h,7,21:20,1794650000,work;claude,week,1,Sun 10:00,1794650000,work;claude,week,75,Wed 23:00,1794650000;codex,week,4,Wed 10:19,1794650000;claude,,,,0,team-a;codex,,,,0,team-a;opencode,,,,0;grok,,,,0", ["@primary: personal"]));
+  ctx.__setData("workspaces", limitsFixture("claude,5h,7,21:20,1799999400,work;claude,week,1,Sun 10:00,1799999400,work;claude,week,75,Wed 23:00,1799999400;codex,week,4,Wed 10:19,1799999400;claude,,,,0,team-a;codex,,,,0,team-a;opencode,,,,0;grok,,,,0", ["@primary: personal"]));
   tap(withText((t) => t === "Limits")[0]);
   const first = limitsTexts();
   // The room line first: two Claude accounts report a week, both under 80%, one green dot each.
@@ -725,7 +725,7 @@ check("the Limits view groups per account: cost in the header, window lines, one
   must(withText((t) => t === "Here").length === 1 && withText((t) => t === "by tool").length === 0, "the controls of the session list did not come back");
 });
 check("time left / reset time switches the end of a window line; the hover keeps both", () => {
-  ctx.__setData("workspaces", limitsFixture("claude,week,40," + "Thu 10:00,1794650000,work," + (EPOCH + 2 * 86400 + 5 * 3600 + 30)));
+  ctx.__setData("workspaces", limitsFixture("claude,week,40," + "Thu 10:00,1799999400,work," + (EPOCH + 2 * 86400 + 5 * 3600 + 30)));
   tap(withText((t) => t === "Limits")[0]);
   const line = withText((t) => t === "2d 5h")[0];
   must(line && String(line.props.help).includes("resets Thu 10:00 (in 2d 5h)"), "the time-left line has no full hover: " + JSON.stringify(line?.props.help));
@@ -739,7 +739,7 @@ check("time left / reset time switches the end of a window line; the hover keeps
 });
 check("a limit line counts down to its reset, and Put on hold moves an account to the on-hold group and saves it", () => {
   // EPOCH + 2 days 5 hours 10 minutes: the countdown reads "2d 5h"; 42 minutes reads "42m".
-  ctx.__setData("workspaces", limitsFixture("claude,week,40,Thu 10:00,1794650000,work," + (EPOCH + 2 * 86400 + 5 * 3600 + 600) + ";claude,5h,10,12:00,1794650000,," + (EPOCH + 42 * 60 + 30) + ";claude,week,20,Wed 23:00,1794650000", ["@primary: personal"]));
+  ctx.__setData("workspaces", limitsFixture("claude,week,40,Thu 10:00,1799999400,work," + (EPOCH + 2 * 86400 + 5 * 3600 + 600) + ";claude,5h,10,12:00,1799999400,," + (EPOCH + 42 * 60 + 30) + ";claude,week,20,Wed 23:00,1799999400", ["@primary: personal"]));
   tap(withText((t) => t === "Limits")[0]);
   must(withText((t) => t === "2d 5h").length === 1, "no 2d 5h countdown: " + JSON.stringify(limitsTexts()));
   must(withText((t) => t === "42m").length === 1, "no 42m countdown on a line with no account name");
@@ -758,8 +758,17 @@ check("a limit line counts down to its reset, and Put on hold moves an account t
   must(withText((t) => t === "2 of 2 under 80% this week").length === 1, "the room-left line did not come back");
   tap(withText((t) => t === "Limits")[0]);
 });
+// A tool reports its limit only with a reply, so a reading can be old. Past 15 minutes the line says so.
+check("a limit reading older than 15 minutes says how old it is instead of the time left", () => {
+  ctx.__setData("workspaces", limitsFixture("claude,week,91,Thu 10:00," + (EPOCH - 2 * 3600) + ",," + (EPOCH + 86400 + 60) + ";claude,5h,7,12:00," + (EPOCH - 600) + ",," + (EPOCH + 3600 + 60)));
+  tap(withText((t) => t === "Limits")[0]);
+  must(withText((t) => t === "2h old").length === 1, "the 2-hour-old reading does not say its age: " + JSON.stringify(limitsTexts()));
+  must(withText((t) => /^1h [01]m$/.test(t)).length === 1, "the fresh reading lost its time left: " + JSON.stringify(limitsTexts()));
+  tap(withText((t) => t === "Limits")[0]);
+  ctx.__setData("workspaces", JSON.stringify(workspaces));
+});
 check("the Limits view of one account with no accounts file has no header and still names a tool with no data", () => {
-  ctx.__setData("workspaces", limitsFixture("claude,5h,30,21:20,1794650000;claude,week,10,Sun 10:00,1794650000;codex,,,,0;grok,,,,0"));
+  ctx.__setData("workspaces", limitsFixture("claude,5h,30,21:20,1799999400;claude,week,10,Sun 10:00,1799999400;codex,,,,0;grok,,,,0"));
   tap(withText((t) => t === "Limits")[0]);
   const all = limitsTexts();
   must(!all.includes("other") && !all.includes("personal"), "a header shows with one nameless account: " + JSON.stringify(all));
@@ -990,7 +999,7 @@ check("a tab title that the shell left (user@host, or a start command with a var
 check("the group menu starts a plain terminal first, then each tool with each account, by a fixed command", () => {
   ctx.__setData("workspaces", JSON.stringify([{
     id: "ws-bare", title: "ignored", directory: "/work/bare", color: "#336699", selected: true, unread: 0,
-    description: ["/work/bare", "@home: " + HOME, "@primary: main", "@limits: claude,week,4,Sat 09:39,1794600000,,1794700000;claude,5h,7,12:00,1794600000,work,1794700000;claude,,,,0,work;codex,,,,0;codex,,,,0,team;grok,,,,0;agy,,,,0", "b-one: sonnet"].join(" | "),
+    description: ["/work/bare", "@home: " + HOME, "@primary: main", "@limits: claude,week,4,Sat 09:39,1799999300,,1794700000;claude,5h,7,12:00,1799999300,work,1794700000;claude,,,,0,work;codex,,,,0;codex,,,,0,team;grok,,,,0;agy,,,,0", "b-one: sonnet"].join(" | "),
     tabs: [tab(1, "[b-one] t", { id: B(5), focused: true })], agents: [agent("b-one", B(5), "idle", "claude")], prs: [],
   }]));
   const want = ["New Terminal", "New Claude", "main  \u2605 default", "work", "New Codex", "team", "New Grok", "New Antigravity", "Add Account", "Claude…", "Codex…", "Grok…"];

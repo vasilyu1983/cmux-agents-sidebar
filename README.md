@@ -319,6 +319,7 @@ In both groupings:
 
 - **Room left.** A tool with two accounts or more that report a week window gets one muted line at the top: one dot per account (red from 80%, green under it), then `3 of 4 under 80% this week`. The text turns orange when no account is under 80%.
 - **Countdown.** A window with a known reset time shows the time left at the end of its line: `2d 5h`. A watcher that sends no reset epoch gets the clock time there instead (`Wed 23:00`).
+- **Old reading.** A tool reports its limit only with a reply, so an account with no recent reply keeps an old figure. A reading older than 15 minutes shows its age instead of the time left: `2h old`. The hover keeps the reset time. A new reply in any session of that account brings the line up to date.
 - **On hold.** Right-click a window line → `Put Claude work on hold`. The account leaves the view, the room-left count and the limit line of the strip, and an `on hold` group at the end lists it; right-click it → `Resume Claude work`. The list is kept in the description of the workspace that carries the limits (`@hold: claude/work`), so it survives a reload. Hold only hides; it changes no account and no login.
 
 A tab title, as `label-tabs.py` writes it:

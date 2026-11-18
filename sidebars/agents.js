@@ -826,6 +826,7 @@ const launchList = computed(() => {
     .map((x) => ({ ...x, profiles: (LAUNCH.includes(x.tool) && profiles()[x.tool]) || [],
       label: PLAIN[x.tool] || x.cmd ? "" : (x.acct || primary || "default") + (x.acct ? "" : "  \u2605 default") }));
 });
+const STALE_LIMIT = 15 * 60;
 const limits = computed(() => {
   const epoch = data.clock()?.epoch ?? 0;
   let newest = null;
@@ -859,6 +860,9 @@ const limits = computed(() => {
         // The line shows the time left, or the reset time when "reset time" is on; the hover shows both and the age
         // of the figure. With no reset epoch (an older watcher) the reset time stays on the line.
         rest = !limitsAt() && left ? left : m[4];
+        // A tool reports its limit only with a reply, so an idle account keeps an old figure. Past 15 minutes the
+        // line says how old it is instead of the time left; the hover keeps both.
+        if (seen && epoch - seen > STALE_LIMIT) rest = fmtAgo(epoch - seen) + " old";
         long = (m[2] || "limit") + (m[4] ? " · resets " + m[4] : "");
       }
     }
