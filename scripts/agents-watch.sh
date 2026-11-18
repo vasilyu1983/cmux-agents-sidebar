@@ -19,7 +19,8 @@ if [ "${1:-}" = "--loop" ]; then
   done
 fi
 
-(umask 077; mkdir -p "$cache")
+umask 077
+mkdir -p "$cache"
 old="$(cat "$pidfile" 2>/dev/null)"
 if [[ "$old" =~ ^[0-9]+$ ]] && ps -p "$old" -o command= 2>/dev/null | grep -q 'agents-watch.sh --loop'; then
   kill "$old" && echo "agents-watch: stopped the running loop ($old)"

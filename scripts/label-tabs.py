@@ -1590,14 +1590,17 @@ def set_models(tree, models, strip):
         # gets fresh general parts, and keeps its other "@" parts.
         target = next((ref for ref, old in found.items() if " | @home: " in old), next(iter(found)))
         kept = [part for part in found[target].split(" | ")[1:]
-                if part.startswith("@") and not part.startswith(("@beat: ", "@home: ", "@week: ", "@limits: ", "@tools: ", "@profiles: ", "@primary: ", "@accts: ", "@cfg: ", "@proj: ", "@repo: "))]
+                if part.startswith("@") and not part.startswith(("@view: ", "@pin: ", "@hold: ", "@beat: ", "@home: ", "@week: ", "@limits: ", "@tools: ", "@profiles: ", "@primary: ", "@accts: ", "@cfg: ", "@proj: ", "@repo: "))]
         strip = {target: kept + general_marks()}
     for workspace, old in found.items():
         parts = old.split(" | ")
         kept = [part for part in parts[1:] if part.startswith("@") and not part.startswith(("@proj: ", "@repo: "))]
         # "@view", "@pin" and "@hold" belong to the panel (the saved chips, sort, folds, pinned sessions, accounts on hold): they stay when
         # the strip parts are replaced.
-        marks = strip[workspace] + [part for part in kept if part.startswith(("@view: ", "@pin: ", "@hold: "))] if workspace in strip else kept
+        # The panel parts are added here only, and a part that is there twice is kept once: a copy per pass would
+        # double the description until cmux refuses it as too long.
+        marks = list(dict.fromkeys(strip[workspace] + [part for part in kept if part.startswith(("@view: ", "@pin: ", "@hold: "))]
+                                   if workspace in strip else kept))
         # The folder is the first part of the description when the owner wrote one, else the workspace folder of cmux.
         folder = parts[0].strip().rstrip("/") or folders.get(workspace, "")
         own = [part for part in (project_part(parts[0].rstrip("/")), repo_part(folder)) if part]

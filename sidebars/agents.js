@@ -1882,7 +1882,7 @@ sidebar(() =>
   // 8 pt clear line on top of the first band make 12 pt between the search field and the band.
   VStack({ spacing: 4 }, [VStack({ spacing: 8 }, [
     HStack({ spacing: 8 }, [
-      Text("Agents").font(14).monospaced().weight("semibold"),
+      Text("Agents").font(14).monospaced().weight("semibold").lineLimit(1).fixedSize(),
       Spacer(),
       // One count per state in words: orange needs you, blue working, green idle. Then the cost estimate.
       headCount(() => counts().needs_input, "need you", ORANGE, "needs"),
@@ -1890,7 +1890,7 @@ sidebar(() =>
       // The idle chip means idle for 1 hour or more, and this count holds every idle session: no tap.
       headCount(() => counts().idle, "idle", "#34C759"),
       headCount(() => (showEnded() ? counts().ended : 0), "ended", META),
-      optional("watcher", () => watcherOff(), () => Text("watcher off").font(10).monospaced().color("#FF453A").help(WATCHER_HINT)),
+      optional("watcher", () => watcherOff(), () => Text("watcher off").font(10).monospaced().lineLimit(1).fixedSize().color("#FF453A").help(WATCHER_HINT)),
       optional("cost", () => totalCost() >= 1, () => Text(() => "$" + Math.round(totalCost())).font(10).monospaced().color(META)),
       // A limit at 80% or more: tool, percent and a short bar. A click opens the Limits view.
       ForEach({ items: () => (limitsShown() ? [] : headLimits()), key: (x) => x.key }, (x) => HStack({ spacing: 4 }, [

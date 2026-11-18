@@ -466,6 +466,24 @@ with tempfile.TemporaryDirectory() as box2:
     watcher.WEEK_FILE = saved_path
     watcher.WEEKS.clear()
 
+# The description stays the same size pass after pass: the panel's "@view" part is kept once, not copied again
+# each pass (a copy per pass doubled it until cmux refused the call as too long).
+class Done:
+    returncode, stdout, stderr = 0, "{}", ""
+written = []
+saved_run, saved_marks = watcher.run, watcher.general_marks
+watcher.run = lambda args: (written.append(args[-1]) if "set-description" in args else None) or Done()
+watcher.general_marks = lambda: ["@beat: 60", "@home: /home/x"]
+text = "/work/a | @home: /home/x | @view: s=1 | @pin: api-3f"
+for _ in range(3):
+    watcher.set_models({"windows": [{"ref": "workspace:1", "description": text}]}, {}, {})
+    text = written[-1] if written else text
+check("three passes keep one @view and one @pin part", text.count("@view: ") == 1 and text.count("@pin: ") == 1
+      and text.count("@beat: ") == 1)
+watcher.set_models({"windows": [{"ref": "workspace:1", "description": text.replace("@view: s=1", "@view: s=1 | @view: s=1")}]}, {}, {})
+check("a part that is there twice is written once", written[-1].count("@view: ") == 1)
+watcher.run, watcher.general_marks = saved_run, saved_marks
+
 # The state of a tool that publishes none comes from the live part of its screen only.
 work_line, old = "• Working (12s • esc to interrupt)", ["output line %d" % k for k in range(14)]
 check("a working line at the bottom of the screen reads as working", watcher.screen_state("\n".join(old + [work_line, "", "> ", ""])) == "working")
