@@ -190,15 +190,6 @@ function sendCommand(row, text) {
 // "force": cmux refuses to close a tab with a running process without it (measured 2026-11-17), and every session
 // tab has one. The named Yes item is the confirmation.
 const closeTabs = (wsId, list) => { for (const x of list) cmux("surface.close", { surface_id: x.surfaceId, workspace_id: wsId, force: true }); };
-// Approve once: a Claude Code permission prompt takes the key "1" as "Yes", this time only, with no line end
-// (measured 2026-11-17, Claude Code 2.1). Only for a Claude Code row that waits on a permission prompt; a question
-// with options is never answered. The check runs again at the click, as the row can change while the menu is open.
-// With no prompt open, a "1" only types into the input line and is not sent.
-const waitsPermission = (row) => /claude/i.test(String(row.agent?.kind ?? "")) && row.agent?.status === "needs_input" && row.wait === "permission prompt";
-function approveOnce(row) {
-  if (!row.surfaceId || !waitsPermission(row)) return;
-  cmux("surface.send_text", { surface_id: row.surfaceId, workspace_id: row.wsId, text: "1" });
-}
 const closeConfirm = (title, yes, run) => Menu(title, [Button(yes, run)]);
 
 // label-tabs.py leaves "<folder> | api-3f: Fable 5.2 high · ctx 42% · $12.34 · lane lane/x · pr #644 needs grant ·
@@ -1555,7 +1546,6 @@ function rowMenu(entry) {
   const items = [
     // First, as it is the reason to open the menu of a waiting row. It shows only the reason, not the command:
     // the watcher keeps no screen text, so look at the tab first when the command matters.
-    ...(waitsPermission(entry()) ? [closeConfirm("Approve once", "Yes, approve " + (entry().sessName || entry().tabTitle), () => approveOnce(entry())), Divider()] : []),
     // Only a session with a name can be pinned: the name is the key of the pin.
     ...(PIN_NAME.test(entry().sessName) ? [Button(() => (entry().pinned ? "Unpin" : "Pin to top"), () => togglePin(entry())), Divider()] : []),
     // A plain click on the row goes to the session, so the menu has no item for it. The name comes first: it is
