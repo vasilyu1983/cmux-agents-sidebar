@@ -1180,9 +1180,10 @@ def model_of(session, prs, home, account):
     # The context tokens of the last call: a whole number from 1 to under 10 million, else none.
     if re.fullmatch(r"[1-9]\d{0,6}", parts[10]):
         fields.append(f"tok {parts[10]}")
-    if re.fullmatch(r"\d{1,3}(\.\d+)?", parts[5]) and at > WEEKS.get(account, {}).get("at", 0):
-        WEEKS[account] = dict(at=at, used=str(round(float(parts[5]))), five=parts[6], five_reset=parts[7],
-                              week_reset=parts[8])
+    if re.fullmatch(r"\d{1,3}(\.\d+)?", parts[5]):
+        reading = dict(at=at, used=str(round(float(parts[5]))), five=parts[6], five_reset=parts[7], week_reset=parts[8])
+        if better_reading(reading, WEEKS.get(account)):
+            WEEKS[account] = reading
     return fields + subagents_of(sid, home)
 
 
@@ -1191,10 +1192,61 @@ def clean(text, limit):
     return re.sub(r"[|·\x00-\x1f\x7f]", "", text).strip()[:limit]
 
 
+def better_reading(new, old):
+    """True when the week reading `new` should replace `old`. Inside one week window the share only rises until the
+    reset, so the higher share wins (a session that last replied hours ago keeps a lower one); a newer window wins
+    over an older one. With no reset time to compare, the newer reading wins."""
+    if not old:
+        return True
+    try:
+        new_end, old_end = float(new["week_reset"]), float(old["week_reset"])
+    except (KeyError, TypeError, ValueError):
+        return new["at"] > old["at"]
+    if abs(new_end - old_end) >= 3600:
+        return new_end > old_end
+    return (int(new["used"]), new["at"]) > (int(old["used"]), old["at"])
+
+
+WEEK_FILE = "~/.cache/cmux-agents/limit-readings"
+
+
+def settle_weeks():
+    """Keeps the best week reading per account across passes: a pass sees only the sessions open now, and without
+    this the figure falls back to an older reading when the session with the newest one closes or resumes. The
+    file holds numbers and account names only (mode 600)."""
+    path = os.path.expanduser(WEEK_FILE)
+    try:
+        with open(path) as fh:
+            stored = json.loads(fh.read(20000))
+    except FileNotFoundError:
+        stored = {}
+    except (OSError, ValueError) as err:
+        print(f"label-tabs: limit readings not read: {err}", file=sys.stderr)
+        stored = {}
+    number = re.compile(r"\d{1,12}(\.\d+)?")
+    kept = {}
+    for account, one in (stored.items() if isinstance(stored, dict) else ()):
+        if (isinstance(account, str) and re.fullmatch(r"[a-z0-9-]{0,16}", account) and isinstance(one, dict)
+                and isinstance(one.get("at"), (int, float)) and re.fullmatch(r"\d{1,3}", str(one.get("used", "")))):
+            kept[account] = {k: one[k] if k == "at" else str(one.get(k, "")) if number.fullmatch(str(one.get(k, ""))) else ""
+                             for k in ("at", "used", "five", "five_reset", "week_reset")}
+    for account, one in kept.items():
+        if better_reading(one, WEEKS.get(account)):
+            WEEKS[account] = one
+    if WEEKS != kept:
+        try:
+            os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
+            with open(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600), "w") as fh:
+                json.dump(WEEKS, fh)
+        except OSError as err:
+            print(f"label-tabs: limit readings not saved: {err}", file=sys.stderr)
+
+
 def general_marks():
     """The strip parts that need no project: the home folder (the panel builds the link to the hive page from it)
     and the 7-day limit of the account."""
     found = []
+    settle_weeks()
     if re.fullmatch(r"/Users/[A-Za-z0-9._-]{1,64}", os.path.expanduser("~")):
         found.append("@home: " + os.path.expanduser("~"))
     week = WEEKS.get("".join(DEFAULT_ACCOUNT)) or max(WEEKS.values(), key=lambda one: one["at"], default=None)

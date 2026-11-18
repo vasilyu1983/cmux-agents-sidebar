@@ -445,6 +445,27 @@ finally:
     else:
         os.environ["HOME"] = saved_home
 
+# The week reading: inside one window the share only rises, so a newer file with a lower share does not win,
+# and the best reading outlives the session that left it.
+older = dict(at=T - 6 * 3600, used="98", five="", five_reset="", week_reset=str(T + 3600))
+newer = dict(at=T, used="91", five="", five_reset="", week_reset=str(T + 3700))
+check("a newer reading with a lower share in the same window does not replace a higher one",
+      not watcher.better_reading(newer, older) and watcher.better_reading(older, newer))
+check("a reading of the next window replaces one of the window before",
+      watcher.better_reading(dict(newer, used="3", week_reset=str(T + 7 * 86400)), older))
+with tempfile.TemporaryDirectory() as box2:
+    saved_path, watcher.WEEK_FILE = watcher.WEEK_FILE, os.path.join(box2, "limit-readings")
+    watcher.WEEKS.clear()
+    watcher.WEEKS["work"] = dict(older)
+    watcher.settle_weeks()
+    watcher.WEEKS.clear()
+    watcher.WEEKS["work"] = dict(newer)
+    watcher.settle_weeks()
+    check("the higher reading is kept after its session is gone", watcher.WEEKS["work"]["used"] == "98"
+          and oct(os.stat(watcher.WEEK_FILE).st_mode & 0o777) == "0o600")
+    watcher.WEEK_FILE = saved_path
+    watcher.WEEKS.clear()
+
 # The state of a tool that publishes none comes from the live part of its screen only.
 work_line, old = "• Working (12s • esc to interrupt)", ["output line %d" % k for k in range(14)]
 check("a working line at the bottom of the screen reads as working", watcher.screen_state("\n".join(old + [work_line, "", "> ", ""])) == "working")
