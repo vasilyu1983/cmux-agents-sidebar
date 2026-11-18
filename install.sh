@@ -58,5 +58,5 @@ cat <<'MSG'
 
 Files are in place. One step is left for you:
 open a tab in cmux and run   ~/.config/cmux/scripts/agents-watch.sh
-Leave that tab open. The panel shows in the right sidebar.
+It keeps running after you close the tab. The panel shows in the right sidebar.
 MSG

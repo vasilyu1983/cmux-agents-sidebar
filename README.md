@@ -369,7 +369,7 @@ You need:
    bash install.sh --no-statusline
    ```
 
-3. Open a tab in cmux and start the watcher. Leave the tab open.
+3. Open a tab in cmux and start the watcher. It runs in the background, so you can close the tab afterwards. Run it again to restart it, or with `--stop` to stop it. When it stops, the panel header shows `watcher off`.
 
    ```sh
    ~/.config/cmux/scripts/agents-watch.sh
@@ -383,7 +383,7 @@ The panel shows in the right sidebar. Claude Code sessions that start after the 
 |------|--------|
 | `~/.config/cmux/sidebars/agents.js` | The panel |
 | `~/.config/cmux/scripts/label-tabs.py` | Puts session names on tabs and passes session data to the panel |
-| `~/.config/cmux/scripts/agents-watch.sh` | Opens the panel and runs `label-tabs.py` every 15 seconds |
+| `~/.config/cmux/scripts/agents-watch.sh` | Opens the panel and starts the background loop that runs `label-tabs.py` every 15 seconds (process id and error lines in `~/.cache/cmux-agents/watch.pid` and `watch.log`) |
 | `~/.config/cmux/scripts/hive.html` | The graph page |
 | `~/.config/cmux/scripts/next-waiting.sh` | Goes to the session that has waited the longest |
 | `~/.config/cmux/scripts/agent-run.sh` | The launcher for several accounts. It does nothing until you use it |

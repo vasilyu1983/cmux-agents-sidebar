@@ -767,6 +767,16 @@ check("a limit reading older than 15 minutes says how old it is instead of the t
   tap(withText((t) => t === "Limits")[0]);
   ctx.__setData("workspaces", JSON.stringify(workspaces));
 });
+check("the header says the watcher is off when its minute mark is missing or older than 2 minutes", () => {
+  const limits = "claude,week,10,Sun 10:00," + EPOCH + ",," + (EPOCH + 86400);
+  ctx.__setData("workspaces", limitsFixture(limits, ["@beat: " + (EPOCH - 60)]));
+  must(withText((t) => t === "watcher off").length === 0, "a fresh mark shows the watcher as off");
+  ctx.__setData("workspaces", limitsFixture(limits, ["@beat: " + (EPOCH - 600)]));
+  must(withText((t) => t === "watcher off").length === 1, "a 10-minute-old mark does not show the watcher as off");
+  ctx.__setData("workspaces", limitsFixture(limits));
+  must(withText((t) => t === "watcher off").length === 1, "a missing mark does not show the watcher as off");
+  ctx.__setData("workspaces", JSON.stringify(workspaces));
+});
 check("the Limits view of one account with no accounts file has no header and still names a tool with no data", () => {
   ctx.__setData("workspaces", limitsFixture("claude,5h,30,21:20,1799999400;claude,week,10,Sun 10:00,1799999400;codex,,,,0;grok,,,,0"));
   tap(withText((t) => t === "Limits")[0]);

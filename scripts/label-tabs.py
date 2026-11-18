@@ -1244,8 +1244,9 @@ def settle_weeks():
 
 def general_marks():
     """The strip parts that need no project: the home folder (the panel builds the link to the hive page from it)
-    and the 7-day limit of the account."""
-    found = []
+    and the 7-day limit of the account. "@beat: <epoch>" is the minute of this pass: the panel says the watcher is
+    off when it is older than 2 minutes, and the minute keeps the description from changing on every pass."""
+    found = [f"@beat: {int(time.time()) // 60 * 60}"]
     settle_weeks()
     if re.fullmatch(r"/Users/[A-Za-z0-9._-]{1,64}", os.path.expanduser("~")):
         found.append("@home: " + os.path.expanduser("~"))
@@ -1589,7 +1590,7 @@ def set_models(tree, models, strip):
         # gets fresh general parts, and keeps its other "@" parts.
         target = next((ref for ref, old in found.items() if " | @home: " in old), next(iter(found)))
         kept = [part for part in found[target].split(" | ")[1:]
-                if part.startswith("@") and not part.startswith(("@home: ", "@week: ", "@limits: ", "@tools: ", "@profiles: ", "@primary: ", "@accts: ", "@cfg: ", "@proj: ", "@repo: "))]
+                if part.startswith("@") and not part.startswith(("@beat: ", "@home: ", "@week: ", "@limits: ", "@tools: ", "@profiles: ", "@primary: ", "@accts: ", "@cfg: ", "@proj: ", "@repo: "))]
         strip = {target: kept + general_marks()}
     for workspace, old in found.items():
         parts = old.split(" | ")

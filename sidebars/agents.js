@@ -749,6 +749,15 @@ const entries = computed(() => (limitsShown() ? [] : view().rows));
 // The project strip: the "@train", "@queue" and "@unpushed" parts that label-tabs.py puts in a workspace description.
 // Read from every workspace, also when the list shows one workspace only.
 const STRIP = { train: ["train", "secondary"], queue: ["run", "#FF9F0A"], unpushed: ["unpushed", "#FF9F0A"] };
+// The watcher writes "@beat: <epoch>" once a minute. With none, or one older than 2 minutes, the data stops
+// changing: the header says so, because the views and the start menu go on showing what they last got.
+const WATCHER_HINT = "the watcher is not running; run ~/.config/cmux/scripts/agents-watch.sh (Ctrl+Cmd+A if you set the shortcut)";
+const watcherOff = () => {
+  const now = data.clock()?.epoch ?? 0;
+  const part = (data.workspaces() ?? []).flatMap((w) => descOf(w).split(" | ")).find((p) => p.startsWith("@beat: "));
+  return now > 0 && (!part || now - Number(part.slice(7)) > 120);
+};
+
 // The Limits view: "@limits: claude,5h,42,14:10,1794650000;codex,week,4,Sat 09:39,1794600000;grok,,,,0".
 // label-tabs.py reads the limit windows that each tool leaves in local files. An item with no window is a tool
 // that is installed and leaves no limit data.
@@ -889,7 +898,7 @@ const limits = computed(() => {
     const value = "$" + sums[who].sum.toFixed(2) + " · " + sums[who].n + (sums[who].n === 1 ? " session" : " sessions");
     out.push({ key: "cost-" + who, label: "cost " + who, value, color: "secondary", copy: "cost " + who + " " + value, wsId: data.selectedId(), acct: who });
   }
-  if (out.length === 0) out.push({ key: "limit-none", label: "limits", value: "no data yet: the watcher writes it within 15 seconds", color: META, copy: "", wsId: data.selectedId() });
+  if (out.length === 0) out.push({ key: "limit-none", label: "limits", value: watcherOff() ? "no data: " + WATCHER_HINT : "no data yet: the watcher writes it within 15 seconds", color: META, copy: "", wsId: data.selectedId() });
   return out;
 });
 // The Limits view groups the lines of limits() per account: a muted header with the account name, then its tools with
@@ -1881,6 +1890,7 @@ sidebar(() =>
       // The idle chip means idle for 1 hour or more, and this count holds every idle session: no tap.
       headCount(() => counts().idle, "idle", "#34C759"),
       headCount(() => (showEnded() ? counts().ended : 0), "ended", META),
+      optional("watcher", () => watcherOff(), () => Text("watcher off").font(10).monospaced().color("#FF453A").help(WATCHER_HINT)),
       optional("cost", () => totalCost() >= 1, () => Text(() => "$" + Math.round(totalCost())).font(10).monospaced().color(META)),
       // A limit at 80% or more: tool, percent and a short bar. A click opens the Limits view.
       ForEach({ items: () => (limitsShown() ? [] : headLimits()), key: (x) => x.key }, (x) => HStack({ spacing: 4 }, [
