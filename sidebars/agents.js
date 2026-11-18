@@ -1542,6 +1542,8 @@ const configMenu = (entry) => {
   return items.length ? [Menu("Open Config", items)] : [];
 };
 const cfgKey = (wsId) => { const c = cfgItems(wsId); return [...c.user, ...c.project].map((x) => x.label).join(","); };
+// The views after Hive and Timeline, as the page lists them (VIEWS in scripts/hive.html).
+const PLAIN_VIEWS = [["cost", "Cost"], ["flow", "Flow"], ["limits", "Limits"], ["queue", "Queue"], ["context", "Context"], ["inside", "Inside"], ["rhythm", "Rhythm"], ["setup", "Setup"]];
 // Right-click menu of a session row. The command items type into the session's tab, and only while it is idle.
 function rowMenu(entry) {
   const cmd = commandsOf(entry().agent);
@@ -1558,13 +1560,12 @@ function rowMenu(entry) {
     // No item when the session has no PR: the menu cannot grey an item out.
     ...(entry().prText ? [Button(() => "Copy PR " + String(entry().prText).split(" ")[0], () => clipboard.write(String(entry().prText).split(" ")[0]))] : []),
     Divider(),
-    // The page's tab order and tab names. Only a view that marks the session (Hive, Timeline) or shows the whole
-    // setup has an item; Cost, Queue and Context ignore the selection today, so they are not listed.
+    // Every view, in the page's tab order and with its tab name. Hive and Timeline mark this session; the
+    // others show all sessions, as they ignore the selection.
     Menu("Show in Views", [
       Button("Hive", () => openViews("hive", "", { ws: entry().wsId, tab: entry().agent.panelId })),
       Button("Timeline", () => openViews("timeline", entry().sessName)),
-      Button("Inside", () => openViews("inside")),
-      Button("Setup", () => openViews("setup")),
+      ...PLAIN_VIEWS.map(([v, label]) => Button(label, () => openViews(v))),
     ]),
     ...configMenu(entry),
   ];

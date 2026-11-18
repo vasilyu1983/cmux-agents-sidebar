@@ -604,7 +604,7 @@ check("the Copy name menu item writes the session name to the clipboard", () => 
   tap(item);
   must(clipboard.includes("lead-1"), "clipboard holds " + JSON.stringify(clipboard));
 });
-check("a row menu opens the views page on the hive view with that session as the open tab, and lists only views that use it", () => {
+check("a row menu opens the views page on the hive view with that session as the open tab, and lists each view once", () => {
   // The Hive item of the lead-1 row: its menu (the "Show in views" submenu) sits in the row menu with "Copy name: lead-1".
   // The lowest ancestor of an item that also holds "Copy name: lead-1" is the menu of that row.
   const sub = (n) => { const out = []; const walk = (id) => { const x = node(id); if (!x) return; out.push(x); x.children.forEach(walk); }; walk(n.id); return out; };
@@ -618,9 +618,10 @@ check("a row menu opens the views page on the hive view with that session as the
   const sent = JSON.parse(decodeURIComponent(calls[0].params.url.split("#")[1]));
   const open = sent.ws.flatMap((w) => w.a).filter((a) => a.f);
   must(sent.v === "hive" && open.length === 1 && open[0].i === T(1), "the link carries " + JSON.stringify([sent.v, open.map((a) => a.i)]));
-  // Cost, Queue and Context do not mark a session today: no item, so no menu item that does nothing.
-  for (const label of ["Cost", "Queue", "Context", "Inside the sessions"]) {
-    must(!withText((t) => t === label).some((n) => parentOf(n.id).children.map(node).some((m) => m && m.props.text === "Timeline")), "the views submenu lists " + label);
+  // Every view is listed (the owner asked for all), each once, by its tab name: never a long title.
+  {
+    const labels = parentOf(withText((t) => t === "Timeline")[0].id).children.map(node).filter(Boolean).map((m) => m.props.text);
+    must(new Set(labels).size === labels.length && labels.length === 10 && labels.every((l) => /^[A-Z][a-z]+$/.test(l)), "views submenu: " + JSON.stringify(labels));
   }
 });
 check("the hive button asks cmux for a browser split with the hive page", () => {
@@ -919,9 +920,13 @@ check("rows keep their height and their columns with and without the new fields"
   const widths = (w) => reachable().filter((n) => n.props.width === w).length;
   must(widths(27) === rows.length && widths(49) === rows.length, "the context and cost columns are not on every row");
 });
-check("a row menu opens the views page on the inside view and on the setup view", () => {
-  for (const [label, v] of [["Inside", "inside"], ["Setup", "setup"]]) {
-    const item = withText((t) => t === label)[0];
+check("a row menu lists every view of the page, and each item opens its own view", () => {
+  // The page's own list, so a view added there without a menu item fails here.
+  const page = fs.readFileSync(new URL("../scripts/hive.html", import.meta.url), "utf8");
+  const ids = [...page.match(/const VIEWS = \[([\s\S]*?)\];/)[1].matchAll(/\["([a-z]+)", "([A-Za-z]+)"/g)].map((m) => [m[2], m[1]]);
+  must(ids.length === 10, "views on the page: " + JSON.stringify(ids));
+  for (const [label, v] of ids.slice(2)) {
+    const item = withText((t) => t === label).find((n) => parentOf(n.id) && parentOf(n.id).children.map(node).some((x) => x && x.props.text === "Hive"));
     must(item, "menu item " + JSON.stringify(label) + " not found");
     const before = cmuxCalls().length;
     tap(item);
