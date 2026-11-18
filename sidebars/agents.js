@@ -1267,24 +1267,26 @@ const bandMenu = (entry) => {
     : Button(title, () => launch(ws(), x));
   const start = tools.map((t) => {
     const mine = items.filter((x) => x.tool === t);
-    if (mine.length < 2) return one(mine[0], name(t));
+    if (mine.length < 2) return one(mine[0], "New " + name(t));
     const first = mine.filter((x) => !x.acct), rest = mine.filter((x) => x.acct);
-    return Menu(name(t), [...first.map((x) => one(x, x.label)), ...(first.length && rest.length ? [Divider()] : []),
+    return Menu("New " + name(t), [...first.map((x) => one(x, x.label)), ...(first.length && rest.length ? [Divider()] : []),
       ...rest.map((x) => one(x, x.label))]);
   });
   const adds = tools.filter((t) => LAUNCH.includes(t)).map((t) => Button(TOOLS[t] + "…", () => addAccount(ws(), t)));
   const done = entry().finished ?? [];
   const names = (list) => list.map((x) => x.name).join(", ");
-  const close = done.length ? [Divider(), Menu("Close finished (" + done.length + ")", [
-    closeConfirm("Close all " + done.length, "Yes, close " + done.length + ": " + (names(done).length > 60 ? names(done).slice(0, 59) + "…" : names(done)), () => closeTabs(ws(), done)),
+  // One level: the submenu is the guard, and each item names what it closes.
+  const close = done.length ? [Divider(), Menu("Close Finished Tabs (" + done.length + ")", [
+    Button("Yes, close all " + done.length + ": " + (names(done).length > 60 ? names(done).slice(0, 59) + "…" : names(done)), () => closeTabs(ws(), done)),
     Divider(),
-    ...done.map((x) => closeConfirm(x.name, "Yes, close " + x.name, () => closeTabs(ws(), [x]))),
+    ...done.map((x) => Button("Yes, close " + x.name, () => closeTabs(ws(), [x]))),
   ])] : [];
   // The colour of the group is the cmux workspace colour, so the band, the hive page and the cmux sidebar change together.
   const setColor = (color) => cmux("workspace.action", color ? { workspace_id: ws(), action: "set_color", color } : { workspace_id: ws(), action: "clear_color" });
-  const colour = [Divider(), Menu("Colour", [Button("No colour", () => setColor()), Divider(), ...WS_COLORS.map((c) => Button(c, () => setColor(c)))])];
-  return [Button("Terminal", () => newTab(ws())), ...(start.length ? [Divider(), ...start] : []),
-    ...(adds.length ? [Divider(), Menu("Add account", adds)] : []), ...configMenu(entry), ...colour, ...close];
+  const colour = Menu("Workspace Colour", [Button("No Colour", () => setColor()), Divider(), ...WS_COLORS.map((c) => Button(c, () => setColor(c)))]);
+  // Three groups: start something, set up the workspace, close (last, as it removes tabs).
+  return [Button("New Terminal", () => newTab(ws())), ...start,
+    Divider(), ...(adds.length ? [Menu("Add Account", adds)] : []), ...configMenu(entry), colour, ...close];
 };
 // The named colours of cmux (cmux workspace-action --help).
 const WS_COLORS = ["Red", "Crimson", "Orange", "Amber", "Olive", "Green", "Teal", "Aqua", "Blue", "Navy", "Indigo", "Purple", "Magenta", "Rose", "Brown", "Charcoal"];
@@ -1537,28 +1539,28 @@ const configMenu = (entry) => {
   user.forEach((x, i) => items.push(...(i && user[i - 1].tool !== x.tool ? [Divider()] : []), Button(x.label, () => openConfig(entry().wsId, x.dir, x.name))));
   if (user.length && project.length) items.push(Divider());
   for (const x of project) items.push(Button(x.label, () => openConfig(entry().wsId, x.dir, x.name)));
-  return items.length ? [Divider(), Menu("Open config", items)] : [];
+  return items.length ? [Menu("Open Config", items)] : [];
 };
 const cfgKey = (wsId) => { const c = cfgItems(wsId); return [...c.user, ...c.project].map((x) => x.label).join(","); };
 // Right-click menu of a session row. The command items type into the session's tab, and only while it is idle.
 function rowMenu(entry) {
   const cmd = commandsOf(entry().agent);
   const items = [
-    // First, as it is the reason to open the menu of a waiting row. It shows only the reason, not the command:
-    // the watcher keeps no screen text, so look at the tab first when the command matters.
-    // Only a session with a name can be pinned: the name is the key of the pin.
-    ...(PIN_NAME.test(entry().sessName) ? [Button(() => (entry().pinned ? "Unpin" : "Pin to top"), () => togglePin(entry())), Divider()] : []),
+    // First the two items that change only this panel. Only a session with a name can be pinned: the name is the
+    // key of the pin.
+    ...(PIN_NAME.test(entry().sessName) ? [Button(() => (entry().pinned ? "Unpin" : "Pin to Top"), () => togglePin(entry()))] : []),
+    Button(() => (openInfo()[entry().rowId] ? "Hide Details" : "Show Details"), () => flip(openInfo, setOpenInfo, entry().rowId)),
+    Divider(),
     // A plain click on the row goes to the session, so the menu has no item for it. The name comes first: it is
     // what a reader passes to another session.
     Button(() => "Copy name" + (entry().sessName ? ": " + entry().sessName : ""), () => clipboard.write(entry().sessName || entry().tabTitle)),
-    Button("Copy folder", () => clipboard.write(entry().folder)),
+    Button("Copy Folder Path", () => clipboard.write(entry().folder)),
     // No item when the session has no PR: the menu cannot grey an item out.
     ...(entry().prText ? [Button(() => "Copy PR " + String(entry().prText).split(" ")[0], () => clipboard.write(String(entry().prText).split(" ")[0]))] : []),
-    Button(() => (openInfo()[entry().rowId] ? "Hide details" : "Show details"), () => flip(openInfo, setOpenInfo, entry().rowId)),
     Divider(),
     // The page's tab order and tab names. Only a view that marks the session (Hive, Timeline) or shows the whole
     // setup has an item; Cost, Queue and Context ignore the selection today, so they are not listed.
-    Menu("Show in views", [
+    Menu("Show in Views", [
       Button("Hive", () => openViews("hive", "", { ws: entry().wsId, tab: entry().agent.panelId })),
       Button("Timeline", () => openViews("timeline", entry().sessName)),
       Button("Inside", () => openViews("inside")),
@@ -1566,16 +1568,23 @@ function rowMenu(entry) {
     ]),
     ...configMenu(entry),
   ];
+  // The commands type into the tab, and they change the session, so they sit below the items that only read.
+  // Compact cannot be undone, so it asks first, like Close.
+  const idle = () => entry().agent.status === "idle" && entry().look === "idle", who = () => entry().sessName || entry().tabTitle;
   if (cmd.compact || cmd.usage) items.push(Divider());
-  for (const text of [cmd.compact, cmd.usage]) {
-    if (!text) continue;
-    if (cmd.send) {
-      items.push(Button(() => (entry().agent.status === "idle" && entry().look === "idle" ? "Send " + text : text + " (only when idle)"), () => sendCommand(entry(), text)));
-    } else {
-      items.push(Button("Copy " + text, () => clipboard.write(text)));
-    }
-  }
-  if (entry().surfaceId) items.push(Divider(), closeConfirm("Close tab", "Yes, close " + (entry().sessName || entry().tabTitle), () => closeTabs(entry().wsId, [entry()])));
+  if (cmd.compact) items.push(cmd.send
+    ? Menu("Send " + cmd.compact, [Button(() => (idle() ? "Yes, send to " + who() : "Session busy: sends nothing"), () => sendCommand(entry(), cmd.compact))])
+    : Button("Copy " + cmd.compact, () => clipboard.write(cmd.compact)));
+  if (cmd.usage) items.push(cmd.send
+    ? Button(() => "Send " + cmd.usage + (idle() ? "" : " (session busy)"), () => sendCommand(entry(), cmd.usage))
+    : Button("Copy " + cmd.usage, () => clipboard.write(cmd.usage)));
+  // The Yes item says when the session is busy, and when its tool cannot bring it back (/resume is Claude only).
+  const closeNote = () => {
+    const a = entry().agent, s = a.status === "working" ? "working" : a.status === "needs_input" ? "waiting" : "";
+    const n = [s, /claude/i.test(String(a.kind ?? "")) ? "" : "cannot resume"].filter(Boolean).join(", ");
+    return n ? " (" + n + ")" : "";
+  };
+  if (entry().surfaceId) items.push(Divider(), closeConfirm("Close Tab", () => "Yes, close " + who() + closeNote(), () => closeTabs(entry().wsId, [entry()])));
   return items;
 }
 

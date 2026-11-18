@@ -481,14 +481,14 @@ check("one mark beside the search folds every group, then opens every group", ()
 check("the Show details menu item opens the detail lines of its row", () => {
   must(withText((t) => t === "›").every((n) => n.props.showOnHover === true), "a closed detail mark is not hover-only");
   const menu = parentOf(withText((t) => t === "Copy name: lead-1")[0].id);
-  const item = () => menu.children.map(node).find((n) => n && /^(Show|Hide) details$/.test(n.props.text));
-  must(item() && item().props.text === "Show details", "no Show details item in the lead-1 menu");
+  const item = () => menu.children.map(node).find((n) => n && /^(Show|Hide) Details$/.test(n.props.text));
+  must(item() && item().props.text === "Show Details", "no Show details item in the lead-1 menu");
   must(!textOf().includes("duplicate"), "lead-1 details already open");
   tap(item());
   mustContain(textOf(), "duplicate");
   // lead-1 compacted 3 times: its ⟳3 pill has the count, so the problem line gives only the advice.
   mustContain(textOf(), "compacted often: start a fresh session");
-  must(item().props.text === "Hide details", "the item did not change to Hide details");
+  must(item().props.text === "Hide Details", "the item did not change to Hide details");
   const open = withText((t) => t === "⌄");
   must(open.length > 0 && open.every((n) => n.props.showOnHover === false), "the open detail mark is not always in view");
   tap(item());
@@ -582,12 +582,12 @@ check("the menus hold no item that does nothing or repeats a click", () => {
   }
   must(withText((t) => t === "Timeline").length >= 1 && withText((t) => t === "Setup").length >= 1, "the views submenu lost an item");
 });
-check("Pin to top moves a session into a PINNED block, once, and saves the name; Unpin puts it back", () => {
+check("Pin to Top moves a session into a PINNED block, once, and saves the name; Unpin puts it back", () => {
   const cards = () => withText((x) => x === "[worker-2]").length;
-  const item = () => withText((x) => x === "Pin to top" || x === "Unpin")
+  const item = () => withText((x) => x === "Pin to Top" || x === "Unpin")
     .find((n) => parentOf(n.id).children.map(node).some((m) => m && m.props.text === "Copy name: worker-2"));
   const before = cards();
-  must(before >= 1 && item() && item().props.text === "Pin to top", "no Pin to top item in the worker-2 menu");
+  must(before >= 1 && item() && item().props.text === "Pin to Top", "no Pin to Top item in the worker-2 menu");
   must(withText((x) => x === "PINNED").length === 0, "a PINNED block shows with no pin");
   const calls = cmuxCalls().length;
   tap(item());
@@ -988,7 +988,7 @@ check("the group menu starts a plain terminal first, then each tool with each ac
     description: ["/work/bare", "@home: " + HOME, "@primary: main", "@limits: claude,week,4,Sat 09:39,1794600000,,1794700000;claude,5h,7,12:00,1794600000,work,1794700000;claude,,,,0,work;codex,,,,0;codex,,,,0,team;grok,,,,0;agy,,,,0", "b-one: sonnet"].join(" | "),
     tabs: [tab(1, "[b-one] t", { id: B(5), focused: true })], agents: [agent("b-one", B(5), "idle", "claude")], prs: [],
   }]));
-  const want = ["Terminal", "Claude", "main  \u2605 default", "work", "Codex", "team", "Grok", "Antigravity", "Add account", "Claude…", "Codex…", "Grok…"];
+  const want = ["New Terminal", "New Claude", "main  \u2605 default", "work", "New Codex", "team", "New Grok", "New Antigravity", "Add Account", "Claude…", "Codex…", "Grok…"];
   const once = [...new Set(withText((t) => want.includes(t)).map((n) => n.props.text))];
   must(JSON.stringify(once) === JSON.stringify(want), "menu items: " + JSON.stringify(once));
   must(withText((t) => t.endsWith("Antigravity…")).length === 0, "a tool with no account support got an add item");
@@ -1002,11 +1002,11 @@ check("the group menu starts a plain terminal first, then each tool with each ac
   calls = cmuxCalls().slice(before);
   must(calls.length === 1 && calls[0].params.initial_command === "\"$SHELL\" -lic 'printf \"New Codex account name (a-z, 0-9, -): \"; read -r n; \"$HOME/.config/cmux/scripts/agents-account-add.sh\" codex \"$n\"; exec \"$SHELL\" -l'", "add command: " + JSON.stringify(calls));
   before = cmuxCalls().length;
-  tap(withText((t) => t === "Grok")[0]);
+  tap(withText((t) => t === "New Grok")[0]);
   calls = cmuxCalls().slice(before);
   must(calls.length === 1 && calls[0].params.initial_command === "\"$SHELL\" -lic 'AGENT_ACCOUNT=main \"$HOME/.config/cmux/scripts/agent-run.sh\" grok; exec \"$SHELL\" -l'", "grok command: " + JSON.stringify(calls));
   before = cmuxCalls().length;
-  tap(withText((t) => t === "Terminal")[0]);
+  tap(withText((t) => t === "New Terminal")[0]);
   calls = cmuxCalls().slice(before);
   must(calls.length === 1 && calls[0].method === "surface.create" && !("initial_command" in calls[0].params), "a plain terminal got a command: " + JSON.stringify(calls));
 });
@@ -1018,21 +1018,21 @@ check("Close finished lists idle sessions only (not the open one, not pinned, no
     tabs: [tab(1, "[b-open] t", { id: B(1), focused: true }), tab(2, "[b-done] t", { id: B(2) }), tab(3, "[b-busy] t", { id: B(3) }), tab(4, "[b-pin] t", { id: B(4) })],
     agents: [agent("b-open", B(1), "idle", "claude"), agent("b-done", B(2), "idle", "claude"), agent("b-busy", B(3), "working", "claude"), agent("b-pin", B(4), "idle", "claude")], prs: [],
   }]));
-  must(withText((t) => t === "Close finished (1)").length === 1, "no Close finished (1): " + JSON.stringify(withText((t) => t.startsWith("Close")).map((n) => n.props.text)));
+  must(withText((t) => t === "Close Finished Tabs (1)").length === 1, "no Close finished (1): " + JSON.stringify(withText((t) => t.startsWith("Close")).map((n) => n.props.text)));
   const yes = withText((t) => t === "Yes, close b-done");
   must(yes.length >= 2, "b-done has no Yes item in the group menu and its row menu");
-  must(withText((t) => t === "Yes, close 1: b-done").length === 1, "no Close all confirm item");
+  must(withText((t) => t === "Yes, close all 1: b-done").length === 1, "no Close all confirm item");
   // The submenu titles do nothing on their own.
   let before = cmuxCalls().length;
-  tap(withText((t) => t === "Close finished (1)")[0]);
-  for (const n of withText((t) => t === "Close tab")) tap(n);
+  tap(withText((t) => t === "Close Finished Tabs (1)")[0]);
+  for (const n of withText((t) => t === "Close Tab")) tap(n);
   must(cmuxCalls().slice(before).every((c) => c.method !== "surface.close"), "a submenu title closed a tab");
   before = cmuxCalls().length;
-  tap(withText((t) => t === "Yes, close 1: b-done")[0]);
+  tap(withText((t) => t === "Yes, close all 1: b-done")[0]);
   const calls = cmuxCalls().slice(before);
   must(calls.length === 1 && calls[0].method === "surface.close" && calls[0].params.surface_id === "SF-2" && calls[0].params.workspace_id === "ws-bare" && String(calls[0].params.force) === "true", "close calls (force is needed for a tab with a running process): " + JSON.stringify(calls));
   // Every session row has its own Close tab, the open one too: the owner chose it by hand.
-  must(withText((t) => t === "Yes, close b-open").length === 1 && withText((t) => t === "Yes, close b-busy").length === 1, "a row has no Close tab");
+  must(withText((t) => t === "Yes, close b-open").length === 1 && withText((t) => t === "Yes, close b-busy (working)").length === 1, "a row has no Close tab");
 });
 // Approve once was removed (2026-11-18): in cmux its key never reached the tab, and the click failed with no sign.
 // A permission prompt is answered in the tab itself.
@@ -1044,6 +1044,23 @@ check("a row that waits on a permission prompt has no Approve item", () => {
   }]));
   must(withText((t) => /approve/i.test(t)).length === 0, "an Approve item shows");
 });
+// Send /compact cannot be undone, so it asks first; the Close Tab item says when a session is busy or cannot come back.
+check("Send /compact asks first and Close Tab names a busy or non-resumable session", () => {
+  ctx.__setData("workspaces", JSON.stringify([{
+    id: "ws-bare", title: "ignored", directory: "/work/bare", color: "#336699", selected: true, unread: 0,
+    description: ["/work/bare", "@home: " + HOME, "b-idle: sonnet", "b-cx: x"].join(" | "),
+    tabs: [tab(1, "[b-idle] t", { id: B(1) }), tab(2, "[b-cx] t", { id: B(2) })],
+    agents: [agent("b-idle", B(1), "idle", "claude"), agent("b-cx", B(2), "working", "codex")], prs: [],
+  }]));
+  let before = cmuxCalls().length;
+  for (const n of withText((t) => t === "Send /compact")) tap(n);
+  must(cmuxCalls().length === before, "the Send /compact title alone typed into the tab");
+  tap(withText((t) => t === "Yes, send to b-idle")[0]);
+  const calls = cmuxCalls().slice(before);
+  must(calls.length === 1 && calls[0].method === "surface.send_text" && calls[0].params.text === "/compact\n", "compact calls: " + JSON.stringify(calls));
+  must(withText((t) => t.startsWith("Yes, close b-idle (")).length === 0 && withText((t) => t === "Yes, close b-idle").length >= 1, "an idle Claude row got a note");
+  must(withText((t) => t === "Yes, close b-cx (working, cannot resume)").length === 1, "the Codex row does not say it is busy and cannot resume");
+});
 check("an account name that is not plain (it could carry shell text) gives no menu item", () => {
   ctx.__setData("workspaces", JSON.stringify([{
     id: "ws-bare", title: "ignored", directory: "/work/bare", color: "#336699", selected: true, unread: 0,
@@ -1051,7 +1068,7 @@ check("an account name that is not plain (it could carry shell text) gives no me
     tabs: [tab(1, "[b-one] t", { id: B(5), focused: true })], agents: [agent("b-one", B(5), "idle", "claude")], prs: [],
   }]));
   const once = [...new Set(withText((t) => ["a", "ok-1", "$(id)", "x"].includes(t) || t.endsWith("Terminal")).map((n) => n.props.text))];
-  must(JSON.stringify(once) === JSON.stringify(["Terminal", "a", "ok-1"]), "menu items: " + JSON.stringify(once));
+  must(JSON.stringify(once) === JSON.stringify(["New Terminal", "a", "ok-1"]), "menu items: " + JSON.stringify(once));
 });
 
 // Start profiles: "@profiles" gives names only. An account becomes a submenu "normal" + names, and a name reaches the
@@ -1062,8 +1079,8 @@ check("a start profile nests under the account and starts with AGENT_PROFILE; a 
     description: ["/work/bare", "@home: " + HOME, "@limits: claude,,,,0;codex,,,,0,team", "@profiles: claude=sandbox,$(id),normal,A b;agy=x;codex=ro", "b-one: sonnet"].join(" | "),
     tabs: [tab(1, "[b-one] t", { id: B(5), focused: true })], agents: [agent("b-one", B(5), "idle", "claude")], prs: [],
   }]));
-  const once = [...new Set(withText((t) => ["Claude", "Codex", "normal", "sandbox", "ro", "$(id)", "A b", "x"].includes(t)).map((n) => n.props.text))];
-  must(JSON.stringify(once) === JSON.stringify(["Claude", "normal", "sandbox", "Codex", "ro"]), "menu items: " + JSON.stringify(once));
+  const once = [...new Set(withText((t) => ["New Claude", "New Codex", "normal", "sandbox", "ro", "$(id)", "A b", "x"].includes(t)).map((n) => n.props.text))];
+  must(JSON.stringify(once) === JSON.stringify(["New Claude", "normal", "sandbox", "New Codex", "ro"]), "menu items: " + JSON.stringify(once));
   const run = (label, i = 0) => { const before = cmuxCalls().length; tap(withText((t) => t === label)[i]); return cmuxCalls().slice(before); };
   const cmd = (inner) => "\"$SHELL\" -lic '" + inner + "; exec \"$SHELL\" -l'";
   let calls = run("sandbox");
@@ -1165,11 +1182,11 @@ check("a tool from @tools gets a flat item with a neutral dot and starts by its 
     description: ["/work/bare", "@home: " + HOME, "@limits: claude,,,,0;grok,,,,0", "@tools: gemini=gemini=Gemini CLI;kiro=kiro-cli=Kiro CLI", "b-one: sonnet"].join(" | "),
     tabs: [tab(1, "[b-one] t", { id: B(5), focused: true })], agents: [agent("b-one", B(5), "idle", "claude")], prs: [],
   }]));
-  const want = ["Terminal", "Claude", "Grok", "Gemini CLI", "Kiro CLI"];
+  const want = ["New Terminal", "New Claude", "New Grok", "New Gemini CLI", "New Kiro CLI"];
   const once = [...new Set(withText((t) => want.includes(t)).map((n) => n.props.text))];
   must(JSON.stringify(once) === JSON.stringify(want), "menu items: " + JSON.stringify(once));
   const before = cmuxCalls().length;
-  tap(withText((t) => t === "Kiro CLI")[0]);
+  tap(withText((t) => t === "New Kiro CLI")[0]);
   const calls = cmuxCalls().slice(before);
   must(calls.length === 1 && calls[0].method === "surface.create" && calls[0].params.initial_command === "\"$SHELL\" -lic 'kiro-cli; exec \"$SHELL\" -l'", "command: " + JSON.stringify(calls));
 });
@@ -1180,11 +1197,11 @@ check("a tool in @tools with a command, id or label that is not plain gives no m
     description: ["/work/bare", "@home: " + HOME, "@limits: claude,,,,0", "@tools: " + [...bad, "good=good-1=Good One"].join(";"), "b-one: sonnet"].join(" | "),
     tabs: [tab(1, "[b-one] t", { id: B(5), focused: true })], agents: [agent("b-one", B(5), "idle", "claude")], prs: [],
   }]));
-  const once = [...new Set(withText((t) => t === "Claude" || t === "Good One" || /^(Aaa|Bbb|Ccc|Ddd|\$\(id\)|Fff.*|Claude2|Ggg|Hhh.*|Iii|Jjj)$/.test(t)).map((n) => n.props.text))];
-  must(JSON.stringify(once) === JSON.stringify(["Claude", "Good One"]), "menu items: " + JSON.stringify(once));
+  const once = [...new Set(withText((t) => t === "New Claude" || t === "New Good One" || /^(New )?(Aaa|Bbb|Ccc|Ddd|\$\(id\)|Fff.*|Claude2|Ggg|Hhh.*|Iii|Jjj)$/.test(t)).map((n) => n.props.text))];
+  must(JSON.stringify(once) === JSON.stringify(["New Claude", "New Good One"]), "menu items: " + JSON.stringify(once));
 });
 
-// "Open config": the files come from "@cfg" (user level) and "@proj" (project) in the descriptions. The command is fixed
+// "Open Config": the files come from "@cfg" (user level) and "@proj" (project) in the descriptions. The command is fixed
 // text and a path of plain parts from a fixed table of names; anything else gives no item.
 const cfgData = (...parts) => ctx.__setData("workspaces", JSON.stringify([{
   id: "ws-bare", title: "ignored", directory: "/work/bare", color: "#336699", selected: true, unread: 0,
@@ -1195,14 +1212,14 @@ const cfgLabels = () => [...new Set(withText((t) => /^(Claude|Codex|OpenCode|Gro
 const editorCommand = (rel) => "\"$SHELL\" -lic 'sh -c \"${EDITOR:-vi} \\\"\\$1\\\"\" sh \"$HOME/" + rel + "\"; exec \"$SHELL\" -l'";
 check("with no @cfg and no @proj there is no Open config menu", () => {
   cfgData();
-  must(withText((t) => t === "Open config").length === 0, "an Open config menu shows with no file");
+  must(withText((t) => t === "Open Config").length === 0, "an Open config menu shows with no file");
 });
 check("Open config lists the user files by tool and the project files, and opens one in the editor by a fixed command", () => {
   cfgData("@cfg: claude,,.claude,settings.json;claude,work,.claude-work,settings.json;claude,,.claude,CLAUDE.md;codex,,.codex,config.toml;opencode,,.config/opencode,opencode.jsonc",
     "@proj: Projects/app=CLAUDE.md,.claude/settings.json,.mcp.json");
   const want = ["Claude · settings.json", "Claude · work · settings.json", "Claude · CLAUDE.md", "Codex · config.toml", "OpenCode · opencode.jsonc",
     "Project · CLAUDE.md", "Project · .claude/settings.json", "Project · .mcp.json"];
-  must(withText((t) => t === "Open config").length >= 2, "the header menu and the row menu both need an Open config item");
+  must(withText((t) => t === "Open Config").length >= 2, "the header menu and the row menu both need an Open config item");
   must(JSON.stringify(cfgLabels()) === JSON.stringify(want), "items: " + JSON.stringify(cfgLabels()));
   for (const [label, rel] of [["Claude · work · settings.json", ".claude-work/settings.json"], ["Project · .claude/settings.json", "Projects/app/.claude/settings.json"]]) {
     const before = cmuxCalls().length;
@@ -1214,8 +1231,8 @@ check("Open config lists the user files by tool and the project files, and opens
 });
 check("the Colour menu of a group sets or clears the cmux workspace colour of that workspace only", () => {
   cfgData();
-  must(withText((t) => t === "Colour").length === 1, "the group menu needs one Colour item");
-  for (const [label, want] of [["Teal", { workspace_id: "ws-bare", action: "set_color", color: "Teal" }], ["No colour", { workspace_id: "ws-bare", action: "clear_color" }]]) {
+  must(withText((t) => t === "Workspace Colour").length === 1, "the group menu needs one Colour item");
+  for (const [label, want] of [["Teal", { workspace_id: "ws-bare", action: "set_color", color: "Teal" }], ["No Colour", { workspace_id: "ws-bare", action: "clear_color" }]]) {
     const before = cmuxCalls().length;
     tap(withText((t) => t === label)[0]);
     const calls = cmuxCalls().slice(before);
@@ -1233,7 +1250,7 @@ check("a config item with an account, folder, file or project part that is not p
   must(JSON.stringify(cfgLabels()) === JSON.stringify(["Project · CLAUDE.md", "Project · .mcp.json"]), "project items: " + JSON.stringify(cfgLabels()));
   for (const bad of ["@proj: Projects/a b=CLAUDE.md", "@proj: ../x=CLAUDE.md", "@proj: Projects/x'y=CLAUDE.md", "@proj: /etc=CLAUDE.md", "@proj: Projects/auth-kit=CLAUDE.md"]) {
     cfgData(bad);
-    must(cfgLabels().length === 0 && withText((t) => t === "Open config").length === 0, "an item for " + bad);
+    must(cfgLabels().length === 0 && withText((t) => t === "Open Config").length === 0, "an item for " + bad);
   }
 });
 
