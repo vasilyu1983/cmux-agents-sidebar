@@ -1500,6 +1500,27 @@ def warn_limits(items):
             print(f"label-tabs: limit warnings not saved: {err}", file=sys.stderr)
 
 
+AGY_WINDOWS = ("5h", "week", "cg5h", "cgwk", "argon")
+
+
+def agy_limits():
+    """The Antigravity windows that statusline/agy-statusline.sh left in ~/.cache/cmux-agents/agy-quota: one line per
+    window, "name<TAB>share used in %<TAB>reset epoch (0 = unknown)". The file's time is the time seen. [] without it."""
+    path = os.path.expanduser("~/.cache/cmux-agents/agy-quota")
+    try:
+        with open(path) as fh:
+            lines = fh.read(2000).splitlines()
+        at = os.path.getmtime(path)
+    except OSError:
+        return []
+    found = []
+    for line in lines:
+        parts = line.split("\t")
+        if len(parts) == 3 and parts[0] in AGY_WINDOWS and re.fullmatch(r"\d{1,3}", parts[1]) and re.fullmatch(r"\d{1,12}", parts[2]):
+            found.append(limit_item("agy", parts[0], parts[1], parts[2] if parts[2] != "0" else None, at))
+    return [item for item in found if item]
+
+
 def all_limits():
     """Limit windows of the agent tools on this Mac, from local files only. A tool whose data folder exists
     but that leaves no limit data gets an empty item, and the panel says so."""
@@ -1524,7 +1545,10 @@ def all_limits():
     for home, account in homes("grok", "~/.grok"):
         if os.path.isdir(home):
             found.append("grok,,,,0" + (f",{account}" if account else ""))
-    if os.path.isdir(os.path.expanduser("~/.antigravity")):
+    agy = agy_limits()
+    if agy:
+        found += agy
+    elif os.path.isdir(os.path.expanduser("~/.antigravity")):
         found.append("agy,,,,0")
     return [item for item in found if item]
 

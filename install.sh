@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Installs the Agents panel for cmux from this folder. Run it in Terminal: bash install.sh
 # An existing file that differs is copied to <name>.<date>.bak before it is replaced.
-# Pass --no-statusline to skip the Claude Code status line and its settings entry.
+# Pass --no-statusline to skip the Claude Code and Antigravity CLI status lines and their settings entries.
 set -eu
 here="$(cd "$(dirname "$0")" && pwd)"
 stamp=$(date +%Y%m%d-%H%M%S)
@@ -49,6 +49,29 @@ if [ "$statusline" = yes ]; then
     jq --argjson l "$line" '. + {statusLine: $l}' "$settings.$stamp.bak" > "$settings"
     echo "backup: $settings.$stamp.bak"
     echo "added: the status line entry in $settings"
+  fi
+  # The Antigravity CLI status line, only when Antigravity CLI is set up. It saves the quota windows for the
+  # Limits view; "stack_with_default" keeps the usual Antigravity status line.
+  agy_settings="$HOME/.gemini/antigravity-cli/settings.json"
+  if [ -d "${agy_settings%/*}" ]; then
+    put "$here/statusline/agy-statusline.sh" "$HOME/.config/cmux/scripts/agy-statusline.sh"
+    chmod +x "$HOME/.config/cmux/scripts/agy-statusline.sh"
+    line='{"type":"command","command":"bash ~/.config/cmux/scripts/agy-statusline.sh","stack_with_default":true}'
+    if [ ! -e "$agy_settings" ]; then
+      jq -n --argjson l "$line" '{statusLine: $l}' > "$agy_settings"
+      echo "created: $agy_settings with the status line entry"
+    elif ! jq -e . "$agy_settings" >/dev/null 2>&1; then
+      echo "install: $agy_settings is not plain JSON; add the statusLine entry by hand, see README.md" >&2
+    elif jq -e '.statusLine.command // "" | test("agy-statusline[.]sh")' "$agy_settings" >/dev/null; then
+      echo "kept: $agy_settings already has the status line entry"
+    elif jq -e 'has("statusLine")' "$agy_settings" >/dev/null; then
+      echo "kept: $agy_settings has another statusLine; see README.md if you want this one"
+    else
+      cp "$agy_settings" "$agy_settings.$stamp.bak"
+      jq --argjson l "$line" '. + {statusLine: $l}' "$agy_settings.$stamp.bak" > "$agy_settings"
+      echo "backup: $agy_settings.$stamp.bak"
+      echo "added: the status line entry in $agy_settings"
+    fi
   fi
 fi
 

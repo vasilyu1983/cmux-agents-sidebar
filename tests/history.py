@@ -493,5 +493,29 @@ check("a permission menu at the bottom reads as asks", watcher.screen_state("\n"
 check("a numbered list in old output with an allow word does not read as asks",
       watcher.screen_state("\n".join(["1. yes, we allow it"] + old + ["> "])) == "idle")
 
+# Antigravity: the status line script keeps the quota windows only, and the watcher turns them into limit items.
+import json, subprocess
+agy_home = tempfile.mkdtemp()
+script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "statusline", "agy-statusline.sh")
+record = {"email": "someone@example.com", "plan_tier": "pro", "quota": {
+    "gemini-5h": {"remaining_fraction": 0.9727, "reset_in_seconds": 17220, "reset_time": "x"},
+    "gemini-weekly": {"remaining_fraction": 0.9922, "reset_in_seconds": 604020},
+    "3p-5h": {"remaining_fraction": 1, "reset_in_seconds": 0}, "unknown-window": {"remaining_fraction": 0.5}}}
+subprocess.run(["bash", script], input=json.dumps(record), text=True, env={**os.environ, "HOME": agy_home}, check=True)
+with open(os.path.join(agy_home, ".cache", "cmux-agents", "agy-quota")) as fh:
+    saved = fh.read()
+check("the Antigravity status line saves name, share used and reset per known window, and nothing else",
+      [line.split("\t")[:2] for line in saved.splitlines()] == [["5h", "3"], ["week", "1"], ["cg5h", "0"]]
+      and "example" not in saved and "pro" not in saved and saved.splitlines()[2].endswith("\t0"))
+os.environ["HOME"] = agy_home
+items = watcher.agy_limits()
+check("the watcher gives one Antigravity limit item per saved window; a full window has no reset time",
+      [i.split(",")[:3] for i in items] == [["agy", "5h", "3"], ["agy", "week", "1"], ["agy", "cg5h", "0"]]
+      and items[2].split(",")[3] == "" and len(items[0].split(",")) == 7)
+with open(os.path.join(agy_home, ".cache", "cmux-agents", "agy-quota"), "w") as fh:
+    fh.write("5h\t3\t1\nother\t5\t0\n5h\tx\t0\n")
+check("an unknown window or a share that is not a number is left out", [i.split(",")[1] for i in watcher.agy_limits()] == ["5h"])
+os.environ["HOME"] = box
+
 print("OK: all history checks passed" if not failed else f"FAILED: {failed} check(s)")
 sys.exit(1 if failed else 0)

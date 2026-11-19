@@ -391,6 +391,8 @@ The panel shows in the right sidebar. Claude Code sessions that start after the 
 | `~/.config/cmux/scripts/agents-shell.sh` | The short commands. They load only after you add the `source` line to your shell file |
 | `~/.claude/statusline-command.sh` | The status line script (skipped with `--no-statusline`) |
 | `~/.claude/settings.json` | Gets one key, `statusLine`, only when the file has none (skipped with `--no-statusline`) |
+| `~/.config/cmux/scripts/agy-statusline.sh` | The Antigravity CLI status line script, only when `~/.gemini/antigravity-cli` exists (skipped with `--no-statusline`). It saves the share used and the reset time of each quota window, nothing else |
+| `~/.gemini/antigravity-cli/settings.json` | Gets one key, `statusLine`, with `stack_with_default` so the usual Antigravity status line stays, only when the file has none (skipped with `--no-statusline`) |
 
 If a target file exists and differs, the installer first copies it to `<name>.<date>.bak`.
 The installer does not change `cmux.json`, your shell files or the accounts file.
@@ -597,7 +599,7 @@ Facts that follow from this design:
 - The account of a session comes from its data folder: the status line passes the folder name for Claude Code, and `label-tabs.py` reads the variable `CODEX_HOME` of a Codex tab. The accounts file maps the folder to a name. A Claude Code row gets its account after the first reply of the session.
 - The limit warning is a `cmux notify` call from `label-tabs.py`: one per limit window at 80% or more. A window that drops below 80% can warn again.
 - A limit line stays empty until the tool sent a figure. Claude Code sends none before the first reply of a session, and it can send a week figure without a 5-hour figure.
-- The `Limits` view reads local files only: the Claude Code status line data, and the `rate_limits` record in the newest Codex session file (`~/.codex/sessions`). It reads no login token and calls no network. A figure is as old as the tool's last reply, so each line shows its age. A tool that is installed and leaves no limit data is named on the muted `no data` line of its group; this is the case for OpenCode, Grok Build and Antigravity today. The Claude Code lines need the status line of this repository.
+- The `Limits` view reads local files only: the Claude Code status line data, the `rate_limits` record in the newest Codex session file (`~/.codex/sessions`), and the Antigravity quota windows that its status line saves (`~/.cache/cmux-agents/agy-quota`). It reads no login token and calls no network. A figure is as old as the tool's last reply, so each line shows its age. A tool that is installed and leaves no limit data is named on the muted `no data` line of its group; this is the case for OpenCode and Grok Build today. The Claude Code and Antigravity lines need the status lines of this repository. Antigravity shows five windows: `5h` and `week` for the Gemini models, `cg5h` and `cgwk` for the Claude and GPT models, and `argon` for the Gemini Argon week. A window with all of its quota left has no reset time.
 - A click on a session in the hive page goes to its tab. A web page cannot call cmux, so the page puts the request in its tab title for 5 seconds (`go:<workspace id>:<tab id>:<time>`), and the panel, which gets tab titles from cmux, focuses that tab. The panel must be open. It accepts only ids of tabs that it knows and a request younger than 20 seconds, and a request can do nothing but change the focus.
 - The hive page shows subagents under their session. It uses what cmux reports; when cmux reports none, it uses the Claude Code records: the running ones by name, the finished ones as a count. A subagent counts as running while its record is not finished and its transcript got a line in the last 15 minutes.
 
@@ -655,7 +657,7 @@ bash uninstall.sh --yes
 
 It removes the panel, the scripts and `~/.cache/cmux-agents` (that folder holds `tools-on-path`). It never touches your accounts file, your account folders, a login, or the Claude Code settings. It does not remove `~/.config/cmux/agents-tools` either, and its list of what is left for you does not name that file: delete it by hand if you made it.
 
-If you installed the status line: delete `~/.claude/statusline-command.sh` and the `statusLine` key in `~/.claude/settings.json`, or restore your `.bak` copies.
+If you installed the status line: delete `~/.claude/statusline-command.sh` and the `statusLine` key in `~/.claude/settings.json`, or restore your `.bak` copies. For Antigravity, delete the `statusLine` key in `~/.gemini/antigravity-cli/settings.json`.
 Tab labels stay until you rename the tabs or close them.
 
 ## Known limits
@@ -668,7 +670,7 @@ Tab labels stay until you rename the tabs or close them.
 - The saved view was tested for the restore; the save on a click was not observed.
 - The session cost is a running total. The panel shows no cost per day.
 - The wrong-account mark, the limit warning and the Codex account tag were tested with sample data and stub commands, not on live sessions.
-- OpenCode, Grok Build and Antigravity leave no limit figure in their local files, as far as their table and key names show. OpenCode keeps a cost per session; the panel does not show it yet.
+- OpenCode and Grok Build leave no limit figure in their local files, as far as their table and key names show. OpenCode keeps a cost per session; the panel does not show it yet.
 - The next step, the compaction count and the marks `dup` and `↑` were tested with sample data; on one Mac the next step and the count showed in the data. The new chips `you` and `push` were not seen on screen, and the chip row can be too wide for a narrow sidebar.
 - The compact layout, the top rows (counts, `Sessions | Limits`, `Here | All`, chips, search field) and the limit bars were tested in the runtime with invented data; their look on screen (widths, cut text) was not checked by the author of the change.
 - `Clear filters` clears the search text that filters the list. The search field may still show the typed text; this was not checked on screen.
